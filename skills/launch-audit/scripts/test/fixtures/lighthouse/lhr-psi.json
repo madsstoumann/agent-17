@@ -1,0 +1,97 @@
+{
+  "lighthouseResult": {
+    "lighthouseVersion": "12.2.0",
+    "requestedUrl": "https://example.com/",
+    "finalDisplayedUrl": "https://example.com/",
+    "fetchTime": "2026-09-24T07:00:00.000Z",
+    "runWarnings": [],
+    "categories": {
+      "performance": {
+        "id": "performance",
+        "title": "Performance",
+        "score": 0.71,
+        "auditRefs": [
+          { "id": "largest-contentful-paint", "weight": 25, "group": "metrics" },
+          { "id": "cumulative-layout-shift", "weight": 25, "group": "metrics" },
+          { "id": "total-blocking-time", "weight": 30, "group": "metrics" },
+          { "id": "uses-text-compression", "weight": 0, "group": "load-opportunities" },
+          { "id": "render-blocking-resources", "weight": 0, "group": "load-opportunities" },
+          { "id": "uses-long-cache-ttl", "weight": 0, "group": "diagnostics" },
+          { "id": "third-party-summary", "weight": 0, "group": "diagnostics" }
+        ]
+      },
+      "accessibility": { "id": "accessibility", "title": "Accessibility", "score": 0.95 },
+      "best-practices": { "id": "best-practices", "title": "Best Practices", "score": 1 },
+      "seo": {
+        "id": "seo",
+        "title": "SEO",
+        "score": 0.69,
+        "auditRefs": [
+          { "id": "is-crawlable", "weight": 4.043, "group": "seo-crawl" },
+          { "id": "robots-txt", "weight": 1, "group": "seo-crawl" }
+        ]
+      }
+    },
+    "audits": {
+      "third-party-summary": {
+        "id": "third-party-summary",
+        "title": "Reduce the impact of third-party code",
+        "score": 0,
+        "scoreDisplayMode": "binary",
+        "displayValue": "Third-party code blocked the main thread for 310 ms",
+        "details": {
+          "type": "table",
+          "items": [
+            { "entity": { "type": "link", "text": "Google Tag Manager", "url": "https://marketingplatform.google.com/about/tag-manager/" }, "transferSize": 120000, "mainThreadTime": 640, "blockingTime": 310 }
+          ]
+        }
+      },
+      "largest-contentful-paint": { "id": "largest-contentful-paint", "title": "Largest Contentful Paint", "score": 0.55, "scoreDisplayMode": "numeric", "numericValue": 3100, "numericUnit": "millisecond", "displayValue": "3.1 s" },
+      "cumulative-layout-shift": { "id": "cumulative-layout-shift", "title": "Cumulative Layout Shift", "score": 1, "scoreDisplayMode": "numeric", "numericValue": 0.02, "numericUnit": "unitless", "displayValue": "0.02" },
+      "total-blocking-time": { "id": "total-blocking-time", "title": "Total Blocking Time", "score": 0.6, "scoreDisplayMode": "numeric", "numericValue": 450, "numericUnit": "millisecond", "displayValue": "450 ms" },
+      "is-crawlable": { "id": "is-crawlable", "title": "Page is blocked from indexing", "score": 0, "scoreDisplayMode": "binary", "details": { "type": "table", "items": [{ "source": "noindex" }] } },
+      "robots-txt": { "id": "robots-txt", "score": 0, "scoreDisplayMode": "binary" },
+      "uses-text-compression": {
+        "id": "uses-text-compression",
+        "title": "Enable text compression",
+        "score": 0.5,
+        "scoreDisplayMode": "numeric",
+        "displayValue": "Potential savings of 600 ms",
+        "details": { "type": "opportunity", "overallSavingsMs": 600, "overallSavingsBytes": 48000, "items": [{ "url": "https://example.com/app.js", "totalBytes": 60000, "wastedBytes": 48000 }] }
+      },
+      "render-blocking-resources": {
+        "id": "render-blocking-resources",
+        "title": "Eliminate render-blocking resources",
+        "score": 0.3,
+        "scoreDisplayMode": "numeric",
+        "displayValue": "Potential savings of 1,200 ms",
+        "details": { "type": "opportunity", "overallSavingsMs": 1200, "overallSavingsBytes": 0, "items": [{ "url": "https://example.com/style.css", "totalBytes": 30000, "wastedMs": 1200 }] }
+      },
+      "uses-long-cache-ttl": {
+        "id": "uses-long-cache-ttl",
+        "title": "Serve static assets with an efficient cache policy",
+        "score": 1,
+        "scoreDisplayMode": "numeric",
+        "displayValue": "0 resources found",
+        "details": { "type": "table", "items": [] }
+      }
+    }
+  },
+  "loadingExperience": {
+    "id": "https://example.com/",
+    "metrics": {
+      "LARGEST_CONTENTFUL_PAINT_MS": { "percentile": 2900, "category": "AVERAGE" },
+      "INTERACTION_TO_NEXT_PAINT": { "percentile": 150, "category": "FAST" },
+      "CUMULATIVE_LAYOUT_SHIFT_SCORE": { "percentile": 5, "category": "FAST" }
+    },
+    "overall_category": "AVERAGE"
+  },
+  "originLoadingExperience": {
+    "id": "https://example.com",
+    "metrics": {
+      "LARGEST_CONTENTFUL_PAINT_MS": { "percentile": 2600, "category": "AVERAGE" }
+    },
+    "overall_category": "AVERAGE",
+    "origin_fallback": true
+  }
+}

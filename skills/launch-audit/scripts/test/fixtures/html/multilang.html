@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang=da>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+<base href="https://www.example.com/sub/">
+<title>
+  Multilang &amp; friends
+</title>
+<meta name=description content=Unquoted description value>
+<meta name="googlebot" content="max-snippet:-1, max-image-preview:large">
+<link rel="alternate" hreflang="en" href="en/">
+<link rel="alternate" hreflang="da" href="da/">
+<link rel="alternate" hreflang="x-default" href="../">
+<link rel="alternate" type="application/rss+xml" href="http://feeds.example.com/rss.xml" title="RSS">
+<link rel="stylesheet" href="http://static.example.com/site.css">
+<link rel=icon href=icon.png>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    { "@type": "Organization", "name": "Example", "url": "https://www.example.com/" },
+    { "@type": ["WebSite", "CreativeWork"], "name": "Example site" }
+  ]
+}
+</script>
+<script type="application/ld+json">{ "@type": "BreadcrumbList", "itemListElement": [ }</script>
+<script>
+  var html = '<meta name="robots" content="index"><title>Fake title</title><h1>Fake heading</h1>';
+  document.write(html);
+</script>
+</head>
+<body>
+<h1 class=first>First heading</h1>
+<h1>Second &quot;heading&quot;</h1>
+<img data-src="http://lazy.example.com/a.jpg" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="lazy">
+<img src="b.jpg" srcset="b-2x.jpg 2x, http://cdn.example.com/b-3x.jpg 3x">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><use href="#i"/></svg>
+<a href="http://www.example.com/insecure-link/">Insecure link</a>
+<a href="javascript:void(0)">JS link</a>
+<a href="tel:+4512345678">Call</a>
+<a href="data:text/plain,hi">Data link</a>
+<a href="sub-page/" rel="nofollow">Relative to base</a>
+<a href="sub-page/">Duplicate</a>
+<a href="/root-page/">Root relative</a>
+<audio src="audio.mp3"></audio>
+<video poster="poster.jpg"><source src="clip.webm" type="video/webm"></video>
+<form action="http://forms.example.com/submit" method="post"></form>
+<script src="//cdn.example.com/lib.js"></script>
+<link rel="preload" href="hero.jpg" as="image">
+</body>
+</html>

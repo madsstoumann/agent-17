@@ -1,0 +1,20 @@
+# Default: everyone may crawl everything
+User-agent: *
+Allow: /
+Disallow: /admin/    # trailing comment
+Disallow:
+
+Sitemap: https://example.com/sitemap.xml
+sitemap: https://example.com/sitemap-news.xml
+
+user-agent: Googlebot
+user-agent: Bingbot
+Disallow: /private/
+Disallow: /tmp/
+Allow: /private/public-bit/
+Crawl-delay: 5
+
+User-Agent: AdsBot-Google
+Disallow: /
+
+Host: example.com

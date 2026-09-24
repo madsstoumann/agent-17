@@ -1,0 +1,1 @@
+upgrade-insecure-requests; frame-ancestors 'self';

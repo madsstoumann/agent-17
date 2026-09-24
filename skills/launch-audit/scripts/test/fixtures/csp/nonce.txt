@@ -1,0 +1,1 @@
+default-src 'self'; script-src 'nonce-rAnd0m1234567890' 'strict-dynamic' https: 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; upgrade-insecure-requests; report-to csp-endpoint
