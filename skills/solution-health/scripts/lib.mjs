@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSy
 import { join, resolve, extname, relative } from 'node:path';
 import { createHash } from 'node:crypto';
 
-export const USER_AGENT = 'solution-health-skill/1.0 (dependency and API health check; run by developers)';
+export const USER_AGENT = 'solution-health-skill/1.1 (dependency and API health check; run by developers)';
 
 export function parseArgs(argv = process.argv.slice(2)) {
   const args = { _: [] };
@@ -157,7 +157,7 @@ export function loadManifest(p) {
 }
 
 export function loadState(p) {
-  return readJson(p.state, { version: 1, lastRun: null, apis: {}, packages: {}, runtimes: {} });
+  return readJson(p.state, { version: 1, lastRun: null, apis: {}, packages: {}, runtimes: {}, nuget: {} });
 }
 
 export function log(...a) { console.error(...a); }
