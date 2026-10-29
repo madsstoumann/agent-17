@@ -25,7 +25,7 @@ redacts them, and so must you when quoting a file.
 ## Run it
 
 ```bash
-node ~/.claude/skills/security-audit/scripts/scan.mjs <path> [flags]
+node "${CLAUDE_SKILL_DIR}/scripts/scan.mjs" <path> [flags]
 ```
 
 Run it through Bash with `timeout: 300000`. A typical repo takes 5–30 seconds; `--history` on
