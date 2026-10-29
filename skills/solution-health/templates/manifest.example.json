@@ -1,0 +1,57 @@
+{
+  "$comment": "solution-health manifest. Committed to the repo; owned by the team. Claude proposes changes, a developer approves them. Secrets never go here: reference env vars as \"$NAME\".",
+  "apis": [
+    {
+      "name": "DAWA (Danmarks Adressers Web API)",
+      "hosts": ["api.dataforsyningen.dk", "dawa.aws.dk"],
+      "purpose": "Address autocomplete and validation on checkout and the contact form",
+      "probe": { "url": "https://api.dataforsyningen.dk/adgangsadresser?q=Rådhuspladsen&per_side=1" },
+      "watch": [
+        "https://dawadocs.dataforsyningen.dk",
+        "https://dataforsyningen.dk/data/4924"
+      ],
+      "feeds": [],
+      "keywords": ["Adressevælger", "Datafordeleren"],
+      "status": "replaced",
+      "sunset": "2026-07-01",
+      "replacement": "https://adressevaelger.dk (same address UUIDs) or a commercial DAWA-compatible API",
+      "owner": "@backend-lead",
+      "notes": "Klimadatastyrelsen announced the shutdown in Danish on the docs site long before the date. The page notice was the only warning."
+    },
+    {
+      "name": "Example: payment provider",
+      "hosts": ["api.example-psp.com"],
+      "purpose": "Card payments",
+      "probe": { "url": "https://api.example-psp.com/v1/health", "headers": { "authorization": "$PSP_TOKEN" } },
+      "watch": ["https://developer.example-psp.com/changelog", "https://developer.example-psp.com/deprecations"],
+      "feeds": ["https://status.example-psp.com/history.rss"],
+      "status": "active",
+      "owner": "@payments-dev"
+    }
+  ],
+  "hostsIgnore": [
+    "fonts.googleapis.com",
+    "fonts.gstatic.com"
+  ],
+  "keywords": {
+    "extra": []
+  },
+  "packages": {
+    "thresholds": { "staleMonths": 24, "quietMonths": 12 },
+    "ignore": [
+      {
+        "name": "some-feature-complete-lib",
+        "ecosystem": "npm",
+        "reason": "Feature-complete, zero dependencies, reviewed by @mads",
+        "expires": "2027-04-01"
+      }
+    ]
+  },
+  "runtimes": {
+    "warnDays": 180,
+    "extra": [
+      { "product": "mssqlserver", "version": "2019", "note": "Azure VM database" }
+    ]
+  },
+  "apiSunsetWarnDays": 180
+}
