@@ -8,9 +8,12 @@
   },
   "plugins": [
     {
-      "name": "mads-skills",
+      "name": "skills",
       "source": "./skills",
       "description": "Every skill in skills/ as one plugin: launch-audit, security-audit, is-website-safe, validate-schema, solution-health, node-toolchain-check, tech-stack and any skill added there later"
     }
-  ]
+  ],
+  "renames": {
+    "mads-skills": "skills"
+  }
 }
