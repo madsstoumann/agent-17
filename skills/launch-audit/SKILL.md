@@ -4,7 +4,7 @@ description: Use when a website is about to go live or has just launched and nee
 argument-hint: "<url> [--env dev|staging|production] [--production-host HOST] [--pages N] [--skip group,...] [--out PATH] [--baseline report.json] [--insecure]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Read, WebFetch
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Launch audit
@@ -24,8 +24,10 @@ Only audit sites the user owns or is engaged on. The script identifies itself
 ## Run it
 
 ```bash
-node ~/.claude/skills/launch-audit/scripts/audit.mjs <url> [flags]
+node "${CLAUDE_SKILL_DIR}/scripts/audit.mjs" <url> [flags]
 ```
+
+`${CLAUDE_SKILL_DIR}` is this skill's folder, wherever it is installed (`~/.claude/skills/launch-audit`, a plugin, or an uploaded skill). If it is not filled in, use the folder this `SKILL.md` is in.
 
 Run it through Bash with **`timeout: 600000`** (a full run is 4–7 minutes: Lighthouse runs
 mobile + desktop + `--pages` sampled pages sequentially; the crawl and link check take

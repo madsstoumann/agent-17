@@ -4,7 +4,7 @@ description: Periodic health check of this solution's dependencies and external 
 argument-hint: "[--root PATH] [--transitive] [--offline] [--skip packages,runtimes,apis]"
 allowed-tools: Bash(node:*), Bash(npm:*), Bash(dotnet:*), Read, Write, Edit, WebFetch, WebSearch
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # Solution health check
@@ -25,14 +25,14 @@ Everything lives in `.solution-health/` at the solution root and is committed, e
 | `report.md` | Scripts + you | Latest report. Commit it, so the git history shows when a warning first appeared |
 | `run/` | Scripts | Scratch: raw results, HTTP cache, change files. Add `.solution-health/run/` to `.gitignore` |
 
-Scripts are in `scripts/` next to this file. They are zero-dependency Node (18+), so they run on any dev machine with Node, including .NET-only devs. Run them from the solution root, or pass `--root <path>`. The commands below assume the skill is installed at `.claude/skills/solution-health/`; adjust the path if it lives elsewhere. `references/sample-report.md` shows what a finished report looks like.
+Scripts are in `scripts/` next to this file. They are zero-dependency Node (18+), so they run on any dev machine with Node, including .NET-only devs. Run them from the solution root, or pass `--root <path>`. The commands below use `${CLAUDE_SKILL_DIR}`, this skill's folder wherever it is installed (`.claude/skills/solution-health/` in the solution, `~/.claude/skills/`, or a plugin); if it is not filled in, use the folder this `SKILL.md` is in. `references/sample-report.md` shows what a finished report looks like.
 
 ## Workflow
 
 ### 1. Run the checks
 
 ```bash
-node .claude/skills/solution-health/scripts/check.mjs
+node "${CLAUDE_SKILL_DIR}/scripts/check.mjs"
 ```
 
 This runs discover → packages → runtimes → apis in order and prints a summary of each. Options: `--transitive` (include transitive packages; noisy, use for audits), `--offline` (no network), `--skip apis` and similar.
@@ -82,7 +82,7 @@ If a red or amber finding gives a date or replacement that should hold for futur
 ### 4. Finalize
 
 ```bash
-node .claude/skills/solution-health/scripts/finalize.mjs
+node "${CLAUDE_SKILL_DIR}/scripts/finalize.mjs"
 ```
 
 This merges everything, compares with the previous `state.json`, writes `report.md`, updates `state.json` and accepts the assessed snapshots. Use `--dry-run` to preview without saving.
