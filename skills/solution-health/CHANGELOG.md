@@ -2,6 +2,11 @@
 
 All notable changes to the `solution-health` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.1.1] - 2026-10-29
+
+### Fixed
+- The script commands use `${CLAUDE_SKILL_DIR}` instead of a hard-coded `.claude/skills/solution-health/` path, so the skill also works when installed as part of the `mads-skills` plugin or in `~/.claude/skills/`.
+
 ## [1.1.0] - 2026-10-29
 
 ### Added
