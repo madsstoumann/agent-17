@@ -1,0 +1,3 @@
+{ "name": "frontend", "version": "1.0.0", "engines": { "node": ">=16" },
+  "dependencies": { "request": "^2.88.2", "left-pad": "^1.3.0", "react": "^18.2.0", "next": "^13.5.0", "axios": "^1.6.0" },
+  "devDependencies": { "node-sass": "^7.0.0" } }

@@ -4,7 +4,7 @@ description: Periodic health check of this solution's dependencies and external 
 argument-hint: "[--root PATH] [--transitive] [--offline] [--skip packages,runtimes,apis]"
 allowed-tools: Bash(node:*), Bash(npm:*), Bash(dotnet:*), Read, Write, Edit, WebFetch, WebSearch
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Solution health check
