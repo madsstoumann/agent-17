@@ -2,6 +2,8 @@
 name: validate-schema
 description: Validates schema.org structured data (JSON-LD, Microdata) for a URL or local HTML file using validator.schema.org. Use when checking structured data, JSON-LD markup, schema.org validation, or SEO structured data issues.
 allowed-tools: Bash(curl:*), Bash(/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome:*), Read
+metadata:
+  version: "1.0.0"
 ---
 
 # Schema.org Validator

@@ -3,6 +3,8 @@ name: solution-health
 description: Periodic health check of this solution's dependencies and external integrations. Checks npm and NuGet packages (outdated, vulnerable via npm audit / dotnet, deprecated, unmaintained or archived upstream), runtime and framework end-of-life (Node, .NET, Umbraco, Next.js…), and external APIs the code calls (deprecation/sunset headers, shutdown notices on the provider's docs, changelog or status pages, including Danish notices like DAWA's). Keeps a committed manifest and state in .solution-health/ so each run reports what changed since last time. Use whenever someone asks to run the solution or dependency health check, audit dependencies or packages, check for deprecated or abandoned packages, check if an API we use is being shut down or deprecated, do a quarterly maintenance check, or asks "is anything in this project end-of-life?", even if they do not name the skill.
 argument-hint: "[--root PATH] [--transitive] [--offline] [--skip packages,runtimes,apis]"
 allowed-tools: Bash(node:*), Bash(npm:*), Bash(dotnet:*), Read, Write, Edit, WebFetch, WebSearch
+metadata:
+  version: "1.0.0"
 ---
 
 # Solution health check

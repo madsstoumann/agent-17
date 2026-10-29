@@ -3,6 +3,8 @@ name: launch-audit
 description: Use when a website is about to go live or has just launched and needs a pre-launch / go-live audit, a launch checklist or an "is the site ready" answer for any dev, staging or production URL — the manual round of PageSpeed Insights, securityheaders.com, the W3C and schema.org validators and MDN Observatory, plus robots/sitemap/canonical, redirects, soft 404s, TLS/DNS/SPF/DMARC, exposed files, caching, cookies and trackers, broken links, mixed content, share previews and icons. Also for re-checking a site after fixes or comparing with an earlier audit. Public and local (self-signed) URLs, any stack.
 argument-hint: "<url> [--env dev|staging|production] [--production-host HOST] [--pages N] [--skip group,...] [--out PATH] [--baseline report.json] [--insecure]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Read, WebFetch
+metadata:
+  version: "1.0.0"
 ---
 
 # Launch audit
