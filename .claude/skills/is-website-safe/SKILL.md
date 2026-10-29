@@ -2,6 +2,8 @@
 name: is-website-safe
 description: Analyzes website safety and trustworthiness by checking domain registration, WHOIS data, DNS records, and Trustpilot reviews. Returns a comprehensive trust score and security report. Use when checking if a website is safe, legitimate, trustworthy, or when analyzing domain reputation.
 allowed-tools: Bash(whois:*), Bash(dig:*), Bash(curl:*), WebSearch, WebFetch
+metadata:
+  version: "1.0.0"
 ---
 
 # Website Safety Analyzer
