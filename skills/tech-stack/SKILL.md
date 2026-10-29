@@ -4,7 +4,7 @@ description: Use when someone asks what a website is built with or runs on — i
 argument-hint: "<url> [<url> …] [--file urls.txt] [--browser] [--out DIR] [--json]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Tech stack
@@ -24,8 +24,10 @@ Requests carry an `X-Audit: tech-stack/<version>` header.
 ## Run it
 
 ```bash
-node ~/.claude/skills/tech-stack/scripts/tech-stack.mjs <url> [<url> …] [flags]
+node "${CLAUDE_SKILL_DIR}/scripts/tech-stack.mjs" <url> [<url> …] [flags]
 ```
+
+`${CLAUDE_SKILL_DIR}` is this skill's folder, wherever it is installed (`~/.claude/skills/tech-stack`, the `mads-skills` plugin, or an uploaded skill). If it is not filled in, use the folder this `SKILL.md` is in.
 
 A site takes 2–10 seconds; `--browser` adds 5–15 seconds per site. For more than about 20 sites,
 run it through Bash with `timeout: 600000`. Stdout has one line per site, then the two output

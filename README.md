@@ -1,6 +1,6 @@
 # agent-17
 
-Agent skills, commands and snippets. The skills in [`skills/`](skills/) are the maintained part: see [skills/README.md](skills/README.md) for how they are versioned.
+Agent skills, in [`skills/`](skills/). See [skills/README.md](skills/README.md) for how they are versioned.
 
 ## Install the skills
 

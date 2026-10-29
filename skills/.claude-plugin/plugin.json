@@ -1,7 +1,7 @@
 {
   "name": "mads-skills",
   "displayName": "Mads's skills",
-  "description": "Every skill in skills/ as one plugin: launch-audit, security-audit, is-website-safe, validate-schema, solution-health, node-toolchain-check and any skill added there later",
+  "description": "Every skill in skills/ as one plugin: launch-audit, security-audit, is-website-safe, validate-schema, solution-health, node-toolchain-check, tech-stack and any skill added there later",
   "author": {
     "name": "Mads Stoumann",
     "url": "https://github.com/madsstoumann"
