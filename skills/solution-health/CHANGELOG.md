@@ -13,6 +13,12 @@ All notable changes to the `solution-health` skill. Format follows [Keep a Chang
 - A NuGet package missing from nuget.org is reported as unknown (private feed) instead of red when the solution has a private feed it can come from.
 - `nuget.config` files are no longer scanned for API hosts; their feeds are checked by the NuGet phase instead.
 
+## [1.0.1] - 2026-10-29
+
+### Added
+- End-to-end test (`scripts/test/`): fixture solution, mock DAWA/PSP provider sending RFC 9745/8594 headers and the Danish shutdown banner, seeded metadata caches, `node:test` assertions for every phase. Run with `node --test scripts/test/solution-health.test.mjs`.
+- README status note on which metadata parsers were verified against live services (api.nuget.org, endoflife.date) and which were not (packages.ecosyste.ms, api.deps.dev).
+
 ## [1.0.0] - 2026-10-29
 
 ### Added
