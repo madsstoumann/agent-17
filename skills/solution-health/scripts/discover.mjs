@@ -13,7 +13,7 @@ const manifest = loadManifest(p) || { apis: [], hostsIgnore: [] };
 
 const SCAN_EXT = new Set(['.json', '.config', '.cs', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.vue', '.svelte', '.astro',
   '.razor', '.cshtml', '.yml', '.yaml', '.xml', '.ps1', '.php', '.py', '.toml', '.ini', '.properties', '.html', '.liquid', '.twig']);
-const SKIP_FILES = /(^|\/)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|packages\.lock\.json|.*\.min\.(js|css)|.*\.map|.*\.d\.ts|.*\.designer\.cs|.*\.g\.cs|launchSettings\.json|tsconfig.*\.json|.*\.snap)$/i;
+const SKIP_FILES = /(^|\/)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|packages\.lock\.json|.*\.min\.(js|css)|.*\.map|.*\.d\.ts|.*\.designer\.cs|.*\.g\.cs|launchSettings\.json|nuget\.config|tsconfig.*\.json|.*\.snap)$/i;
 
 // Hosts that are documentation, schema namespaces, package registries or local. Not runtime integrations.
 const NOISE_HOSTS = [
@@ -41,7 +41,7 @@ const KEY_HINT = /(base_?url|baseaddress|endpoint|api_?url|host|uri|url|domain|w
 const out = {
   generatedAt: nowIso(),
   root: p.root,
-  manifests: { npm: [], nuget: [], other: [] },
+  manifests: { npm: [], nuget: [], nugetConfig: [], other: [] },
   runtimePins: [],
   hosts: {},
 };
@@ -56,6 +56,7 @@ for (const file of walk(p.root)) {
   if (name === 'package.json') out.manifests.npm.push(rel);
   else if (e === '.csproj' || e === '.fsproj' || e === '.vbproj') out.manifests.nuget.push(rel);
   else if (name === 'Directory.Packages.props' || name === 'packages.config') out.manifests.nuget.push(rel);
+  else if (name.toLowerCase() === 'nuget.config') out.manifests.nugetConfig.push(rel); // feeds are checked by packages.mjs, not as API hosts
   else if (['composer.json', 'requirements.txt', 'pyproject.toml', 'Gemfile', 'go.mod', 'Cargo.toml', 'pom.xml', 'build.gradle', 'bower.json'].includes(name)) out.manifests.other.push(rel);
 
   // Runtime pins
@@ -106,7 +107,7 @@ writeJson(`${p.runDir}/discovery.json`, out);
 
 const untracked = hosts.filter((h) => h.status === 'untracked');
 log(`Scanned ${scanned} files under ${p.root}`);
-log(`npm manifests: ${out.manifests.npm.length}, NuGet manifests: ${out.manifests.nuget.length}, other: ${out.manifests.other.join(', ') || 'none'}`);
+log(`npm manifests: ${out.manifests.npm.length}, NuGet manifests: ${out.manifests.nuget.length}${out.manifests.nugetConfig.length ? ` (config: ${out.manifests.nugetConfig.join(', ')})` : ''}, other: ${out.manifests.other.join(', ') || 'none'}`);
 log(`Runtime pins: ${out.runtimePins.join(', ') || 'none'}`);
 log(`Hosts: ${hosts.length} total, ${hosts.filter((h) => h.status === 'tracked').length} tracked, ${untracked.length} untracked (${untracked.filter((h) => h.priority === 'high').length} look like APIs/config)`);
 for (const h of untracked.slice(0, 25)) log(`  [${h.priority}] ${h.host}  (${h.fileCount} files, e.g. ${h.files[0]})`);

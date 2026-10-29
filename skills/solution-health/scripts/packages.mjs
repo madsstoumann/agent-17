@@ -6,6 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, relative } from 'node:path';
 import { parseArgs, paths, readJson, writeJson, cachedJson, mapLimit, daysSince, loadManifest, ensureDirs, log, nowIso } from './lib.mjs';
+import { resolveProject, checkNuget, candidateSources, isNugetOrg } from './nuget.mjs';
 
 const args = parseArgs();
 const p = paths(args);
@@ -101,6 +102,11 @@ for (const rel of discovery.manifests.nuget.filter((r) => !r.endsWith('Directory
   } else if (!dotnetAvailable) project.notes.push('dotnet not on PATH: using the NuGet API only (no transitive or local-feed data).');
   nugetProjects.push(project);
 }
+
+// Where each project actually restores from: NuGet.config chain, MSBuild restore properties, env, dotnet CLI.
+const nugetContexts = nugetProjects.map((proj) => resolveProject({ root: p.root, rel: proj.path, dotnet: dotnetAvailable ? (a, cwd) => run('dotnet', a, cwd, 60_000) : null }));
+const nugetFindings = await checkNuget(nugetContexts, { root: p.root, offline: !!args.offline, depsByProject: Object.fromEntries(nugetProjects.map((pr) => [pr.path, pr.deps])) });
+const contextOf = Object.fromEntries(nugetContexts.map((c) => [c.project, c]));
 
 // Flatten the dotnet CLI JSON into { name -> {latest, deprecation, vulnerabilities} }
 const cliFacts = {};
@@ -221,7 +227,9 @@ function verdict(pkg) {
   const reasons = []; let level = 'green';
   const bump = (l) => { const order = { green: 0, info: 1, amber: 2, red: 3 }; if (order[l] > order[level]) level = l; };
   const f = pkg.facts || {}; const h = pkg.health || {};
-  if (f.missing) { bump('red'); reasons.push('not found on the public registry (unpublished, renamed or private feed)'); }
+  let privateFeed = false;
+  if (f.missing && pkg.privateFeeds?.length) { privateFeed = true; reasons.push(`not on nuget.org; restored from ${pkg.privateFeeds.join(', ')}, which registry and health checks do not cover`); }
+  else if (f.missing) { bump('red'); reasons.push('not found on the public registry (unpublished, renamed or private feed)'); }
   if (f.deprecatedInstalled) { bump('red'); reasons.push(`installed version deprecated: ${f.deprecatedInstalled}`); }
   else if (f.deprecatedLatest) { bump('red'); reasons.push(`package deprecated: ${f.deprecatedLatest}`); }
   if (f.alternative) reasons.push(`suggested replacement: ${f.alternative}`);
@@ -244,6 +252,7 @@ function verdict(pkg) {
   if (behind >= 2) { bump('amber'); reasons.push(`${behind} major versions behind (${pkg.installed} → ${f.latest})`); }
   else if (behind === 1) { bump('info'); reasons.push(`1 major behind (${pkg.installed} → ${f.latest})`); }
   else if (f.latest && pkg.installed && f.latest !== pkg.installed) { bump('info'); reasons.push(`update available (${pkg.installed} → ${f.latest})`); }
+  if (privateFeed && level === 'green') level = 'unknown';
   if (!f.registryReachable && !h.ecosystemsReachable) { if (level === 'green') level = 'unknown'; reasons.push('registry and health APIs unreachable from this machine'); }
   const ig = ignoreFor(pkg.ecosystem, pkg.name);
   if (ig && !ig.expired && level !== 'red') return { level: 'ignored', reasons: [`ignored: ${ig.reason}${ig.expires ? ` (until ${ig.expires})` : ''}`, ...reasons] };
@@ -273,6 +282,9 @@ for (const proj of nugetProjects) for (const d of proj.deps) {
   const cf = cliFacts[d.name.toLowerCase()];
   if (cf?.vulnerabilities) rec.vulnerabilities.push(...cf.vulnerabilities.map((v) => ({ severity: String(v.severity).toLowerCase(), url: v.advisoryurl })));
   rec.cli = cf || null;
+  // Feeds this package can come from, per the project's own NuGet config (not an assumed nuget.org).
+  const feeds = contextOf[proj.path] ? candidateSources(contextOf[proj.path], d.name) : [];
+  rec.privateFeeds = [...new Set([...(rec.privateFeeds || []), ...feeds.filter((s) => !isNugetOrg(s)).map((s) => s.name)])];
   unique.set(key, rec);
 }
 
@@ -308,6 +320,7 @@ const out = {
   npmProjects: npmProjects.map(({ deps, outdated, ...rest }) => ({ ...rest, depCount: deps.length })),
   nugetProjects: nugetProjects.map(({ deps, cli, ...rest }) => ({ ...rest, depCount: deps.length })),
   packages: list.map(({ cli, ...rest }) => rest),
+  nuget: { contexts: nugetContexts, findings: nugetFindings },
   errors,
 };
 writeJson(join(p.runDir, 'packages.json'), out);
@@ -316,5 +329,7 @@ const count = (l) => list.filter((x) => x.verdict.level === l).length;
 log(`Done: ${count('red')} red, ${count('amber')} amber, ${count('unknown')} unknown, ${count('info')} info, ${count('green')} green, ${count('ignored')} ignored.`);
 log(`Reachability: ${Object.entries(reachability).map(([k, v]) => `${k}=${v ? 'ok' : 'NO'}`).join(', ')}`);
 for (const x of list.filter((x) => x.verdict.level === 'red' || x.verdict.level === 'amber').slice(0, 30)) log(`  [${x.verdict.level}] ${x.ecosystem} ${x.name}@${x.installed || '?'} — ${x.verdict.reasons.join('; ')}`);
+if (nugetFindings.length) log(`NuGet sources and folders: ${['red', 'amber', 'unknown', 'info', 'green'].map((l) => `${nugetFindings.filter((x) => x.level === l).length} ${l}`).join(', ')}`);
+for (const x of nugetFindings.filter((x) => x.level === 'red' || x.level === 'amber')) log(`  [${x.level}] ${x.title} — ${x.reasons.join('; ')}`);
 for (const pr of [...npmProjects, ...nugetProjects]) for (const n of pr.notes) log(`  note (${pr.path}): ${n}`);
 log(`→ ${relative(p.root, p.runDir)}/packages.json`);

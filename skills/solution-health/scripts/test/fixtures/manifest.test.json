@@ -1,0 +1,33 @@
+{
+  "apis": [
+    {
+      "name": "DAWA (Danmarks Adressers Web API)",
+      "hosts": ["api.dataforsyningen.dk", "dawa.aws.dk"],
+      "probe": { "url": "http://127.0.0.1:PORT/api/adgangsadresser?q=test" },
+      "watch": ["http://127.0.0.1:PORT/docs"],
+      "keywords": ["Adressevælger", "Datafordeleren"],
+      "status": "replaced",
+      "sunset": "2026-07-01",
+      "replacement": "https://adressevaelger.dk",
+      "owner": "@backend-lead",
+      "notes": "Test fixture: the mock docs page carries the Danish shutdown banner."
+    },
+    {
+      "name": "Example: payment provider",
+      "hosts": ["api.example-psp.com"],
+      "probe": { "url": "http://127.0.0.1:PORT/psp/health" },
+      "watch": ["http://127.0.0.1:PORT/changelog"],
+      "status": "active"
+    }
+  ],
+  "hostsIgnore": ["maps.googleapis.com"],
+  "packages": {
+    "thresholds": { "staleMonths": 24, "quietMonths": 12 },
+    "ignore": [
+      { "name": "left-pad", "ecosystem": "npm", "reason": "test: an ignore must not hide a red", "expires": "2099-01-01" },
+      { "name": "react", "reason": "test: expired ignore", "expires": "2025-01-01" }
+    ]
+  },
+  "runtimes": { "warnDays": 180, "extra": [{ "product": "mssqlserver", "version": "2019", "note": "test" }] },
+  "apiSunsetWarnDays": 180
+}

@@ -137,6 +137,17 @@ _*OpenSSF Scorecard "Maintained" check, 0–10, via deps.dev. ? = not assessed._
 
 npm audit `frontend/package.json`: 4 critical, 8 high, 3 moderate, 2 low (incl. transitive). Run `npm audit fix` (no `--force`) for semver-compatible fixes.
 
+## NuGet sources and folders
+
+Config: `NuGet.config`
+
+| | Item | Details | Projects |
+|---|---|---|---|
+| 🟢 | NuGet source nuget.org | https://api.nuget.org/v3/index.json (from NuGet.config); reachable (200) | src/Web/Web.csproj |
+| 🔴 | NuGet source LocalFeed | build/local-packages (from NuGet.config); local folder does not exist (restore fails with NU1301) | src/Web/Web.csproj |
+| 🔵 | NuGet source Agency | https://pkgs.dev.azure.com/agency/_packaging/agency/nuget/v3/index.json (from NuGet.config); requires authentication (401); relies on a credential provider or user-level credentials | src/Web/Web.csproj |
+| 🔵 | NuGet global packages folder | ~/.nuget/packages (NuGet default); 3/4 direct packages restored there; not restored: Umbraco.Cms 10.8.0 | src/Web/Web.csproj |
+
 ## Runtimes & frameworks
 
 | | Product | Cycle | EOL | Newest cycle | Found in |
