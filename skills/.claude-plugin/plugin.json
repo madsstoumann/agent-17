@@ -1,5 +1,5 @@
 {
-  "name": "mads-skills",
+  "name": "skills",
   "displayName": "Mads's skills",
   "description": "Every skill in skills/ as one plugin: launch-audit, security-audit, is-website-safe, validate-schema, solution-health, node-toolchain-check, tech-stack and any skill added there later",
   "author": {
