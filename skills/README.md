@@ -1,6 +1,6 @@
 # Skills
 
-Each folder is one skill: a `SKILL.md` plus whatever scripts, references and templates it needs. `.claude/skills/` holds copies of some of them for use in this repo; keep those identical to the folder here.
+Each folder is one skill: a `SKILL.md` plus whatever scripts, references and templates it needs.
 
 ## Versioning
 
