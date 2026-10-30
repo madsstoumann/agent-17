@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.7.0] - 2026-10-30
+
+### Changed
+- The questions fit on two screens: two multi-selects of four audits each, alphabetical, named Accessibility, Infrastructure, Launch, Privacy, Security, SEO / GEO, Solution health and Sustainability. The live URL is part of the first question's text and changed under "Other"; a separate "Site" question appears only when several URLs were detected.
+- `accessibility`, `infrastructure`, `geo` and `sustainability` are accepted as flag names. The combined report calls the seo-audit and eco-audit sections "SEO / GEO audit" and "Sustainability audit".
+
 ## [1.6.0] - 2026-10-30
 
 ### Added

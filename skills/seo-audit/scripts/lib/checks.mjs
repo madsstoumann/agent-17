@@ -17,6 +17,7 @@ export const AREAS = [
   ['canonical', 'Canonical and hreflang'],
   ['social', 'Open Graph and share previews'],
   ['schema', 'Structured data'],
+  ['geo', 'AI search (GEO)'],
 ];
 
 const LANG_RE = /^([a-z]{2,3}(-[A-Za-z]{2,4}(-[A-Za-z0-9]{2,8})?)?|x-default)$/i;
@@ -40,6 +41,7 @@ const AREA_OF = {
   'seo.hreflang-codes': 'canonical', 'seo.hreflang-self': 'canonical', 'seo.hreflang-x-default': 'canonical', 'seo.hreflang-return': 'canonical', 'seo.hreflang-target': 'canonical', 'seo.hreflang-lang': 'canonical',
   'seo.og-missing': 'social', 'seo.og-image': 'social', 'seo.og-url': 'social', 'seo.twitter-card': 'social',
   'seo.jsonld-parse': 'schema', 'seo.jsonld-coverage': 'schema', 'seo.schema-validator': 'schema',
+  'seo.ai-crawlers': 'geo', 'seo.content-signal': 'geo', 'seo.llms-txt': 'geo', 'seo.llms-full': 'geo', 'seo.ai-txt': 'geo', 'seo.entity-markup': 'geo',
 };
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

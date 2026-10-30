@@ -14,11 +14,11 @@ export const KINDS = {
     standfirst: 'A sample of pages checked against WCAG 2.2 AA and EN 301 549 with axe-core and HTML_CodeSniffer, a keyboard-only walk, and reflow at 320 px.',
   },
   'seo-audit': {
-    title: 'SEO audit',
+    title: 'SEO / GEO audit',
     standfirst: 'The whole site crawled the way a search engine sees it: indexing, sitemap and robots.txt, links and redirects, titles, canonical and hreflang, share previews and structured data.',
   },
   'eco-audit': {
-    title: 'Eco audit',
+    title: 'Sustainability audit',
     standfirst: 'Real page loads weighed byte by byte and turned into CO2e per page view with the Sustainable Web Design model, plus a green hosting check.',
   },
   'privacy-audit': {

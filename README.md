@@ -82,9 +82,11 @@ Notes:
 
 ## Running every audit at once
 
-`/skills:audit-all` asks first: the live URL (it suggests the one it finds in the repo) and which
-audits to run. Launch, privacy, infra, security and dependency health are ticked by default;
-accessibility, SEO and carbon footprint are opt-in. Flags skip the questions:
+`/skills:audit-all` asks first, on two screens: which of the eight audits to run (Accessibility,
+Infrastructure, Launch, Privacy, Security, SEO / GEO, Solution health, Sustainability), with the
+live URL it found in the repo named in the question (type another one under "Other").
+Infrastructure, Launch, Privacy, Security and Solution health are recommended; Accessibility,
+SEO / GEO and Sustainability are opt-in. Flags skip the questions:
 
 ```text
 /skills:audit-all https://shop.example.dk --yes               # default audits, no questions

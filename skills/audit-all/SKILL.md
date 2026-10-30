@@ -1,10 +1,10 @@
 ---
 name: audit-all
-description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, accessibility, SEO, carbon footprint, privacy and consent, domain and mail infrastructure, code security and dependency health. Runs launch-audit, a11y-audit (WCAG 2.2 / EN 301 549), seo-audit, eco-audit, privacy-audit and infra-audit on the live URL, security-audit and solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing launch-audit, a11y-audit, seo-audit, eco-audit, privacy-audit, infra-audit, security-audit or solution-health reports into one.
-argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add launch,a11y,seo,eco,privacy,infra,security,health] [--yes] [--style serif|sans] [--out DIR]"
+description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, accessibility, SEO and AI search (GEO), sustainability (carbon footprint), privacy and consent, domain and mail infrastructure, code security and dependency health. Runs launch-audit, a11y-audit (WCAG 2.2 / EN 301 549), seo-audit, eco-audit, privacy-audit and infra-audit on the live URL, security-audit and solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing launch-audit, a11y-audit, seo-audit, eco-audit, privacy-audit, infra-audit, security-audit or solution-health reports into one.
+argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--yes] [--style serif|sans] [--out DIR]"
 allowed-tools: AskUserQuestion, Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.6.0"
+  version: "1.7.0"
 ---
 
 # Audit all
@@ -32,45 +32,55 @@ other way, invoke them by name instead (`skills:launch-audit` in the plugin, `la
 - **Repos** for security-audit and solution-health. Default: the current directory when it is a
   repo root (has `.git`). The user can name several ("audit-all ~/code/shop-web ~/code/shop-api
   https://shop.example.dk"); each gets its own run of both.
-- **Audits.** Names: `launch`, `a11y`, `seo`, `eco`, `privacy`, `infra`, `security`, `health`.
-  The **default set** is `launch`, `privacy`, `infra`, `security` and `health`; `a11y`, `seo` and
-  `eco` are opt-in (they are slower and their findings are mostly design and content work).
-  `--only a11y,seo` runs exactly those, `--skip health` drops one from the default set and
-  `--add seo` adds an opt-in one. "only launch and security", "also check accessibility", "no
-  SEO", "skip the carbon check" and the like mean the same; "everything" or `--only all` runs all
-  eight.
+- **Audits.** Eight, by the names the user sees (flag name in brackets): Accessibility (`a11y`),
+  Infrastructure (`infra`), Launch (`launch`), Privacy (`privacy`), Security (`security`),
+  SEO / GEO (`seo`), Solution health (`health`), Sustainability (`eco`). `accessibility`,
+  `infrastructure`, `geo` and `sustainability` work as flag names too. The **default set** is
+  Infrastructure, Launch, Privacy, Security and Solution health; Accessibility, SEO / GEO and
+  Sustainability are opt-in (slower, and mostly design and content work). `--only a11y,seo` runs
+  exactly those, `--skip health` drops one from the default set and `--add seo` adds an opt-in
+  one. "only launch and security", "also check accessibility", "no SEO", "skip the carbon check"
+  and the like mean the same; "everything" or `--only all` runs all eight.
 - **Style.** `--style serif` (default, Newsreader) or `--style sans` (IBM Plex Sans). "sans",
   "sans-serif", "plain" or "classic look" mean sans.
 
 ## 1a. Ask before starting
 
-Unless the run is non-interactive (below), ask once, before creating the run folder, with **one**
-`AskUserQuestion` call holding up to four questions. The tool shows at most four options per
-question and has no pre-ticked boxes, so the default set is split out as its own question and
-marked "(Recommended)":
+Unless flags already settle it (below), ask once, before creating the run folder, with **one**
+`AskUserQuestion` call. Keep it to two screens. The tool allows at most four options per
+question, has no pre-ticked boxes and always adds an "Other" row that cannot be removed, so:
 
-1. **Live URL** (single choice, header "Site"), only when a site audit could run and the URL was
-   not given: up to three detected candidates, the likeliest first and marked "(Recommended)",
-   plus "No site: code audits only". The user types a different URL under "Other". When nothing
-   was detected, skip this question and ask for the URL in a plain message first (accept "no site").
-2. **Site audits** (multi-select, header "Site audits"): "Launch readiness (Recommended)",
-   "Privacy and consent (Recommended)", "Domain, DNS, mail and TLS (Recommended)". Leave out when
-   there is no site.
-3. **Optional site audits** (multi-select, header "Extras"): "Accessibility (WCAG 2.2)", "SEO",
-   "Carbon footprint". None are recommended. Leave out when there is no site.
-4. **Code audits** (multi-select, header "Code"): "Security (Recommended)", "Dependency health
-   (Recommended)". Leave out when there is no repo. Name the repos in the question when there are
-   several ("Code audits for shop-web and shop-api?").
+1. **Audits 1/2** (multi-select, header "Audits 1/2"): Accessibility, Infrastructure, Launch,
+   Privacy.
+2. **Audits 2/2** (multi-select, header "Audits 2/2"): Security, SEO / GEO, Solution health,
+   Sustainability.
 
-Each option gets a one-line description of what that audit checks. When a re-run finds a previous
-run (a `<reports>/audit-all/<name>/runs/` folder; `--new` in step 2 prints the same one), use the
-audits that ran last time (its sub-folders) as the recommended ones instead, and say so in the
-question.
+Always in that order, alphabetical as above, with exactly those labels. Add " (Recommended)" to
+the label of each audit in the default set; that is how the defaults show. Each option's
+description says in a few words what it checks (Infrastructure: "Domain, DNS, mail
+authentication, TLS"; Sustainability: "Page weight and CO2e per view"; SEO / GEO: "Search and AI
+search: crawl, sitemap, structured data, llms.txt"; and so on).
 
-Read the answers literally: what is ticked runs, what is not is skipped. A question answered with
-nothing ticked skips that group. If every audit ends up unticked, say so and stop. Repeat the final
-list in one line ("Running launch, privacy, infra, security and health on glyptoteket.dk") and
-carry on without asking again; later steps (solution-health's manifest, security-audit's triage)
+The **live URL rides in the first question's text**, so it needs no screen of its own, and
+"Other" becomes the place to change it:
+
+- One URL detected or given: "Which audits on glyptoteket.dk? Type a different URL, or 'no site',
+  under Other."
+- None detected: "No live URL found. Type it under Other to run the site audits; without one only
+  Security and Solution health run."
+- Two or more candidates: add a third question before the two, header "Site", single choice:
+  up to three candidates (likeliest first, "(Recommended)") plus "No site: code audits only".
+
+Use the second question's "Other" for anything else the user types ("also ~/code/shop-api",
+"sans style") and read it as part of the request. Leave out an option that cannot run (Security
+and Solution health with no repo); if that leaves a question with fewer than two options, fold
+the rest into the other question. When a re-run finds a previous run (a
+`<reports>/audit-all/<name>/runs/` folder; `--new` in step 2 prints the same one), mark the
+audits that ran last time as "(Recommended)" instead, and say so in the question text.
+
+Read the answers literally: what is ticked runs, what is not is skipped. If every audit ends up
+unticked, say so and stop. Repeat the final list in one line ("Running Infrastructure, Launch,
+Privacy, Security and Solution health on glyptoteket.dk") and carry on without asking again; later steps (solution-health's manifest, security-audit's triage)
 may still ask their own questions.
 
 **Flags answer the questions,** so scripted runs and audit-fix never stop to ask. Only what is
@@ -79,8 +89,9 @@ still open is asked:
 - `--yes` (or `-y`, "no questions", "just run it"): the default set, the detected URL (the first
   candidate; none found means no site audits, said in the summary).
 - `--only`, `--skip` or `--add` settle what to run, and `--url` or `--no-site` settle where. Given
-  one of each, nothing is asked. Given only what to run, ask just the URL question (not at all
-  when only code audits were picked); given only where, ask just the audit questions.
+  one of each, nothing is asked. Given only what to run, ask for the URL in one plain line when
+  none was detected (not at all when only code audits were picked); given only where, ask the two
+  audit questions.
 - The audit list and URL spelled out in the request ("audit-all https://shop.example.dk, only
   launch and security").
 - No `AskUserQuestion` tool (claude.ai, `claude -p`, a subagent, or audit-fix re-running the

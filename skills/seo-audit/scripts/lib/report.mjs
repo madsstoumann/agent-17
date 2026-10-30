@@ -72,7 +72,8 @@ export function renderMarkdown(report) {
   out.push('## Not covered', '');
   out.push('- Rankings, search volume, backlinks and Search Console data: none of that is visible from outside. Check Search Console for coverage and Core Web Vitals field data.');
   out.push('- Speed, Core Web Vitals and the start page\'s launch basics are in launch-audit; accessibility in a11y-audit.');
-  out.push('- Pages that build their content with JavaScript are read as served (no rendering), as most crawlers first see them.');
+  out.push('- Pages that build their content with JavaScript are read as served (no rendering), as most crawlers first see them. AI crawlers mostly do not run JavaScript at all, so thin served HTML hides the page from AI answers too.');
+  out.push('- Whether AI engines actually cite the site: that needs prompts run against each engine over time, not a crawl.');
   out.push('');
   out.push('Files: `report.json` (every row and page), `findings.json` (the fix list with every affected URL), `pages.csv` (one row per crawled URL).', '');
   return out.join('\n');
