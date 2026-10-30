@@ -224,4 +224,19 @@ export function toTasks(issues, { subject, repo = null, repoPath = null } = {}) 
   return { subject, ...(repo && repoPath ? { repos: { [repo]: repoPath } } : {}), tasks };
 }
 
+/** Compare with an earlier report.json: issues by key (new, fixed, still open) and criteria that changed status. */
+export function diffRuns(prev, agg) {
+  const before = new Map((prev.issues || []).map((i) => [i.key, i]));
+  const now = new Map(agg.issues.map((i) => [i.key, i]));
+  const brief = (i) => ({ key: i.key, id: i.id, title: i.title, severity: i.severity, sc: i.sc, pages: i.pages.length, count: i.count });
+  const prevStatus = Object.fromEntries((prev.criteria || []).map((c) => [c.sc, c.status]));
+  return {
+    date: prev.date || null,
+    newIssues: agg.issues.filter((i) => !before.has(i.key)).map(brief),
+    fixed: [...before.values()].filter((i) => !now.has(i.key)).map(brief),
+    open: agg.issues.filter((i) => before.has(i.key)).map((i) => ({ ...brief(i), was: { pages: before.get(i.key).pages.length, count: before.get(i.key).count } })),
+    criteria: agg.criteria.filter((c) => prevStatus[c.sc] && prevStatus[c.sc] !== c.status).map((c) => ({ sc: c.sc, name: c.name, from: prevStatus[c.sc], to: c.status })),
+  };
+}
+
 export { scLabel };

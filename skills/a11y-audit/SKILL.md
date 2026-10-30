@@ -1,7 +1,7 @@
 ---
 name: a11y-audit
 description: Use when someone wants an accessibility audit, WCAG 2.2 or 2.1 AA check, EN 301 549 or European Accessibility Act (EAA) conformance check, webtilgængelighed / tilgængelighedserklæring review, or "is this site accessible" answer for a live or local URL — axe-core and HTML_CodeSniffer (Pa11y's engine) over a sample of pages, a keyboard-only walk for traps, invisible or covered focus and skip links, colour contrast, reflow at 320 px and text spacing, every finding mapped to WCAG criteria and EN 301 549 clauses. Writes report.md, report.json and a fix-plan draft. Not a substitute for a screen reader test, and not for code-only review without a running site.
-argument-hint: "<url> [--pages N] [--from launch-audit/report.json] [--urls FILE] [--keyboard N] [--level A|AA|AAA] [--repo NAME[=PATH]] [--out DIR] [--header NAME:VALUE] [--insecure]"
+argument-hint: "<url> [--pages N] [--from launch-audit/report.json] [--urls FILE] [--keyboard N] [--level A|AA|AAA] [--repo NAME[=PATH]] [--out DIR] [--state DIR] [--baseline FILE] [--no-baseline] [--header NAME:VALUE] [--insecure]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
   version: "1.0.0"
@@ -40,7 +40,9 @@ code 0 means it ran, whatever it found.
 | `--keyboard N` (default 3) | Keyboard walk on the first N pages. `0` for a quick engine-only pass. |
 | `--level A\|AA\|AAA` | Default AA, which is what the EU directives and the Danish webtilgængelighedslov require. |
 | `--repo NAME[=PATH]` | The repo that renders the site. `tasks.json` then holds agent tasks for that repo instead of tasks for a person. |
-| `--out DIR` | The user says where the report goes. Default `<reports>/a11y-audit/<host>-<YYYYMMDD-HHMM>/`, where `<reports>` is `$AUDIT_OUT_DIR`, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. |
+| `--out DIR` | The user says where the report goes (audit-all passes its own run folder). Default `<target>/runs/<YYYYMMDD-HHMM>/`. |
+| `--state DIR` | Target folder for this site. Default `<reports>/a11y-audit/<host>/`, where `<reports>` is `$AUDIT_OUT_DIR`, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. |
+| `--baseline FILE` / `--no-baseline` | Compare with a specific earlier `report.json`, or not at all. By default every run compares with the last run for this host. |
 | `--header "Name: value"` | The site sits behind a WAF that challenges headless Chrome and has a bypass rule for a secret header (see the repo README). Sent only to the audited host and its www/apex sibling. Repeatable; also `AUDIT_HEADERS`. |
 | `--insecure` | `localhost` or a self-signed certificate. |
 | `--chrome PATH` | A specific browser. Default: `CHROME_PATH`, installed Chrome/Chromium/Edge, then Playwright's Chromium. |
@@ -49,6 +51,16 @@ Needs Node 22 and Chrome, Chromium or Edge. The first run downloads axe-core 4.1
 HTML_CodeSniffer 2.5.1 from jsDelivr (unpkg as fallback), checks their SHA-256 against the pinned
 value and caches them (`~/Library/Caches/a11y-audit`, `~/.cache/a11y-audit`, or `A11Y_AUDIT_CACHE`).
 No npm install.
+
+## Between runs
+
+Each site has one target folder, `<reports>/a11y-audit/<host>/` (see the repo's `skills/README.md`):
+`target.txt`, `last-report.json` (the next run's baseline), an optional hand-written `notes.md`, and
+`runs/<stamp>/` per run. The report gets a "Since last run" section (fixed, new, still open, criteria
+that changed) and a "Notes" section with `notes.md`. Write accepted exceptions there ("footer contrast
+is a brand decision, signed off by …") when the user asks; no script writes it. The first run looks
+once for an earlier a11y-audit `report.json` for the host under `<reports>/a11y-audit/` and
+`<reports>/audit-all/`.
 
 ## What it checks
 
@@ -109,5 +121,6 @@ asks for (audit-fix can work from `tasks.json` via audit-all).
 - `scripts/lib/wcag.mjs`: WCAG 2.2 criteria, levels and EN 301 549 clauses.
 - `scripts/lib/findings.mjs`: issues across pages, review items, criteria status, `tasks.json`.
 - `scripts/lib/report.mjs`: `report.md` and the stdout summary.
+- `scripts/lib/target-state.mjs`: target and run folders, shared with the other audit skills (keep the copies identical).
 - `references/manual.md`: the manual checks printed at the end of every report.
 - `references/sample-report.md`: a report from the test fixture.

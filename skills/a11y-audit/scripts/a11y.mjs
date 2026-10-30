@@ -18,8 +18,9 @@ import { inPage, installHelpers, runAxe, runHtmlcs, reflowCheck, textSpacingChec
 import { walk, analyseWalk } from './lib/keyboard.mjs';
 import { pickPages, pagesFromLaunchAudit, pagesFromFile, sitemapUrls } from './lib/pages.mjs';
 import { axeTags, htmlcsStandard, scFromAxeTags } from './lib/wcag.mjs';
-import { aggregate, toTasks } from './lib/findings.mjs';
+import { aggregate, toTasks, diffRuns } from './lib/findings.mjs';
 import { buildMarkdown, buildSummary } from './lib/report.mjs';
+import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
 
 export const VERSION = '1.0.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -36,7 +37,10 @@ Usage: node a11y.mjs <url> [flags]
   --keyboard N         Keyboard walk on the first N pages (default 3, 0 to skip).
   --max-tabs N         Tab presses per walk (default 200).
   --level A|AA|AAA     Target level (default AA).
-  --out DIR            Report folder (default <reports>/a11y-audit/<host>-<YYYYMMDD-HHMM>/).
+  --out DIR            Report folder (default <target>/runs/<YYYYMMDD-HHMM>/).
+  --state DIR          Target folder (default <reports>/a11y-audit/<host>/): last-report.json and notes.md live there.
+  --baseline FILE      A previous report.json for "Since last run". Default: the last run for this host.
+  --no-baseline        No "Since last run" section (the run still becomes the next baseline).
   --repo NAME[=PATH]   The repo that renders the site: tasks.json then holds agent tasks for it.
   --header "N: v"      Extra request header for the audited site (WAF bypass rule); repeatable, also AUDIT_HEADERS.
   --insecure           Accept self-signed certificates (localhost, staging).
@@ -49,6 +53,7 @@ Usage: node a11y.mjs <url> [flags]
 const OPTIONS = {
   pages: { type: 'string' }, from: { type: 'string' }, urls: { type: 'string' }, keyboard: { type: 'string' },
   'max-tabs': { type: 'string' }, level: { type: 'string' }, out: { type: 'string' }, repo: { type: 'string' },
+  state: { type: 'string' }, baseline: { type: 'string' }, 'no-baseline': { type: 'boolean' },
   header: { type: 'string', multiple: true }, insecure: { type: 'boolean' }, chrome: { type: 'string' },
   timeout: { type: 'string' }, help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' },
 };
@@ -94,6 +99,9 @@ export function parseCli(argv, env = process.env) {
     maxTabs: num(values['max-tabs'], 200, 'max-tabs'),
     level,
     out: values.out || null,
+    state: values.state || null,
+    baseline: values.baseline || null,
+    noBaseline: !!values['no-baseline'],
     repo, repoPath,
     headers: parseHeaderLines(headerLines),
     insecure: !!values.insecure,
@@ -120,14 +128,31 @@ function xdgDownloadDir(text) {
 function writableDir(p) { try { fs.accessSync(p, fs.constants.W_OK); return fs.statSync(p).isDirectory(); } catch { return false; } }
 function readText(p) { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } }
 
-function stamp(now = new Date()) {
-  const p = (n) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}`;
-}
+/** The site's target folder: --state, else <reports>/a11y-audit/<host>/. */
+export const stateDir = (opts, { root = reportsRoot() } = {}) => {
+  if (opts.state) return path.resolve(expandHome(opts.state, os.homedir()));
+  const host = new URL(opts.url).host;
+  return targetDir({ reports: root, skill: 'a11y-audit', name: host, owner: host });
+};
 
-export const outDir = (opts, now = new Date()) => (opts.out
-  ? path.resolve(expandHome(opts.out, os.homedir()))
-  : path.join(reportsRoot(), 'a11y-audit', `${new URL(opts.url).host.replace(/[^\w.-]+/g, '-')}-${stamp(now)}`));
+/** This run's folder: --out (marked as a run), else <target>/runs/<stamp>/. */
+export const outDir = (opts, state, now = new Date()) => (opts.out
+  ? markRun(path.resolve(expandHome(opts.out, os.homedir())), { skill: 'a11y-audit', target: new URL(opts.url).host })
+  : newRun(state, { now, info: { skill: 'a11y-audit', target: new URL(opts.url).host } }));
+
+/**
+ * --baseline, else last-report.json in the target folder, else (first run with target folders) the
+ * newest earlier a11y-audit report.json for this host under <reports>, found by its content.
+ */
+export function findBaseline(opts, state, dir, { root = reportsRoot() } = {}) {
+  if (opts.noBaseline) return null;
+  if (opts.baseline) return path.resolve(expandHome(opts.baseline, os.homedir()));
+  const last = path.join(state, 'last-report.json');
+  if (fs.existsSync(last)) return last;
+  const host = new URL(opts.url).host;
+  const sameHost = (j) => { try { return j?.tool === 'a11y-audit' && new URL(j.site).host === host; } catch { return false; } };
+  return findEarlier([path.join(root, 'a11y-audit'), path.join(root, 'audit-all')], 'report.json', sameHost, { exclude: dir })[0] || null;
+}
 
 // ---- Run -----------------------------------------------------------------------------------
 
@@ -177,8 +202,8 @@ async function auditPage(page, url, ctx, { keyboard }) {
 }
 
 export async function run(opts, { log = (m) => process.stderr.write(`${m}\n`), now = new Date() } = {}) {
-  const dir = outDir(opts, now);
-  fs.mkdirSync(dir, { recursive: true });
+  const state = claimTarget(stateDir(opts), new URL(opts.url).host);
+  const dir = outDir(opts, state, now);
   const chrome = findChrome({ chromePath: opts.chrome });
   if (!chrome) throw new Error('no Chrome, Chromium or Edge found (install one or set CHROME_PATH)');
   log(`engines: loading axe-core ${ENGINES.axe.version} and HTML_CodeSniffer ${ENGINES.htmlcs.version}`);
@@ -239,18 +264,26 @@ export async function run(opts, { log = (m) => process.stderr.write(`${m}\n`), n
   });
   const engines = [ENGINES.axe, ENGINES.htmlcs];
   const manual = fs.readFileSync(path.join(HERE, '..', 'references', 'manual.md'), 'utf8');
-  const md = buildMarkdown({ site: opts.url, date: now, level: opts.level, pages, agg, engines, version: VERSION, manual });
+  const baselineFile = findBaseline(opts, state, dir);
+  let diff = null;
+  if (baselineFile) {
+    try { diff = { ...diffRuns(JSON.parse(fs.readFileSync(baselineFile, 'utf8')), agg), from: baselineFile }; } catch (e) { diff = { error: `could not read ${baselineFile}: ${e.message}` }; }
+  }
+  const notes = readNotes(state);
+  const md = buildMarkdown({ site: opts.url, date: now, level: opts.level, pages, agg, engines, version: VERSION, manual, diff, notes, state });
   const tasks = toTasks(agg.issues, { subject: host, repo: opts.repo, repoPath: opts.repoPath });
   const json = {
     tool: 'a11y-audit', version: VERSION, site: opts.url, date: now.toISOString(), level: opts.level,
     engines: engines.map((e) => ({ name: e.name, version: e.version })),
     counts: agg.counts, issues: agg.issues, review: agg.review, bestPractice: agg.bestPractice, criteria: agg.criteria,
     pages: pages.map(({ links, ...p }) => p),
+    state, ...(diff ? { diff } : {}),
   };
   fs.writeFileSync(path.join(dir, 'report.md'), md);
   fs.writeFileSync(path.join(dir, 'report.json'), `${JSON.stringify(json, null, 2)}\n`);
   fs.writeFileSync(path.join(dir, 'tasks.json'), `${JSON.stringify(tasks, null, 2)}\n`);
-  return { dir, agg, summary: buildSummary({ site: opts.url, agg, dir, level: opts.level }) };
+  fs.writeFileSync(path.join(state, 'last-report.json'), `${JSON.stringify(json)}\n`);
+  return { dir, state, agg, diff, summary: buildSummary({ site: opts.url, agg, dir, level: opts.level, state, diff, notes }) };
 }
 
 async function main() {

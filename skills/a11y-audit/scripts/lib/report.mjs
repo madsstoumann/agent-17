@@ -21,7 +21,7 @@ export function verdict(c) {
   return 'No automated failures. Automated tools find only part of the problems, so do the manual checks below.';
 }
 
-export function buildMarkdown({ site, date, level, pages, agg, engines, version, manual }) {
+export function buildMarkdown({ site, date, level, pages, agg, engines, version, manual, diff = null, notes = null, state = null }) {
   const c = { ...agg.counts, level };
   const L = [];
   L.push(`# Accessibility audit: ${new URL(site).host}`, '');
@@ -29,6 +29,26 @@ export function buildMarkdown({ site, date, level, pages, agg, engines, version,
   L.push(`**Result:** ${resultLine(c)}`, '');
   L.push(`**Verdict:** ${verdict(c)}`, '');
   L.push('> Automated checks find roughly a third of WCAG problems. "No automated failures" is not conformance: the manual checks at the end decide that.', '');
+
+  if (diff?.error) L.push('## Since last run', '', `Baseline not usable: ${diff.error}`, '');
+  else if (diff) {
+    L.push('## Since last run', '', `Compared with the run of ${diff.date ? diff.date.slice(0, 10) : 'an earlier date'} (\`${diff.from}\`): ${diff.fixed.length} fixed, ${diff.newIssues.length} new, ${diff.open.length} still open.`, '');
+    const rows = [
+      ...diff.fixed.map((i) => ['Fixed', i, '']),
+      ...diff.newIssues.map((i) => ['New', i, `${i.pages} pages, ${i.count} elements`]),
+      ...diff.open.map((i) => ['Still open', i, `${i.was.count} → ${i.count} elements`]),
+    ];
+    if (rows.length) {
+      L.push('| Change | Issue | WCAG | Detail |', '|---|---|---|---|');
+      for (const [what, i, d] of rows) L.push(`| ${what} | ${cell(i.title)} | ${(i.sc || []).join(', ')} | ${d} |`);
+      L.push('');
+    }
+    if (diff.criteria.length) L.push(`Criteria that changed: ${diff.criteria.map((c) => `${c.sc} ${c.name} (${STATUS[c.from]} → ${STATUS[c.to]})`).join('; ')}.`, '');
+  }
+  if (notes) {
+    L.push('## Notes', '', `_From \`notes.md\` in ${state ? `\`${state}\`` : 'the target folder'}, kept between runs._`, '');
+    L.push(notes.trim().replace(/^(#{1,4}) /gm, (m, h) => `${'#'.repeat(Math.min(h.length + 2, 6))} `), '');
+  }
 
   L.push('## Issues', '');
   if (!agg.issues.length) L.push('No automated failures.', '');
@@ -101,7 +121,7 @@ export function buildMarkdown({ site, date, level, pages, agg, engines, version,
 }
 
 /** The ~25 lines Claude reads. */
-export function buildSummary({ site, agg, dir, level }) {
+export function buildSummary({ site, agg, dir, level, state = null, diff = null, notes = null }) {
   const c = { ...agg.counts, level };
   const L = [`a11y-audit: ${site}`, `Result: ${resultLine(c)}`, `Verdict: ${verdict(c)}`, ''];
   if (agg.issues.length) {
@@ -112,6 +132,11 @@ export function buildSummary({ site, agg, dir, level }) {
   }
   if (agg.review.length) L.push(`Review: ${agg.review.slice(0, 6).map((r) => r.title).join(' · ')}${agg.review.length > 6 ? ' …' : ''}`, '');
   if (c.pagesFailed) L.push(`${plural(c.pagesFailed, 'page')} could not be audited (see the Pages table).`, '');
+  if (diff && !diff.error) L.push(`Since last run: ${diff.fixed.length} fixed, ${diff.newIssues.length} new, ${diff.open.length} still open (compared with ${diff.from})`);
+  else if (diff?.error) L.push(`Since last run: baseline not usable (${diff.error})`);
+  else L.push('Since last run: nothing to compare with (first run for this host, or --no-baseline)');
+  if (state) L.push(`State: ${state}${notes ? ' (notes.md included in the report)' : ''}`);
+  L.push('');
   L.push(`report.md:  ${dir}/report.md`, `report.json: ${dir}/report.json`, `tasks.json: ${dir}/tasks.json`);
   return L.join('\n');
 }

@@ -11,5 +11,5 @@ All notable changes to the `a11y-audit` skill. Format follows [Keep a Changelog]
 - Reflow at 320 px (1.4.10) and text spacing (1.4.12) checks, and a check for an accessibility statement link.
 - Every finding mapped to WCAG 2.2 criteria and EN 301 549 v3.2.1 clauses; `report.md` has a status per A/AA criterion (fails, review, no automated failures, manual check) and the manual checks still needed.
 - `tasks.json` in audit-all's fix-plan shape (`sources: ["a11y"]`); with `--repo NAME[=PATH]` the tasks are agent tasks with a suggested model.
-- Shared report folder: `--out`, else `$AUDIT_OUT_DIR`, else the Downloads folder if it exists, else `~/audit-reports/`.
+- Target folder per site, `<reports>/a11y-audit/<host>/`, with `last-report.json`, `notes.md` and `runs/<stamp>/` (the shared layout). Every run compares with the last one ("Since last run": fixed, new, still open, criteria that changed); `--baseline`, `--no-baseline` and `--state` override it. `<reports>` is `$AUDIT_OUT_DIR`, else the Downloads folder if it exists, else `~/audit-reports/`.
 - `--header` / `AUDIT_HEADERS` for a WAF bypass rule, sent only to the audited site.

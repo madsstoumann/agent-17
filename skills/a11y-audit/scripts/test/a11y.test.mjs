@@ -9,11 +9,11 @@ import { fileURLToPath } from 'node:url';
 import { scFromAxeTags, scFromHtmlcsCode, enClause, criteriaFor, axeTags } from '../lib/wcag.mjs';
 import { pickPages, sitemapLocs, templateOf } from '../lib/pages.mjs';
 import { analyseWalk } from '../lib/keyboard.mjs';
-import { aggregate, toTasks, genericMessage } from '../lib/findings.mjs';
+import { aggregate, toTasks, genericMessage, diffRuns } from '../lib/findings.mjs';
 import { resultLine } from '../lib/report.mjs';
 import { findChrome } from '../lib/cdp.mjs';
 import { loadEngine } from '../lib/engines.mjs';
-import { parseCli, parseHeaderLines, reportsRoot, run } from '../a11y.mjs';
+import { parseCli, parseHeaderLines, reportsRoot, run, stateDir } from '../a11y.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -117,6 +117,22 @@ test('toTasks: drafts audit-all accepts, human-owned without a repo', async () =
   }
 });
 
+test('diffRuns: new, fixed, still open and criteria changes', () => {
+  const before = aggregate([PAGE('https://x.dk/')], { startUrl: 'https://x.dk/', statement: { href: 'x' } });
+  const kb = analyseWalk({ stops: [stop(1, { indicator: false })], ended: 'left-document' });
+  const after = aggregate([PAGE('https://x.dk/', { keyboard: kb, axe: { violations: [], incomplete: [] } })], { startUrl: 'https://x.dk/', statement: { href: 'x' } });
+  const d = diffRuns({ date: '2026-10-01T00:00:00Z', issues: before.issues, criteria: before.criteria }, after);
+  assert.deepEqual(d.fixed.map((i) => i.key), ['axe:color-contrast']);
+  assert.deepEqual(d.newIssues.map((i) => i.key), ['kbd:no-indicator', 'htmlcs:1.4.3:G18.Fail'], 'HTML_CodeSniffer contrast shows once axe no longer reports it');
+  assert.ok(d.open.some((i) => i.key.startsWith('htmlcs:1.3.1')));
+  assert.ok(d.criteria.some((c) => c.sc === '2.4.7' && c.to === 'fail'));
+});
+
+test('stateDir: --state, else <reports>/a11y-audit/<host>/', () => {
+  assert.equal(stateDir({ url: 'https://shop.example.dk/x', state: null }, { root: '/r' }), path.join('/r', 'a11y-audit', 'shop.example.dk'));
+  assert.equal(stateDir({ url: 'https://x.dk/', state: '/tmp/s' }, { root: '/r' }), '/tmp/s');
+});
+
 test('cli: defaults, flags and headers', () => {
   const o = parseCli(['shop.example.dk'], {});
   assert.deepEqual([o.url, o.pages, o.keyboard, o.level, o.repo], ['https://shop.example.dk/', 10, 3, 'AA', null]);
@@ -146,12 +162,21 @@ test('run: finds the trap, missing focus style, contrast, alt and reflow on the 
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'a11y-'));
   try {
     const opts = parseCli([`http://127.0.0.1:${server.address().port}/`, '--pages', '1', '--out', out], {});
-    const { agg } = await run(opts, { log: () => {} });
+    process.env.AUDIT_OUT_DIR = out;
+    const { agg, dir, state } = await run(opts, { log: () => {} });
+    assert.ok(fs.existsSync(path.join(state, 'last-report.json')) && fs.existsSync(path.join(dir, '.audit-run')));
+    fs.writeFileSync(path.join(state, 'notes.md'), 'Contrast on the footer is a known brand decision.\n');
+    const second = await run(parseCli([opts.url, '--pages', '1', '--keyboard', '0'], {}), { log: () => {} });
+    assert.ok(second.dir.startsWith(path.join(state, 'runs')), 'default run folder is <target>/runs/<stamp>');
+    assert.equal(second.diff.from, path.join(state, 'last-report.json'));
+    assert.ok(second.diff.fixed.some((i) => i.key === 'kbd:trap'), 'no keyboard walk the second time');
+    assert.match(fs.readFileSync(path.join(second.dir, 'report.md'), 'utf8'), /## Since last run[\s\S]*## Notes[\s\S]*known brand decision/);
     const rules = agg.issues.map((i) => i.rule);
     for (const r of ['keyboard-trap', 'focus-not-visible', 'color-contrast', 'image-alt', 'html-has-lang', 'reflow-320']) assert.ok(rules.includes(r), `${r} in ${rules.join(', ')}`);
     for (const f of ['report.md', 'report.json', 'tasks.json']) assert.ok(fs.existsSync(path.join(out, f)));
     assert.match(fs.readFileSync(path.join(out, 'report.md'), 'utf8'), /\*\*Result:\*\* \d+ criteria failed/);
   } finally {
+    delete process.env.AUDIT_OUT_DIR;
     server.close();
     fs.rmSync(out, { recursive: true, force: true });
   }
