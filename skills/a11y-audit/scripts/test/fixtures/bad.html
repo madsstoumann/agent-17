@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Fixture</title>
+<style>
+  .plain:focus { outline: none; }
+  .wide { width: 600px; height: 20px; background: #eee; }
+  .faint { color: #bbb; background: #fff; }
+</style>
+</head>
+<body>
+<header><a href="/">Home</a></header>
+<main>
+  <h1>Fixture</h1>
+  <p class="faint">Low contrast text</p>
+  <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
+  <button class="plain">No focus style</button>
+  <div class="wide"></div>
+  <div id="trap">
+    <button id="t1">One</button><button id="t2">Two</button><button id="t3">Three</button>
+  </div>
+  <a href="/after">After the trap</a>
+</main>
+<script>
+  // Tab from the last button goes back to the first, and Escape does nothing: a keyboard trap.
+  document.getElementById('t3').addEventListener('keydown', (e) => {
+    if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); document.getElementById('t1').focus(); }
+  });
+</script>
+</body>
+</html>

@@ -29,7 +29,7 @@ Changes that touch only the changelog or other repo housekeeping do not bump the
 
 ## Report folders
 
-Skills that write report files (audit-all, launch-audit, security-audit, solution-health, tech-stack) use the same default folder, so reports from one machine end up in one place. First match wins:
+Skills that write report files (a11y-audit, audit-all, launch-audit, security-audit, solution-health, tech-stack) use the same default folder, so reports from one machine end up in one place. First match wins:
 
 1. `--out` when the user names a folder,
 2. `$AUDIT_OUT_DIR`,

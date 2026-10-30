@@ -6,7 +6,7 @@ import path from 'node:path';
 export const SEVERITIES = ['blocker', 'high', 'medium', 'low'];
 export const MODELS = ['haiku', 'sonnet', 'opus', 'fable'];
 export const OWNERS = ['agent', 'human'];
-const SOURCES = { launch: 'launch-audit', security: 'security-audit', health: 'solution-health' };
+const SOURCES = { launch: 'launch-audit', a11y: 'a11y-audit', security: 'security-audit', health: 'solution-health' };
 
 const str = (v) => (v === undefined || v === null ? '' : String(v).trim());
 const list = (v) => (Array.isArray(v) ? v : v ? [v] : []).map(str).filter(Boolean);

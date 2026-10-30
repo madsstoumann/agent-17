@@ -9,6 +9,10 @@ export const KINDS = {
     title: 'Launch audit',
     standfirst: 'The site checked the way a launch reviewer would: PageSpeed, headers, TLS, crawlability and every page the crawler could reach.',
   },
+  'a11y-audit': {
+    title: 'Accessibility audit',
+    standfirst: 'A sample of pages checked against WCAG 2.2 AA and EN 301 549 with axe-core and HTML_CodeSniffer, a keyboard-only walk, and reflow at 320 px.',
+  },
   'security-audit': {
     title: 'Security audit',
     standfirst: 'The repository and its git history, scanned for secrets, injection, unsafe request handling and vulnerable dependencies, then triaged by hand.',
@@ -73,6 +77,15 @@ export function headline(report) {
     h.result = line ? plain(line[1]) : null;
     const site = md.match(/\*\*Site:\*\*\s*(\S+)/);
     h.what = h.counts.pass !== undefined ? `${h.counts.pass} checks passed${site ? ` on ${plain(site[1])}` : ''}.` : null;
+  } else if (kind === 'a11y-audit') {
+    const line = md.match(/\*\*Result:\*\*\s*(.+)/);
+    const text = line ? line[1] : '';
+    const n = (re) => { const m = text.match(re); return m ? Number(m[1]) : undefined; };
+    h.counts = { criteria: n(/(\d+)\s+criteri(?:on|a)\s+failed/i), issues: n(/(\d+)\s+issues?\b/i), review: n(/(\d+)\s+to review/i), pages: n(/(\d+)\s+pages?\b/i) };
+    h.figures = [[h.counts.criteria, h.counts.criteria === 1 ? 'criterion failed' : 'criteria failed'], [h.counts.issues, h.counts.issues === 1 ? 'issue' : 'issues']];
+    h.result = line ? plain(line[1]) : null;
+    const verdict = md.match(/\*\*Verdict:\*\*\s*(.+)/);
+    h.what = verdict ? plain(verdict[1]) : null;
   } else if (kind === 'security-audit') {
     const verdict = md.match(/\*\*Verdict:\*\*\s*(.+)/);
     const blockers = section(/^blockers?$/i);

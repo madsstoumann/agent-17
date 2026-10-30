@@ -118,3 +118,13 @@ test('combine writes the fix plan next to the report', async () => {
     fs.rmSync(run, { recursive: true, force: true });
   }
 });
+
+test('validateTasks: a11y-audit drafts are valid sources', () => {
+  const { plan, errors } = validateTasks({ tasks: [
+    { id: 'T1', title: 'No visible focus indicator (WCAG 2.4.7)', severity: 'high', sources: ['a11y-audit'], repo: 'shop-web', fix: 'Add a :focus-visible style.' },
+    { id: 'T2', title: 'Alt text on uploaded images', severity: 'high', owner: 'human', sources: ['a11y', 'launch'], fix: 'Write alt text in the CMS.' },
+  ] });
+  assert.deepEqual(errors, []);
+  assert.deepEqual(plan.tasks.map((t) => t.sources), [['a11y'], ['a11y', 'launch']]);
+  assert.equal(plan.tasks[0].model, 'sonnet');
+});
