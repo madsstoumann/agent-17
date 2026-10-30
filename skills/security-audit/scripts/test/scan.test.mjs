@@ -11,7 +11,7 @@ import {
   parsePackageLock, parseYarnLock, parsePnpmLock, parseComposerLock, parseNugetLock, parseMsbuild,
   parseRequirements, parseTomlLock, parseGemfileLock, parseGoMod, osvSeverity, osvFixed,
 } from '../lib/deps.mjs';
-import { run, parseArgs } from '../scan.mjs';
+import { run, parseArgs, resolveOutDir, reportsRoot } from '../scan.mjs';
 
 // Fake secrets are assembled at runtime so GitHub push protection does not flag this file.
 const STRIPE = ['sk', 'live', 'abcdefghijklmnopqrstuvwx'].join('_');
@@ -157,4 +157,21 @@ test('parseArgs rejects unknown groups and options', () => {
   assert.throws(() => parseArgs(['--only', 'nope']), /Unknown group/);
   assert.throws(() => parseArgs(['--frobnicate']), /Unknown option/);
   assert.equal(parseArgs(['--history']).history, 1000);
+});
+
+test('resolveOutDir: default under Downloads, ~ expanded, relative paths resolved', () => {
+  assert.equal(resolveOutDir(null, '/src/my-repo', { home: '/Users/me', now: '20261030-0800', base: '/Users/me/Downloads' }), '/Users/me/Downloads/security-audit/my-repo-20261030-0800');
+  assert.equal(resolveOutDir('~/Downloads/audit-all/x/security-audit', '/src/r', { home: '/Users/me' }), '/Users/me/Downloads/audit-all/x/security-audit');
+  assert.equal(resolveOutDir('~', '/src/r', { home: '/Users/me' }), '/Users/me');
+  assert.equal(resolveOutDir('/abs/out', '/src/r', { home: '/Users/me' }), '/abs/out');
+});
+
+test('reportsRoot: AUDIT_OUT_DIR, then XDG download dir, then ~/Downloads, then ~/audit-reports', () => {
+  const home = '/home/me';
+  const has = (...dirs) => (p) => dirs.includes(p);
+  assert.equal(reportsRoot({ env: { AUDIT_OUT_DIR: '~/reports' }, home, isDir: has() }), '/home/me/reports');
+  assert.equal(reportsRoot({ env: {}, home, isDir: has('/home/me/Downloads') , readFile: () => null }), '/home/me/Downloads');
+  assert.equal(reportsRoot({ env: {}, home, isDir: has('/home/me/Hentet', '/home/me/Downloads'), readFile: () => 'XDG_DOWNLOAD_DIR="$HOME/Hentet"\n' }), '/home/me/Hentet');
+  assert.equal(reportsRoot({ env: { XDG_DOWNLOAD_DIR: '/data/dl' }, home, isDir: has('/data/dl'), readFile: () => null }), '/data/dl');
+  assert.equal(reportsRoot({ env: {}, home, isDir: has(), readFile: () => null }), '/home/me/audit-reports');
 });

@@ -46,7 +46,7 @@ with evidence (e.g. "Auth: all `/api/admin/*` routes use `requireAdmin` (src/rou
 
 ## Not checked
 
-Skipped groups, `--offline`, history not scanned, missing-control questions not done, anything
+Skipped groups, `--offline`, history not scanned, Semgrep not installed, missing-control questions not done, anything
 behind generated code, languages the rules do not cover.
 
 ## False positives

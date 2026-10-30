@@ -15,7 +15,7 @@ import { RULES, FILE_RULES, rulesFor, scanText, redact } from './lib/patterns.mj
 import { listFiles, readScannable, historyAddedLines, TEST_PATH } from './lib/files.mjs';
 import { collectPackages, queryOsv } from './lib/deps.mjs';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 const GROUPS = ['deps', 'secrets', 'xss', 'injection', 'request', 'crypto', 'config', 'ci'];
 const SEV = { high: 3, medium: 2, low: 1 };
 
@@ -28,7 +28,8 @@ Usage: node scan.mjs [path] [options]
   --offline         No OSV lookup (dependency inventory only).
   --no-tests        Leave out hits in test/fixture/example/docs paths (default: kept, tagged).
   --max N           Hits printed per rule (default 6; findings.json has all).
-  --out DIR         Where findings.json goes (default ~/Downloads/security-audit/<name>-<stamp>/).
+  --out DIR         Where findings.json goes (default <reports>/security-audit/<name>-<stamp>/, where
+                    <reports> is $AUDIT_OUT_DIR, else Downloads, else ~/audit-reports).
   --json            Print findings.json to stdout instead of the summary.
 `;
 
@@ -51,6 +52,40 @@ export function parseArgs(argv) {
   }
   for (const g of [...(a.only || []), ...a.skip]) if (!GROUPS.includes(g)) throw new Error(`Unknown group "${g}". Groups: ${GROUPS.join(' ')}`);
   return a;
+}
+
+/**
+ * The folder reports go under when no --out is given. First match wins:
+ * 1. AUDIT_OUT_DIR, 2. the Downloads folder if it exists and is writable (on Linux the XDG
+ * download folder from XDG_DOWNLOAD_DIR or ~/.config/user-dirs.dirs, then ~/Downloads),
+ * 3. ~/audit-reports. Works the same on macOS, Windows and Linux.
+ */
+export function reportsRoot({ env = process.env, home = os.homedir(), isDir = writableDir, readFile = readText } = {}) {
+  if (env.AUDIT_OUT_DIR) return path.resolve(expandHome(env.AUDIT_OUT_DIR, home));
+  const xdg = env.XDG_DOWNLOAD_DIR || xdgDownloadDir(readFile(path.join(env.XDG_CONFIG_HOME || path.join(home, '.config'), 'user-dirs.dirs')));
+  const candidates = [xdg && path.resolve(expandHome(xdg.replace(/^\$HOME(?=$|\/)/, home), home)), path.join(home, 'Downloads')].filter(Boolean);
+  return candidates.find((p) => isDir(p)) || path.join(home, 'audit-reports');
+}
+
+function xdgDownloadDir(text) {
+  const m = String(text || '').match(/^\s*XDG_DOWNLOAD_DIR\s*=\s*"?([^"\n]+)"?/m);
+  return m ? m[1].trim() : null;
+}
+
+function writableDir(p) {
+  try { fs.accessSync(p, fs.constants.W_OK); return fs.statSync(p).isDirectory(); } catch { return false; }
+}
+
+function readText(p) {
+  try { return fs.readFileSync(p, 'utf8'); } catch { return null; }
+}
+
+const expandHome = (p, home) => p.replace(/^~(?=$|[\\/])/, home);
+
+/** Where findings.json and report.md go: `--out` (a leading ~ is expanded) or <reportsRoot>/security-audit/<name>-<stamp>/. */
+export function resolveOutDir(out, root, { home = os.homedir(), now = stamp(), base } = {}) {
+  if (!out) return path.join(base || reportsRoot({ home }), 'security-audit', `${path.basename(root)}-${now}`);
+  return path.resolve(expandHome(out, home));
 }
 
 const stamp = () => new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
@@ -186,7 +221,7 @@ async function main() {
   try { args = parseArgs(process.argv.slice(2)); } catch (e) { log(e.message); log(USAGE); process.exit(2); }
   if (args.help) { process.stdout.write(USAGE); return; }
   const report = await run(args);
-  const outDir = args.out ? path.resolve(args.out) : path.join(os.homedir(), 'Downloads', 'security-audit', `${path.basename(report.root)}-${stamp()}`);
+  const outDir = resolveOutDir(args.out, report.root);
   fs.mkdirSync(outDir, { recursive: true });
   const file = path.join(outDir, 'findings.json');
   fs.writeFileSync(file, JSON.stringify(report, null, 2));

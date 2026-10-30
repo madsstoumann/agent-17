@@ -4,7 +4,7 @@ description: Use when a website is about to go live or has just launched and nee
 argument-hint: "<url> [--env dev|staging|production] [--production-host HOST] [--pages N] [--skip group,...] [--out PATH] [--baseline report.json] [--insecure]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Read, WebFetch
 metadata:
-  version: "1.0.1"
+  version: "1.1.0"
 ---
 
 # Launch audit
@@ -42,8 +42,8 @@ read the last stderr lines.
 | `--production-host www.example.com` | The user names the future live domain. Canonical, og:url, hreflang and sitemap hosts are then compared against it. |
 | `--pages N` (default 3) | Extra sitemap pages for Lighthouse, mobile only. `0` for speed. |
 | `--skip perf` / `--skip perf,links` | "Quick check", "skip Lighthouse". `--only headers,tls` for a narrow question. Groups: `crawl redirects notfound tls exposed headers caching perf a11y privacy links ops` (also `dns`, `email`, `social`, `icons`). |
-| `--out PATH` | The user says where the report should go: a folder, or a `.md` path (JSON and raw files land beside it). Default `~/Downloads/launch-audit/<host>-<YYYYMMDD-HHMM>/`. Always quote the two paths printed last on stdout. |
-| `--baseline <previous report.json>` | "Compare with last time" / re-check after fixes. Find the previous run under `~/Downloads/launch-audit/` when not named. Adds a "Since last run" section. |
+| `--out PATH` | The user says where the report should go: a folder, or a `.md` path (JSON and raw files land beside it). Default `<reports>/launch-audit/<host>-<YYYYMMDD-HHMM>/`, where `<reports>` is `$AUDIT_OUT_DIR` if set, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. Always quote the two paths printed last on stdout. |
+| `--baseline <previous report.json>` | "Compare with last time" / re-check after fixes. Find the previous run under `<reports>/launch-audit/` when not named. Adds a "Since last run" section. |
 | `--insecure` | `localhost` or a self-signed certificate. Remote validators are skipped automatically for private hosts (W3C and schema.org get the HTML posted instead). |
 | `--email-domain example.com` | Auditing a platform or staging host but the mail domain is known. |
 | `--ssllabs` | The user wants the Qualys grade in the report (slow, opt-in). |
