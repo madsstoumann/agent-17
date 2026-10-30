@@ -26,3 +26,14 @@ When to bump:
 Changes that touch only the changelog or other repo housekeeping do not bump the version.
 
 `CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/): newest version first, a `## [x.y.z] - YYYY-MM-DD` heading per release, and `Added`, `Changed`, `Fixed` or `Removed` subsections. Bump the version and add the changelog entry in the same commit as the change. A new skill starts at `1.0.0`.
+
+## Report folders
+
+Skills that write report files (audit-all, launch-audit, security-audit, tech-stack) use the same default folder, so reports from one machine end up in one place. First match wins:
+
+1. `--out` when the user names a folder,
+2. `$AUDIT_OUT_DIR`,
+3. the Downloads folder if it exists and is writable (on Linux the XDG download folder from `XDG_DOWNLOAD_DIR` or `~/.config/user-dirs.dirs` first, then `~/Downloads`),
+4. `~/audit-reports/`.
+
+Each skill writes under `<folder>/<skill>/<site-or-repo>-<YYYYMMDD-HHMM>/`. Skills install separately, so each carries its own copy of the `reportsRoot()` resolver (see `security-audit/scripts/scan.mjs`); keep them in step when changing it. solution-health is the exception: its report lives in the repo because it is committed with the state that the next run compares against.
