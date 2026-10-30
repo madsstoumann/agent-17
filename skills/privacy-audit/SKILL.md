@@ -63,7 +63,7 @@ clearly has a banner in the EU, say so and re-run from an EU network.
 | Transfers | `transfer.third-countries` (vendors outside the EU/EEA, warn when contacted before consent), `transfer.hosts` (every third-party host, unrecognised ones listed) |
 | Policy & forms | `policy.privacy` (linked from the start page, loads), `policy.cookie-declaration` (every cookie seen after accepting is named in the policy pages or the banner's details), `policy.forms` (personal-data forms over http, to third parties, or with a pre-ticked marketing box) |
 
-Classification is a static list of about 70 vendors and 40 cookie families. A miss is
+Classification is a static list of about 60 vendors and 45 cookie families. A miss is
 "unclassified", never "fine": look up unrecognised hosts and cookies yourself (WebFetch the vendor's
 site) before calling them harmless.
 
