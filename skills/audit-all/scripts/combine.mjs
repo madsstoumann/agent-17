@@ -17,7 +17,7 @@ import { printPdf, pdfDestPages } from './lib/pdf.mjs';
 import { writeFixPlan } from './lib/tasks.mjs';
 import { targetDir, claimTarget, newRun, previousRuns, readNotes, targetName } from './lib/target-state.mjs';
 
-export const VERSION = '1.8.0';
+export const VERSION = '1.8.1';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, '..', 'assets');
 const SIBLINGS = path.join(HERE, '..', '..');

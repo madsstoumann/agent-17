@@ -4,7 +4,7 @@ description: Use when someone wants the full audit of a site and its code in one
 argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--yes] [--style serif|sans|editorial|modern] [--out DIR]"
 allowed-tools: AskUserQuestion, Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.8.0"
+  version: "1.8.1"
 ---
 
 # Audit all
@@ -250,7 +250,7 @@ found), and keep their owner, model and files unless you know better.
 |---|---|
 | `id` | `T1`, `T2`, … Stable within the run; `dependsOn` refers to these. When the previous run's `tasks.json` has the same problem, reuse its id and title so the two plans can be compared. |
 | `severity` | `blocker`, `high`, `medium` or `low`, the same call as in the reports. |
-| `owner` | `agent`, or `human` for anything an agent must not or cannot do: rotating secrets, DNS, CDN or hosting settings outside the repo, purging git history, product or legal calls. |
+| `owner` | `agent`, or `human` for anything an agent must not or cannot do: rotating secrets, DNS, CDN or hosting settings outside the repo, purging git history, product or legal calls. A security-audit rule with `owner: "human"` (platform credential files such as Umbraco Cloud's `umbraco-cloud.json`) is always a `human` task and never gets an agent task beside it: removing the file breaks the platform's deploys. While the repo is private it is a `low` review task ("Confirm umbraco-cloud.json is accepted risk": keep the repo private, review who has access, record the acceptance); only a public repo makes it a `blocker` (rotate in the Umbraco Cloud portal). Leave it out when its triage verdict is `accepted`. |
 | `model` | For agent tasks, the cheapest tier that will do it well: `haiku` for mechanical, local edits (a header in a config file, a meta tag, alt text, a patch bump with no code changes); `sonnet` for ordinary code changes, multi-file edits and minor upgrades; `opus` for security fixes that need data-flow reasoning (injection, XSS, auth, SSRF), and for big jobs (a framework major or EOL runtime upgrade, replacing a closing API). `fable` only when the user asks for it. Left out, security and blocker tasks get `opus`, the rest `sonnet`. |
 | `repo` | A key of `repos` (absolute path). Required for agent tasks. |
 | `files` | Paths relative to the repo. Tasks in one repo that share a file, or that list no files, never run at the same time, so list them when you know them. |

@@ -2,6 +2,13 @@
 
 All notable changes to the `security-audit` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.3.0] - 2026-10-30
+
+### Added
+- Platform credential files: secrets in Umbraco Cloud's `umbraco-cloud.json` (`Deploy.Settings.ApiKey`, `Identity.ClientSecret`) are reported under `secrets.umbraco-cloud` instead of as generic committed secrets. The file is written by Umbraco Cloud and needed for its deploys, so the rule is owned by a person and its severity follows the repo's visibility from `gh repo view`: private or internal → low (accept in `triage.json`), unknown → medium, public → high (rotate in the Umbraco Cloud portal). History hits in the file are skipped.
+- `--visibility public|private|internal` for when `gh` cannot tell.
+- A secret that moves to another rule (same file, same redacted value) counts as still open, not fixed plus new, and keeps an earlier `accepted` or `false-positive` verdict.
+
 ## [1.2.0] - 2026-10-30
 
 ### Added

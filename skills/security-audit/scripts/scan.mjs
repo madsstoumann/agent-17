@@ -11,13 +11,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { RULES, FILE_RULES, rulesFor, scanText, redact } from './lib/patterns.mjs';
+import { execFileSync } from 'node:child_process';
+
+import { RULES, FILE_RULES, PLATFORM_FILES, platformFor, rulesFor, scanText, redact } from './lib/patterns.mjs';
 import { listFiles, readScannable, historyAddedLines, TEST_PATH } from './lib/files.mjs';
 import { collectPackages, queryOsv } from './lib/deps.mjs';
 import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
 import { annotate, baselineLines, tag } from './lib/baseline.mjs';
 
-export const VERSION = '1.2.0';
+export const VERSION = '1.3.0';
 const GROUPS = ['deps', 'secrets', 'xss', 'injection', 'request', 'crypto', 'config', 'ci'];
 const SEV = { high: 3, medium: 2, low: 1 };
 
@@ -37,11 +39,13 @@ Usage: node scan.mjs [path] [options]
   --state DIR       Target folder (default <reports>/security-audit/<repo folder name>/, where <reports> is
                     $AUDIT_OUT_DIR, else Downloads, else ~/audit-reports). It keeps triage.json, notes.md
                     and last-findings.json between runs.
+  --visibility V    public, private or internal: the repo's visibility, when gh cannot tell
+                    (it sets the severity of platform credential files such as umbraco-cloud.json).
   --json            Print findings.json to stdout instead of the summary.
 `;
 
 export function parseArgs(argv) {
-  const a = { root: '.', only: null, skip: [], history: 0, offline: false, tests: true, max: 6, out: null, json: false, baseline: null, noBaseline: false, state: null };
+  const a = { root: '.', only: null, skip: [], history: 0, offline: false, tests: true, max: 6, out: null, json: false, baseline: null, noBaseline: false, state: null, visibility: null };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i];
     const next = () => argv[++i];
@@ -56,10 +60,12 @@ export function parseArgs(argv) {
     else if (v === '--baseline') a.baseline = next();
     else if (v === '--no-baseline') a.noBaseline = true;
     else if (v === '--state') a.state = next();
+    else if (v === '--visibility') a.visibility = next();
     else if (v === '--json') a.json = true;
     else if (v.startsWith('--')) throw new Error(`Unknown option ${v}`);
     else a.root = v;
   }
+  if (a.visibility && !VISIBILITY.includes(a.visibility)) throw new Error(`--visibility must be one of ${VISIBILITY.join(', ')}`);
   for (const g of [...(a.only || []), ...a.skip]) if (!GROUPS.includes(g)) throw new Error(`Unknown group "${g}". Groups: ${GROUPS.join(' ')}`);
   return a;
 }
@@ -122,11 +128,34 @@ export function resolveBaseline(args, root, stateDir, { base, exclude } = {}) {
 }
 const log = (m) => process.stderr.write(`${m}\n`);
 
+const VISIBILITY = ['public', 'private', 'internal'];
+
+/**
+ * The repo's visibility on GitHub, via `gh repo view` (needs gh installed and signed in, and a
+ * GitHub remote). { visibility: public|private|internal|unknown, repo?, via, reason? }.
+ */
+export function repoVisibility(root, { given = null, exec = execFileSync } = {}) {
+  if (given) return { visibility: given, via: '--visibility' };
+  try {
+    const out = exec('gh', ['repo', 'view', '--json', 'visibility,nameWithOwner'], { cwd: root, encoding: 'utf8', timeout: 20000, stdio: ['ignore', 'pipe', 'pipe'] });
+    const j = JSON.parse(out);
+    const v = String(j.visibility || '').toLowerCase();
+    if (VISIBILITY.includes(v)) return { visibility: v, repo: j.nameWithOwner || null, via: 'gh repo view' };
+    return { visibility: 'unknown', via: 'gh repo view', reason: `unexpected answer: ${out.trim().slice(0, 80)}` };
+  } catch (e) {
+    const why = e.code === 'ENOENT' ? 'gh is not installed' : String(e.stderr || e.message || '').trim().split('\n')[0].slice(0, 120) || 'gh repo view failed';
+    return { visibility: 'unknown', via: 'gh repo view', reason: why };
+  }
+}
+
+/** Severity of a platform credential file by repo visibility. */
+export const platformSeverity = (visibility) => (visibility === 'public' ? 'high' : visibility === 'unknown' ? 'medium' : 'low');
+
 export async function run(args) {
   const root = path.resolve(args.root);
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) throw new Error(`Not a folder: ${root}`);
   const on = (g) => (args.only ? args.only.includes(g) : true) && !args.skip.includes(g);
-  const ruleById = Object.fromEntries([...RULES, ...FILE_RULES].map((r) => [r.id, r]));
+  const ruleById = Object.fromEntries([...RULES, ...FILE_RULES, ...PLATFORM_FILES].map((r) => [r.id, r]));
 
   const { git, all, tracked } = listFiles(root);
   log(`files: ${all.length} (${git ? 'git: tracked + untracked, .gitignore respected' : 'not a git repo: folder walk'})`);
@@ -148,7 +177,12 @@ export async function run(args) {
     const text = readScannable(root, rel);
     if (text == null) continue;
     scanned++;
-    for (const h of scanText(rel, text, rules)) hits.push({ ...h, file: rel, inTest });
+    const plat = platformFor(rel);
+    for (const h of scanText(rel, text, rules)) {
+      // A secret in a platform file (umbraco-cloud.json) is reported under the platform rule, keeping the rule that matched it.
+      if (plat && h.id.startsWith('secrets.')) hits.push({ ...h, id: plat.id, matchedBy: h.id, file: rel, inTest });
+      else hits.push({ ...h, file: rel, inTest });
+    }
   }
   log(`scanned: ${scanned} text files, ${hits.length} hits`);
 
@@ -164,6 +198,7 @@ export async function run(args) {
         const current = new Set(hits.filter((h) => h.id.startsWith('secrets.')).map((h) => `${h.id}|${h.text}`));
         const found = new Map();
         for (const a of added) {
+          if (platformFor(a.file)) continue; // the platform rotates these itself; the platform rule covers the file
           for (const h of scanText(a.file, a.text, secretRules.filter((r) => r.langs === null || rulesFor(a.file).includes(r)))) {
             const key = `${h.id}|${h.text}`;
             if (current.has(key) || found.has(key)) continue;
@@ -189,13 +224,22 @@ export async function run(args) {
     }
   }
 
+  // -------------------------------------------------------------- platform credential files: severity by repo visibility
+  let repo = null;
+  const platformHit = hits.some((h) => ruleById[h.id]?.platform);
+  if (platformHit || args.visibility) {
+    repo = git || args.visibility ? repoVisibility(root, { given: args.visibility, exec: args.exec }) : { visibility: 'unknown', reason: 'not a git repo' };
+    if (platformHit) log(`repo visibility: ${repo.visibility}${repo.repo ? ` (${repo.repo})` : ''}${repo.reason ? ` — ${repo.reason}` : ''}`);
+  }
+
   // -------------------------------------------------------------- assemble
   const byRule = {};
   for (const h of hits) (byRule[h.id] ||= []).push(h);
   const rules = Object.entries(byRule)
     .map(([id, list]) => {
       const r = ruleById[id];
-      return { id, group: r.group, severity: r.severity, title: r.title, review: r.review, fix: r.fix, count: list.length, inTest: list.filter((h) => h.inTest).length, hits: list };
+      const plat = r.platform ? { platform: r.platform, owner: r.owner, visibility: repo?.visibility || 'unknown' } : {};
+      return { id, group: r.group, severity: r.platform ? platformSeverity(plat.visibility) : r.severity, title: r.title, review: r.review, fix: r.fix, ...plat, count: list.length, inTest: list.filter((h) => h.inTest).length, hits: list };
     })
     .sort((a, b) => SEV[b.severity] - SEV[a.severity] || b.count - a.count);
 
@@ -203,6 +247,7 @@ export async function run(args) {
     tool: 'security-audit', mode: 'code', version: VERSION, root, git, startedAt: new Date().toISOString(),
     filesListed: all.length, filesScanned: scanned,
     groups: GROUPS.filter(on),
+    ...(repo ? { repo } : {}),
     deps, rules, history,
   };
 }
@@ -233,6 +278,7 @@ export function summarise(r, max = 6) {
   L.push(`CODE HITS TO TRIAGE  ${total} hit(s) across ${r.rules.length} rule(s) — candidates, not findings`);
   for (const rule of r.rules) {
     L.push(`  [${rule.severity}] ${rule.id} — ${rule.title} (${rule.count}${rule.inTest ? `, ${rule.inTest} in test/docs paths` : ''})`);
+    if (rule.platform) L.push(`      platform file, owner ${rule.owner}: repo is ${rule.visibility}${r.repo?.repo ? ` (${r.repo.repo})` : ''}${r.repo?.reason ? ` — ${r.repo.reason}; pass --visibility` : ''}. ${rule.visibility === 'public' ? 'Public: blocker, rotate in the Umbraco Cloud portal.' : rule.visibility === 'unknown' ? 'Check the visibility before calling it accepted.' : 'Review, not a blocker: accept in triage.json.'}`);
     for (const h of rule.hits.slice(0, max)) L.push(`      ${h.file}${h.line ? `:${h.line}` : ''}${h.inTest ? ' [test]' : ''}${tag(h)}  ${h.text.slice(0, 140)}  #${h.fp || ''}`);
     if (rule.count > max) L.push(`      … ${rule.count - max} more`);
   }

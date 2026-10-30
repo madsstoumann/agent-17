@@ -1,10 +1,10 @@
 ---
 name: security-audit
 description: Use when someone wants a security review, code security audit, vulnerability scan or "is this repo safe to ship" check of a whole codebase or folder — committed secrets and API keys (also in git history), known-vulnerable dependencies from any lockfile (npm, yarn, pnpm, NuGet, Composer, PyPI, RubyGems, Go via OSV), XSS sinks, SQL/command/template injection, SSRF, open redirects, path traversal, weak crypto, disabled TLS verification, JWT and CORS mistakes, unsafe deserialisation, debug config, and GitHub Actions risks such as pull_request_target and script injection. Report only. Not for a single diff (use /security-review), live HTTP headers or TLS of a URL (use launch-audit), or routine package upkeep (use solution-health).
-argument-hint: "[path] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline]"
-allowed-tools: Bash(node:*), Bash(git log:*), Bash(git show:*), Read, Grep, Glob, WebFetch
+argument-hint: "[path] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline] [--visibility public|private|internal]"
+allowed-tools: Bash(node:*), Bash(git log:*), Bash(git show:*), Bash(gh repo view:*), Read, Grep, Glob, WebFetch
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # Security audit (code mode)
@@ -43,6 +43,7 @@ finds; non-zero means the scanner itself failed.
 | `--out DIR` | The user names where the report goes (audit-all passes its run folder). Default `<target>/runs/<YYYYMMDD-HHMM>/` (below). Do not write into the repo unless asked: the report may describe live secrets. |
 | `--baseline FILE` | Compare with a specific earlier `findings.json` (or the folder holding one). Without it the scanner compares with the last scan of this repo automatically. |
 | `--no-baseline` | The user wants a scan from scratch, with no comparison. Triage verdicts in `triage.json` still apply. |
+| `--visibility V` | `public`, `private` or `internal`, when the scanner cannot ask `gh` (not installed, not signed in, not a GitHub remote) and the user knows. Only matters for platform credential files (below). |
 | `--max N` | Hits printed per rule (default 6). `findings.json` always has every hit. |
 
 ## What carries over between runs
@@ -106,6 +107,25 @@ that ships. For regular npm/NuGet upkeep (outdated, deprecated, end-of-life), po
 history hits). The fix is rotate first, then remove, then purge history if the repo is or
 was public. Check whether a hit is a public-by-design key (Firebase/Maps browser keys,
 Supabase anon keys, Stripe publishable keys) before calling it a leak.
+
+**Platform credential files** (`secrets.umbraco-cloud`, the rule has `platform` and `owner: "human"`).
+Some hosting platforms commit a file with credentials into the repo themselves, and the deploy
+workflow needs it there. Today that is Umbraco Cloud's `umbraco-cloud.json`: `Deploy.Settings.ApiKey`
+(the Umbraco Deploy key between environments) and `Identity.ClientId`/`ClientSecret` (Umbraco Cloud
+Identity for local login), written by commits from Umbraco Cloud (support@umbraco.io). They are
+not the CI/CD Deployment API key for `api.cloud.umbraco.com`, which belongs in a CI secret such as
+`UMBRACO_CLOUD_API_KEY`; if that key shows up in the repo, it is a normal secret finding. Every
+secret hit inside the file is reported under the platform rule (`matchedBy` names the rule that
+matched), and the scanner asks `gh repo view` for the repo's visibility and sets the severity:
+
+| Visibility (`findings.json` → `repo`) | Severity | How to report it |
+|---|---|---|
+| `private` / `internal` | low | Not a blocker. One line under "Needs a look" or "Accepted": expected Umbraco Cloud file, accepted risk while the repo stays private and access is controlled. Offer to record it as `accepted` in `triage.json` (reason and expiry) once the user agrees. |
+| `unknown` | medium | Needs a look: say the visibility could not be checked (the reason is in `repo.reason`) and ask, or re-run with `--visibility`. |
+| `public` | high | Blocker: rotate the Deploy key and Identity credentials in the Umbraco Cloud portal, make the repo private. Also when the repo was public in the past. |
+
+Never suggest deleting the file, moving it to `.gitignore` or an agent fix: it breaks Umbraco Cloud
+deploys. Any follow-up is a person's job (repo access, rotation in the portal).
 
 **Save the verdicts.** After triage, update `triage.json` in the target folder (the scanner prints
 its path). Keep the entries that are there and add one per hit or advisory you judged, keyed by `fp`:
@@ -197,7 +217,8 @@ Mapping: "compare with last time" → nothing to add (automatic); "from scratch"
 ## Files
 
 - `scripts/scan.mjs`: the scanner (`--help` lists every flag). Zero dependencies, Node 18 or later, uses `git` when present.
-- `scripts/lib/patterns.mjs`: every rule, with its regex, `review` and `fix` text. A line
+- `scripts/lib/patterns.mjs`: every rule, with its regex, `review` and `fix` text, plus
+  `PLATFORM_FILES` (platform credential files such as `umbraco-cloud.json`). A line
   containing `security-audit: ignore` is skipped, which teams can use for accepted findings.
 - `scripts/lib/deps.mjs`: lockfile parsers and the OSV lookup.
 - `scripts/lib/baseline.mjs`: fingerprints, the comparison with the last scan, carried-over triage.

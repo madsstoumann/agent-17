@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.8.1] - 2026-10-30
+
+### Changed
+- tasks.json: a security-audit finding owned by a person (the new platform credential rule for Umbraco Cloud's `umbraco-cloud.json`) becomes one `human` review task, low while the repo is private and a blocker only when it is public, never an agent fix. Accepted ones are left out.
+
 ## [1.8.0] - 2026-10-30
 
 ### Added
