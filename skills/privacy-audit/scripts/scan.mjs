@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { launch } from './lib/cdp.mjs';
 import { openContext, choose } from './lib/visit.mjs';
 import { analyse, SECTIONS } from './lib/analyse.mjs';
-import { countStatuses, resolveOutDir, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, GLYPH, result } from './lib/common.mjs';
+import { countStatuses, prepareRun, finishRun, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, GLYPH, result } from './lib/common.mjs';
 
 export const VERSION = '1.0.0';
 
@@ -17,7 +17,8 @@ const USAGE = `privacy-audit ${VERSION}: GDPR / ePrivacy check of cookies, track
 
 Usage: node scan.mjs <url> [options]
 
-  --out DIR              Report folder (default <reports>/privacy-audit/<host>-<YYYYMMDD-HHMM>/)
+  --out DIR              Run folder (default <reports>/privacy-audit/<host>/runs/<YYYYMMDD-HHMM>/)
+  --baseline FILE        Compare with this report.json (default: the last run for this host)
   --pages N              Extra internal pages loaded before consent (default 2)
   --only S,...           Scenarios: first,reject,accept (default all three)
   --lang L               Browser language (default da-DK,da,en)
@@ -34,6 +35,7 @@ export function parseArgs(argv, env = process.env) {
     const next = () => { const v = argv[++i]; if (v === undefined) throw new Error(`${k} needs a value`); return v; };
     if (k === '-h' || k === '--help') a.help = true;
     else if (k === '--out') a.out = next();
+    else if (k === '--baseline') a.baseline = next();
     else if (k === '--pages') a.pages = Math.max(0, Math.min(10, Number(next()) || 0));
     else if (k === '--only') a.only = next().split(',').map((s) => s.trim()).filter(Boolean);
     else if (k === '--lang') a.lang = next();
@@ -171,6 +173,7 @@ export function renderMarkdown(report) {
     for (const r of warns) out.push(`- ⚠️ **${r.title}** — ${r.evidence}${r.fix ? ` → ${r.fix}` : ''}`);
     out.push('');
   }
+  out.push(...carryOverSections(report));
   out.push(...sectionTables(results, SECTIONS));
   const ck = report.raw?.cookies || {};
   for (const [k, label] of [['first', 'before any choice'], ['accept', 'after accepting']]) {
@@ -198,15 +201,24 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || !args.url) { process.stdout.write(USAGE); process.exit(args.help ? 0 : 2); }
   const host = new URL(args.url).hostname;
-  const dir = resolveOutDir(args.out, { skill: 'privacy-audit', name: host });
-  fs.mkdirSync(dir, { recursive: true });
+  const { state, dir, baselineFile, notes } = prepareRun({ skill: 'privacy-audit', host, out: args.out, baseline: args.baseline });
   log(`output: ${dir}`);
   const report = await run(args, { dir });
   report.tasks = taskCandidates(report.results, { source: 'privacy', ref: `${path.basename(dir)}/report.md` });
   const paths = { dir, md: path.join(dir, 'report.md'), json: path.join(dir, 'report.json') };
+  if (notes) report.notes = notes;
+  if (baselineFile) {
+    try {
+      const prev = JSON.parse(fs.readFileSync(baselineFile, 'utf8'));
+      report.diff = { from: baselineFile, date: prev.generatedAt, ...diffRows(prev.results, report.results) };
+    } catch (e) {
+      report.diff = { from: baselineFile, error: e.message, fixed: [], regressed: [], changed: [] };
+    }
+  }
   fs.writeFileSync(paths.md, renderMarkdown(report));
   writeJson(paths.json, report);
-  process.stdout.write(`${renderStdout(report, paths)}\n`);
+  finishRun(state, report);
+  process.stdout.write(`${renderStdout(report, paths)}\nstate:      ${state}\ncompared:   ${baselineFile || 'nothing (first run for this host)'}${notes ? '\nnotes:      notes.md included in the report' : ''}\n`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

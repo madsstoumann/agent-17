@@ -40,7 +40,8 @@ skips) to stdout. Exit code 0 whatever it finds; non-zero means the script faile
 | `--only` / `--skip` | Narrow questions. Groups: `domain email tls edge ct`. "Just mail" → `--only email`. |
 | `--no-legacy` | Skip the TLS 1.0/1.1 probe. |
 | `--header "Name: value"` | A WAF bypass header (see launch-audit); sent only with the one GET of the home page. Also `AUDIT_HEADERS`. |
-| `--out DIR` | The user names a folder. Default `<reports>/infra-audit/<host>-<YYYYMMDD-HHMM>/`, where `<reports>` is `$AUDIT_OUT_DIR`, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. Quote the two paths printed last. |
+| `--out DIR` | The user names a folder, or audit-all passes its run folder. Default `<reports>/infra-audit/<host>/runs/<YYYYMMDD-HHMM>/`, where `<reports>` is `$AUDIT_OUT_DIR`, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. Quote the paths printed last. |
+| `--baseline FILE` | Compare with a specific earlier `report.json`. By default the script compares with the last run for the same host. |
 
 ## What it checks
 
@@ -85,6 +86,14 @@ appear once, here.
 `owner: "human"` because DNS, registrar and mail settings live outside the repo, a `verify` line
 naming the check). Copy them into the run's `tasks.json`, merging duplicates.
 
+## State between runs
+
+Each host has a target folder, `<reports>/infra-audit/<host>/`, which holds `target.txt`, the last result
+(`last-report.json`) and `notes.md`. Every run compares with that last result, also when audit-all
+passes `--out`, and adds a "Since last run" section (fixed, new or worse). `notes.md` is
+hand-written and shown as "Notes" in the report. Write the user's context into it when they give
+some ("CAA is managed by the agency", "the banner is Cookiebot's default"); no script writes it.
+
 ## Files
 
 - `scripts/scan.mjs`: CLI, group runner, report.
@@ -93,5 +102,6 @@ naming the check). Copy them into the run's `tasks.json`, merging duplicates.
 - `scripts/lib/tls.mjs`: handshakes, certificate fields, CAA match.
 - `scripts/lib/services.mjs`: RDAP, crt.sh, hstspreload.org.
 - `scripts/lib/checks.mjs`: the five groups.
+- `scripts/lib/target-state.mjs`: target folders and run folders (identical copy in every audit skill; a test compares them).
 - `scripts/lib/common.mjs`: result rows, report folder, Markdown, task candidates (same file as privacy-audit's; keep in step).
 - `scripts/test/`: `cd scripts && node --test test/*.test.mjs`.

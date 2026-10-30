@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { createResolver, apexOf, undot } from './lib/dns.mjs';
 import { SECTIONS, domainChecks, emailChecks, tlsChecks, edgeChecks, ctChecks } from './lib/checks.mjs';
 import { DKIM_SELECTORS } from './lib/email.mjs';
-import { result, countStatuses, resolveOutDir, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, settle, GLYPH } from './lib/common.mjs';
+import { result, countStatuses, prepareRun, finishRun, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, settle, GLYPH } from './lib/common.mjs';
 
 export const VERSION = '1.0.0';
 const UA = `Mozilla/5.0 (compatible; infra-audit/${VERSION})`;
@@ -17,7 +17,8 @@ const USAGE = `infra-audit ${VERSION}: domain, DNS, email, TLS and subdomain aud
 
 Usage: node scan.mjs <url or host> [options]
 
-  --out DIR              Report folder (default <reports>/infra-audit/<host>-<YYYYMMDD-HHMM>/)
+  --out DIR              Run folder (default <reports>/infra-audit/<host>/runs/<YYYYMMDD-HHMM>/)
+  --baseline FILE        Compare with this report.json (default: the last run for this host)
   --email-domain D       Mail domain when it is not the site's registrable domain
   --dkim-selector S      Your provider's DKIM selector (repeatable; added to the common ones)
   --only G,...           Groups: domain email tls edge ct
@@ -37,6 +38,7 @@ export function parseArgs(argv, env = process.env) {
     const next = () => { const v = argv[++i]; if (v === undefined) throw new Error(`${k} needs a value`); return v; };
     if (k === '-h' || k === '--help') a.help = true;
     else if (k === '--out') a.out = next();
+    else if (k === '--baseline') a.baseline = next();
     else if (k === '--email-domain') a.emailDomain = undot(next());
     else if (k === '--dkim-selector') a.selectors.push(...list(next()));
     else if (k === '--only') a.only = list(next());
@@ -130,6 +132,7 @@ export function renderMarkdown(report) {
     for (const r of warns) out.push(`- ⚠️ **${r.title}** — ${r.evidence}${r.fix ? ` → ${r.fix}` : ''}`);
     out.push('');
   }
+  out.push(...carryOverSections(report));
   out.push(...sectionTables(results, SECTIONS));
   out.push('## Not checked here', '', 'Redirects (http→https, www/apex), compression, cache headers, HTTP version, security headers, cookies and exposed files are checked by launch-audit (`redirects`, `caching`, `headers`, `exposed`). This audit only reads public DNS, certificates and registry data: no port scans, no load, no login.', '');
   return out.join('\n');
@@ -148,15 +151,24 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || !args.target) { process.stdout.write(USAGE); process.exit(args.help ? 0 : 2); }
   const { host } = parseTarget(args.target);
-  const dir = resolveOutDir(args.out, { skill: 'infra-audit', name: host });
-  fs.mkdirSync(dir, { recursive: true });
+  const { state, dir, baselineFile, notes } = prepareRun({ skill: 'infra-audit', host, out: args.out, baseline: args.baseline });
   log(`infra-audit ${VERSION}: ${host} -> ${dir}`);
   const report = await run(args);
   report.tasks = taskCandidates(report.results, { source: 'infra', ref: `${path.basename(dir)}/report.md` });
   const files = { md: path.join(dir, 'report.md'), json: path.join(dir, 'report.json') };
+  if (notes) report.notes = notes;
+  if (baselineFile) {
+    try {
+      const prev = JSON.parse(fs.readFileSync(baselineFile, 'utf8'));
+      report.diff = { from: baselineFile, date: prev.generatedAt, ...diffRows(prev.results, report.results) };
+    } catch (e) {
+      report.diff = { from: baselineFile, error: e.message, fixed: [], regressed: [], changed: [] };
+    }
+  }
   fs.writeFileSync(files.md, renderMarkdown(report));
   writeJson(files.json, report);
-  process.stdout.write(`${renderStdout(report, files)}\n`);
+  finishRun(state, report);
+  process.stdout.write(`${renderStdout(report, files)}\nstate:      ${state}\ncompared:   ${baselineFile || 'nothing (first run for this host)'}${notes ? '\nnotes:      notes.md included in the report' : ''}\n`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

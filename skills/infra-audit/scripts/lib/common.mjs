@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from './target-state.mjs';
 
 export const STATUSES = ['pass', 'warn', 'fail', 'info', 'skip'];
 export const GLYPH = { pass: '✅', warn: '⚠️', fail: '❌', info: 'ℹ️', skip: '⏭️' };
@@ -44,12 +45,67 @@ function readText(p) {
   try { return fs.readFileSync(p, 'utf8'); } catch { return null; }
 }
 
-export const stamp = (d = new Date()) => d.toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
+/**
+ * Where this run goes and what it compares with (target-state.mjs layout):
+ *   state    <reports>/<skill>/<host>/            target.txt, notes.md, last-report.json
+ *   dir      <state>/runs/<YYYYMMDD-HHMM>/ or --out (audit-all passes its own run folder)
+ *   baseline --baseline, else the state's last-report.json, else the newest earlier report.json for
+ *            this host under <reports>/<skill> or <reports>/audit-all (runs from before target folders)
+ */
+export function prepareRun({ skill, host, out, baseline }, { home = os.homedir(), cwd = process.cwd(), now = new Date(), root } = {}) {
+  const reports = root || reportsRoot({ home });
+  const state = claimTarget(targetDir({ reports, skill, name: host, owner: host }), host);
+  const dir = out ? markRun(path.resolve(cwd, expandHome(out, home)), { skill, target: host }) : newRun(state, { now, info: { skill, target: host } });
+  let baselineFile = null;
+  if (baseline) baselineFile = path.resolve(cwd, expandHome(baseline, home));
+  else if (fs.existsSync(path.join(state, 'last-report.json'))) baselineFile = path.join(state, 'last-report.json');
+  else baselineFile = findEarlier([path.join(reports, skill), path.join(reports, 'audit-all')], 'report.json', (j) => j?.tool === skill && j.target?.host === host, { exclude: dir })[0] || null;
+  return { state, dir, baselineFile, notes: readNotes(state) };
+}
 
-/** `--out` (a leading ~ expanded), else <reportsRoot>/<skill>/<name>-<YYYYMMDD-HHMM>/. */
-export function resolveOutDir(out, { skill, name, home = os.homedir(), now = new Date(), base, cwd = process.cwd() } = {}) {
-  if (out) return path.resolve(cwd, expandHome(out, home));
-  return path.join(base || reportsRoot({ home }), skill, `${String(name || 'site').replace(/[:/\\]/g, '-')}-${stamp(now)}`);
+/** Keep this run as the next run's baseline. */
+export function finishRun(state, report) {
+  fs.writeFileSync(path.join(state, 'last-report.json'), `${JSON.stringify(report)}\n`);
+}
+
+const BAD = new Set(['fail', 'warn']);
+/** diffRows(prevRows, rows) -> { fixed, regressed, changed }, by check id (rows with a subject keyed by both). */
+export function diffRows(prevRows = [], rows = []) {
+  const key = (r) => `${r.id}|${r.subject || ''}`;
+  const before = new Map(prevRows.map((r) => [key(r), r]));
+  const fixed = []; const regressed = []; const changed = [];
+  for (const r of rows) {
+    const was = before.get(key(r))?.status || null;
+    if (was === r.status || r.status === 'skip' || was === 'skip') continue;
+    const row = { id: r.id, title: r.title, was, now: r.status };
+    if (BAD.has(was) && !BAD.has(r.status)) fixed.push(row);
+    else if (BAD.has(r.status) && (!BAD.has(was) || (was === 'warn' && r.status === 'fail'))) regressed.push(row);
+    else if (BAD.has(was) && BAD.has(r.status)) changed.push(row);
+  }
+  const now = new Set(rows.map(key));
+  for (const p of prevRows) if (BAD.has(p.status) && !now.has(key(p))) fixed.push({ id: p.id, title: p.title, was: p.status, now: null });
+  return { fixed, regressed, changed };
+}
+
+/** "Notes" (the hand-written notes.md) and "Since last run" sections, when there is something to show. */
+export function carryOverSections(report) {
+  const out = [];
+  if (report.notes) out.push('## Notes', '', report.notes.trim(), '');
+  const d = report.diff;
+  if (!d) return out;
+  out.push('## Since last run', '', `Compared with \`${d.from}\`${d.date ? ` (${d.date.slice(0, 10)})` : ''}.`, '');
+  if (d.error) { out.push(`Baseline not usable: ${d.error}`, ''); return out; }
+  const list = (title, rows) => {
+    if (!rows.length) return;
+    out.push(`**${title}**`, '');
+    for (const r of rows) out.push(`- ${r.title}: ${r.was || 'new'} → ${r.now || 'no longer checked'}`);
+    out.push('');
+  };
+  list('Fixed', d.fixed);
+  list('New or worse', d.regressed);
+  list('Still open, status changed', d.changed);
+  if (!d.fixed.length && !d.regressed.length && !d.changed.length) out.push('No check changed status.', '');
+  return out;
 }
 
 // ---- Markdown

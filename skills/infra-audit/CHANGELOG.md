@@ -14,3 +14,4 @@ All notable changes to the `infra-audit` skill. Format follows [Keep a Changelog
 - Subdomains from Certificate Transparency (crt.sh): dangling CNAMEs with takeover-prone services as blockers, broken certificates, hosts without https when HSTS includeSubDomains would lock them out, CAs outside CAA.
 - Detects TLS interception (the received certificate is not in CT logs) and marks the certificate rows as skipped instead of reporting the proxy's certificate.
 - `report.json` carries task candidates in audit-all's tasks.json shape.
+- A target folder per host (`<reports>/infra-audit/<host>/` with `target.txt`, `notes.md`, `last-report.json`) and one run folder per run under `runs/`. Each run compares with the last one ("Since last run") and shows `notes.md`; `--baseline` picks another report.

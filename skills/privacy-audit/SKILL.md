@@ -46,7 +46,8 @@ node "${CLAUDE_SKILL_DIR}/scripts/scan.mjs" <url> [flags]
 | `--lang en-GB` | The site picks the banner language from the browser; default Danish (`da-DK`). |
 | `--header "Name: value"` | A WAF bypass rule (see launch-audit). Sent only to the audited host and its www/apex sibling, never to third parties. Also `AUDIT_HEADERS`. |
 | `--no-policy` | Skip opening the policy pages. |
-| `--out DIR` | The user names a folder. Default `<reports>/privacy-audit/<host>-<YYYYMMDD-HHMM>/`, where `<reports>` is `$AUDIT_OUT_DIR`, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. |
+| `--out DIR` | The user names a folder, or audit-all passes its run folder. Default `<reports>/privacy-audit/<host>/runs/<YYYYMMDD-HHMM>/`, where `<reports>` is `$AUDIT_OUT_DIR`, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. Quote the paths printed last. |
+| `--baseline FILE` | Compare with a specific earlier `report.json`. By default the script compares with the last run for the same host. |
 
 **Run it from the EU.** Many consent tools only show the banner to EU visitors. From a US cloud IP
 the banner may be missing and everything may load at once; if `consent.banner` fails on a site that
@@ -102,6 +103,14 @@ when privacy-audit runs, so each finding appears once.
 `owner: "human"` by default). Make one an agent task when the fix is in the repo (the GTM snippet,
 the CMP configuration, a hard-coded pixel, a Google Fonts `<link>`).
 
+## State between runs
+
+Each host has a target folder, `<reports>/privacy-audit/<host>/`, which holds `target.txt`, the last result
+(`last-report.json`) and `notes.md`. Every run compares with that last result, also when audit-all
+passes `--out`, and adds a "Since last run" section (fixed, new or worse). `notes.md` is
+hand-written and shown as "Notes" in the report. Write the user's context into it when they give
+some ("CAA is managed by the agency", "the banner is Cookiebot's default"); no script writes it.
+
 ## Files
 
 - `scripts/scan.mjs`: CLI, the three scenarios, report.
@@ -110,5 +119,6 @@ the CMP configuration, a hard-coded pixel, a Google Fonts `<link>`).
 - `scripts/lib/inpage.mjs`: code that runs in the page: banner finder (shadow DOM too), CMP APIs, page facts.
 - `scripts/lib/classify.mjs`: vendors, cookie families, countries, CMP signatures, Consent Mode parsing.
 - `scripts/lib/analyse.mjs`: turns the scenarios into check rows (pure; tested without a browser).
+- `scripts/lib/target-state.mjs`: target folders and run folders (identical copy in every audit skill; a test compares them).
 - `scripts/lib/common.mjs`: result rows, report folder, Markdown, task candidates (same file as infra-audit's; keep in step).
 - `scripts/test/`: `cd scripts && node --test test/*.test.mjs`.

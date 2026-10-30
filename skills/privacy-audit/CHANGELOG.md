@@ -10,3 +10,4 @@ All notable changes to the `privacy-audit` skill. Format follows [Keep a Changel
 - Checks: consent tool and banner, reject on the first layer, button parity, pre-ticked purposes, Consent Mode v2 defaults, trackers, cookies, storage, embeds and Google Fonts before consent, Consent Mode pings, whether reject is honoured, what accept turns on, third-country vendors, privacy policy link, cookie declaration coverage and personal-data forms.
 - Saves the privacy and cookie policy text for Claude's GDPR Art. 13 review, which the skill adds to the report.
 - `report.json` carries task candidates in audit-all's tasks.json shape.
+- A target folder per host (`<reports>/privacy-audit/<host>/` with `target.txt`, `notes.md`, `last-report.json`) and one run folder per run under `runs/`. Each run compares with the last one ("Since last run") and shows `notes.md`; `--baseline` picks another report.

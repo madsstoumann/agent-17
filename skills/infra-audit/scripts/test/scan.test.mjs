@@ -7,7 +7,9 @@ import { spfTree, judgeSpf, dmarc, dkimKeyBits, stsCovers } from '../lib/email.m
 import { sanCovers, caaAllows, daysLeft } from '../lib/tls.mjs';
 import { parseCrtSh, parseRdap, normSerial } from '../lib/services.mjs';
 import { detectCdn, domainChecks, emailChecks } from '../lib/checks.mjs';
-import { reportsRoot, resolveOutDir, taskCandidates, result } from '../lib/common.mjs';
+import fs from 'node:fs';
+import os from 'node:os';
+import { reportsRoot, prepareRun, finishRun, diffRows, carryOverSections, taskCandidates, result } from '../lib/common.mjs';
 import { parseArgs, parseTarget, siblingOf, markIntercepted, renderMarkdown, run } from '../scan.mjs';
 
 /** A resolver over a fixed zone: { 'name TYPE': [data] }, NXDOMAIN for names not in it. */
@@ -211,11 +213,40 @@ test('markIntercepted turns certificate rows into skips', () => {
   assert.deepEqual(rows.map((r) => r.status), ['skip', 'warn', 'warn']);
 });
 
-test('report folder: --out, AUDIT_OUT_DIR, Downloads, ~/audit-reports', () => {
+test('report folder root: AUDIT_OUT_DIR, Downloads, ~/audit-reports', () => {
   const home = '/home/u';
   assert.equal(reportsRoot({ env: { AUDIT_OUT_DIR: '~/r' }, home }), path.resolve('/home/u/r'));
   assert.equal(reportsRoot({ env: {}, home, isDir: (p) => p === '/home/u/Downloads', readFile: () => null }), '/home/u/Downloads');
   assert.equal(reportsRoot({ env: {}, home, isDir: () => false, readFile: () => null }), '/home/u/audit-reports');
-  assert.equal(resolveOutDir(null, { skill: 'infra-audit', name: 'x.dk', base: '/r', now: new Date('2026-10-30T09:27:00Z') }), '/r/infra-audit/x.dk-20261030-0927');
-  assert.equal(resolveOutDir('~/out', { home, cwd: '/' }), '/home/u/out');
+});
+
+test('prepareRun: target folder, runs/<stamp>, notes and the last report as baseline', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'infra-state-'));
+  const now = new Date(2026, 9, 30, 9, 27);
+  const first = prepareRun({ skill: 'infra-audit', host: 'x.dk' }, { root, now });
+  assert.equal(first.state, path.join(root, 'infra-audit', 'x.dk'));
+  assert.equal(first.dir, path.join(first.state, 'runs', '20261030-0927'));
+  assert.ok(fs.existsSync(path.join(first.dir, '.audit-run')));
+  assert.equal(fs.readFileSync(path.join(first.state, 'target.txt'), 'utf8').trim(), 'x.dk');
+  assert.equal(first.baselineFile, null);
+  finishRun(first.state, { tool: 'infra-audit', results: [] });
+  fs.writeFileSync(path.join(first.state, 'notes.md'), 'CAA is managed by the agency.\n');
+  const out = path.join(root, 'audit-all', 'x.dk', 'runs', '1', 'infra-audit');
+  const second = prepareRun({ skill: 'infra-audit', host: 'x.dk', out }, { root, now });
+  assert.equal(second.dir, out);
+  assert.ok(fs.existsSync(path.join(out, '.audit-run')));
+  assert.equal(second.baselineFile, path.join(first.state, 'last-report.json'));
+  assert.match(second.notes, /agency/);
+});
+
+test('diffRows and carryOverSections', () => {
+  const prev = [result('dns.caa', 'warn', 'CAA', ''), result('email.spf', 'pass', 'SPF', ''), result('tls.expiry', 'fail', 'Expiry', '')];
+  const now = [result('dns.caa', 'pass', 'CAA', ''), result('email.spf', 'fail', 'SPF', '')];
+  const d = diffRows(prev, now);
+  assert.deepEqual(d.fixed.map((r) => r.id), ['dns.caa', 'tls.expiry']);
+  assert.deepEqual(d.regressed.map((r) => r.id), ['email.spf']);
+  const md = carryOverSections({ notes: 'Hello', diff: { from: 'last-report.json', date: '2026-10-29T10:00:00Z', ...d } }).join('\n');
+  assert.match(md, /## Notes\n\nHello/);
+  assert.match(md, /## Since last run/);
+  assert.match(md, /SPF: pass → fail/);
 });
