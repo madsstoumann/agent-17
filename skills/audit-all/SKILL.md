@@ -46,9 +46,17 @@ other way, invoke them by name instead (`skills:launch-audit` in the plugin, `la
 
 ## 1a. Ask before starting
 
-Unless flags already settle it (below), ask once, before creating the run folder, with **one**
-`AskUserQuestion` call. Keep it to two screens. The tool allows at most four options per
-question, has no pre-ticked boxes and always adds an "Other" row that cannot be removed, so:
+Unless flags already settle it (below), ask before creating the run folder, with
+`AskUserQuestion`. The tool allows at most four options per question, has no pre-ticked boxes
+and always adds an "Other" row that cannot be removed.
+
+**First, one question** (single choice, header "Audits"), two options:
+
+- "All": "Run all eight audits."
+- "Customize": "Pick which audits to run."
+
+"All" runs all eight and asks nothing more. "Customize" asks the **two picker questions** in one
+second call:
 
 1. **Audits 1/2** (multi-select, header "Audits 1/2"): Accessibility, Infrastructure, Launch,
    Privacy.
@@ -64,19 +72,21 @@ search: crawl, sitemap, structured data, llms.txt"; and so on).
 The **live URL rides in the first question's text**, so it needs no screen of its own, and
 "Other" becomes the place to change it:
 
-- One URL detected or given: "Which audits on glyptoteket.dk? Type a different URL, or 'no site',
-  under Other."
-- None detected: "No live URL found. Type it under Other to run the site audits; without one only
-  Security and Solution health run."
-- Two or more candidates: add a third question before the two, header "Site", single choice:
-  up to three candidates (likeliest first, "(Recommended)") plus "No site: code audits only".
+- One URL detected or given: "Run every audit on glyptoteket.dk, or pick? Type a different URL,
+  or 'no site', under Other." A URL typed under Other replaces the detected one; then ask the
+  All/Customize question again with the new URL in it.
+- None detected: "No live URL found. Type it under Other to include the site audits, or choose
+  All or Customize for the code audits only."
+- Two or more candidates: ask a "Site" question first, single choice: up to three candidates
+  (likeliest first, "(Recommended)") plus "No site: code audits only".
 
-Use the second question's "Other" for anything else the user types ("also ~/code/shop-api",
-"sans style") and read it as part of the request. Leave out an option that cannot run (Security
-and Solution health with no repo); if that leaves a question with fewer than two options, fold
-the rest into the other question. When a re-run finds a previous run (a
-`<reports>/audit-all/<name>/runs/` folder; `--new` in step 2 prints the same one), mark the
-audits that ran last time as "(Recommended)" instead, and say so in the question text.
+Use the second picker's "Other" for anything else the user types ("also ~/code/shop-api", "sans
+style") and read it as part of the request. Leave out an option that cannot run (the site
+audits with no site, Security and Solution health with no repo); if that leaves a question with
+fewer than two options, fold the rest into the other question, and "All" means all that can run.
+When a re-run finds a previous run (a `<reports>/audit-all/<name>/runs/` folder; `--new` in step
+2 prints the same one), say in the first question which audits ran last time ("Last time:
+Launch, Privacy, Security") and mark those "(Recommended)" in the pickers instead.
 
 Read the answers literally: what is ticked runs, what is not is skipped. If every audit ends up
 unticked, say so and stop. Repeat the final list in one line ("Running Infrastructure, Launch,
@@ -86,12 +96,12 @@ may still ask their own questions.
 **Flags answer the questions,** so scripted runs and audit-fix never stop to ask. Only what is
 still open is asked:
 
-- `--yes` (or `-y`, "no questions", "just run it"): the default set, the detected URL (the first
+- `--yes` (or `-y`, "no questions", "just run it"): the default set (not All), the detected URL (the first
   candidate; none found means no site audits, said in the summary).
 - `--only`, `--skip` or `--add` settle what to run, and `--url` or `--no-site` settle where. Given
   one of each, nothing is asked. Given only what to run, ask for the URL in one plain line when
-  none was detected (not at all when only code audits were picked); given only where, ask the two
-  audit questions.
+  none was detected (not at all when only code audits were picked); given only where, ask the
+  All/Customize question.
 - The audit list and URL spelled out in the request ("audit-all https://shop.example.dk, only
   launch and security").
 - No `AskUserQuestion` tool (claude.ai, `claude -p`, a subagent, or audit-fix re-running the
