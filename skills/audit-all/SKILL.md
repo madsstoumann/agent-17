@@ -1,15 +1,15 @@
 ---
 name: audit-all
 description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, accessibility, SEO, carbon footprint, privacy and consent, domain and mail infrastructure, code security and dependency health. Runs launch-audit, a11y-audit (WCAG 2.2 / EN 301 549), seo-audit, eco-audit, privacy-audit and infra-audit on the live URL, security-audit and solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing launch-audit, a11y-audit, seo-audit, eco-audit, privacy-audit, infra-audit, security-audit or solution-health reports into one.
-argument-hint: "[url] [repo path ...] [--style serif|sans] [--out DIR] [--skip launch,a11y,seo,eco,privacy,infra,security,health]"
-allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
+argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add launch,a11y,seo,eco,privacy,infra,security,health] [--yes] [--style serif|sans] [--out DIR]"
+allowed-tools: AskUserQuestion, Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # Audit all
 
-One run folder, six audits, one report. This skill does not check anything itself: it runs the
+One run folder, up to eight audits, one report. This skill does not check anything itself: it runs the
 sibling skills (launch-audit, a11y-audit, seo-audit, eco-audit, privacy-audit, infra-audit, security-audit, solution-health), each writing its own `report.md`
 as usual, then you write a short `summary.md` and `scripts/combine.mjs` merges everything into a
 combined `report.md`, a self-contained `report.html` and a typeset `report.pdf`. You also write
@@ -22,17 +22,69 @@ other way, invoke them by name instead (`skills:launch-audit` in the plugin, `la
 
 ## 1. Work out the targets
 
-- **Site URL** for launch-audit, a11y-audit, seo-audit, eco-audit, privacy-audit and infra-audit. If the user named one, use it. Otherwise look in each repo for the
-  live URL: `package.json` `homepage`, a `CNAME` file, the site URL in `nuxt.config.*`,
-  `next.config.*`, `astro.config.*` or `.env.production`, Umbraco `appsettings.Production.json`,
-  then the README. One candidate: ask the user once to confirm it. None: ask for one, and accept
-  "no site" to skip the site audits. Staging URLs are fine; launch-audit works out the environment.
+- **Site URL** for launch-audit, a11y-audit, seo-audit, eco-audit, privacy-audit and infra-audit.
+  `--url URL` or a URL in the request wins. Otherwise look in each repo for the live URL:
+  `package.json` `homepage`, a `CNAME` file, the site URL in `nuxt.config.*`, `next.config.*`,
+  `astro.config.*` or `.env.production`, Umbraco `appsettings.Production.json`, then the README.
+  The candidates you find are the defaults for the URL question in step 1a; confirm once, never
+  more. `--no-site` (or "no site", "just the code") skips the site audits. Staging URLs are fine;
+  launch-audit works out the environment.
 - **Repos** for security-audit and solution-health. Default: the current directory when it is a
   repo root (has `.git`). The user can name several ("audit-all ~/code/shop-web ~/code/shop-api
   https://shop.example.dk"); each gets its own run of both.
-- **Skips.** "only launch and security", "--skip health", "no SEO", "skip the carbon check" and the like drop an audit (`launch`, `a11y`, `seo`, `eco`, `privacy`, `infra`, `security`, `health`).
+- **Audits.** Names: `launch`, `a11y`, `seo`, `eco`, `privacy`, `infra`, `security`, `health`.
+  The **default set** is `launch`, `privacy`, `infra`, `security` and `health`; `a11y`, `seo` and
+  `eco` are opt-in (they are slower and their findings are mostly design and content work).
+  `--only a11y,seo` runs exactly those, `--skip health` drops one from the default set and
+  `--add seo` adds an opt-in one. "only launch and security", "also check accessibility", "no
+  SEO", "skip the carbon check" and the like mean the same; "everything" or `--only all` runs all
+  eight.
 - **Style.** `--style serif` (default, Newsreader) or `--style sans` (IBM Plex Sans). "sans",
   "sans-serif", "plain" or "classic look" mean sans.
+
+## 1a. Ask before starting
+
+Unless the run is non-interactive (below), ask once, before creating the run folder, with **one**
+`AskUserQuestion` call holding up to four questions. The tool shows at most four options per
+question and has no pre-ticked boxes, so the default set is split out as its own question and
+marked "(Recommended)":
+
+1. **Live URL** (single choice, header "Site"), only when a site audit could run and the URL was
+   not given: up to three detected candidates, the likeliest first and marked "(Recommended)",
+   plus "No site: code audits only". The user types a different URL under "Other". When nothing
+   was detected, skip this question and ask for the URL in a plain message first (accept "no site").
+2. **Site audits** (multi-select, header "Site audits"): "Launch readiness (Recommended)",
+   "Privacy and consent (Recommended)", "Domain, DNS, mail and TLS (Recommended)". Leave out when
+   there is no site.
+3. **Optional site audits** (multi-select, header "Extras"): "Accessibility (WCAG 2.2)", "SEO",
+   "Carbon footprint". None are recommended. Leave out when there is no site.
+4. **Code audits** (multi-select, header "Code"): "Security (Recommended)", "Dependency health
+   (Recommended)". Leave out when there is no repo. Name the repos in the question when there are
+   several ("Code audits for shop-web and shop-api?").
+
+Each option gets a one-line description of what that audit checks. When a re-run finds a previous
+run (a `<reports>/audit-all/<name>/runs/` folder; `--new` in step 2 prints the same one), use the
+audits that ran last time (its sub-folders) as the recommended ones instead, and say so in the
+question.
+
+Read the answers literally: what is ticked runs, what is not is skipped. A question answered with
+nothing ticked skips that group. If every audit ends up unticked, say so and stop. Repeat the final
+list in one line ("Running launch, privacy, infra, security and health on glyptoteket.dk") and
+carry on without asking again; later steps (solution-health's manifest, security-audit's triage)
+may still ask their own questions.
+
+**Flags answer the questions,** so scripted runs and audit-fix never stop to ask. Only what is
+still open is asked:
+
+- `--yes` (or `-y`, "no questions", "just run it"): the default set, the detected URL (the first
+  candidate; none found means no site audits, said in the summary).
+- `--only`, `--skip` or `--add` settle what to run, and `--url` or `--no-site` settle where. Given
+  one of each, nothing is asked. Given only what to run, ask just the URL question (not at all
+  when only code audits were picked); given only where, ask just the audit questions.
+- The audit list and URL spelled out in the request ("audit-all https://shop.example.dk, only
+  launch and security").
+- No `AskUserQuestion` tool (claude.ai, `claude -p`, a subagent, or audit-fix re-running the
+  audits): use the flags and defaults, and list what ran and what was skipped in summary.md.
 
 ## 2. Create the run folder
 
@@ -228,7 +280,9 @@ To change only the look, run `combine.mjs` again with the other `--style`; nothi
 
 ## Re-running
 
-"Run it again after the fixes": create a new run folder with the same name and repeat. Every audit
+"Run it again after the fixes": create a new run folder with the same name and repeat. The
+questions in step 1a recommend the audits that ran last time; "same as last time" or `--yes`
+with the same `--only` skips them. Every audit
 compares with its last run by itself (launch-audit and security-audit from their target folders,
 solution-health from its state), and `--new` names the previous audit-all run for the "Since last
 run" section.
