@@ -1,7 +1,7 @@
 ---
 name: audit-all
 description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, accessibility, SEO and AI search (GEO), sustainability (carbon footprint), privacy and consent, domain and mail infrastructure, code security and dependency health. Runs launch-audit, a11y-audit (WCAG 2.2 / EN 301 549), seo-audit, eco-audit, privacy-audit and infra-audit on the live URL, security-audit and solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing launch-audit, a11y-audit, seo-audit, eco-audit, privacy-audit, infra-audit, security-audit or solution-health reports into one.
-argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--yes] [--style serif|sans] [--out DIR]"
+argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--yes] [--style serif|sans|editorial|modern] [--out DIR]"
 allowed-tools: AskUserQuestion, Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
   version: "1.7.0"
@@ -41,8 +41,9 @@ other way, invoke them by name instead (`skills:launch-audit` in the plugin, `la
   exactly those, `--skip health` drops one from the default set and `--add seo` adds an opt-in
   one. "only launch and security", "also check accessibility", "no SEO", "skip the carbon check"
   and the like mean the same; "everything" or `--only all` runs all eight.
-- **Style.** `--style serif` (default, Newsreader) or `--style sans` (IBM Plex Sans). "sans",
-  "sans-serif", "plain" or "classic look" mean sans.
+- **Look.** Two report styles: **Editorial** (`--style serif`, the default: Newsreader, like a
+  printed report) and **Modern** (`--style sans`: IBM Plex Sans, like a web page). "editorial",
+  "serif" or "print" mean serif; "modern", "sans", "sans-serif" or "plain" mean sans.
 
 ## 1a. Ask before starting
 
@@ -54,6 +55,10 @@ and always adds an "Other" row that cannot be removed.
 
 - "All": "Run all eight audits."
 - "Customize": "Pick which audits to run."
+
+In the same call, unless `--style` or the request settles it, a second question (single choice,
+header "Look"): "Editorial (Recommended)": "Serif type, like a printed report" and "Modern":
+"Sans-serif type, like a web page". It shows as a second tab, so the "All" path is two clicks.
 
 "All" runs all eight and asks nothing more. "Customize" asks the **two picker questions** in one
 second call:
@@ -80,7 +85,8 @@ The **live URL rides in the first question's text**, so it needs no screen of it
 - Two or more candidates: ask a "Site" question first, single choice: up to three candidates
   (likeliest first, "(Recommended)") plus "No site: code audits only".
 
-Use the second picker's "Other" for anything else the user types ("also ~/code/shop-api", "sans
+Read "Other" on the Look question as a style wish and map it to the nearest of the two. Use the
+second picker's "Other" for anything else the user types ("also ~/code/shop-api", "sans
 style") and read it as part of the request. Leave out an option that cannot run (the site
 audits with no site, Security and Solution health with no repo); if that leaves a question with
 fewer than two options, fold the rest into the other question, and "All" means all that can run.
@@ -96,7 +102,7 @@ may still ask their own questions.
 **Flags answer the questions,** so scripted runs and audit-fix never stop to ask. Only what is
 still open is asked:
 
-- `--yes` (or `-y`, "no questions", "just run it"): the default set (not All), the detected URL (the first
+- `--yes` (or `-y`, "no questions", "just run it"): the default set (not All), Editorial, the detected URL (the first
   candidate; none found means no site audits, said in the summary).
 - `--only`, `--skip` or `--add` settle what to run, and `--url` or `--no-site` settle where. Given
   one of each, nothing is asked. Given only what to run, ask for the URL in one plain line when
@@ -297,7 +303,7 @@ The PDF is printed by headless Chrome, Chromium or Edge (installed apps, `CHROME
 PATH`, or Playwright's Chromium). With no browser it still writes `report.html` and says so; tell
 the user to open it and print to PDF. `--no-pdf` skips the PDF.
 
-To change only the look, run `combine.mjs` again with the other `--style`; nothing else re-runs.
+To change only the look, run `combine.mjs` again with the other `--style` (Editorial is `serif`, Modern is `sans`); nothing else re-runs.
 
 ## Re-running
 

@@ -86,7 +86,8 @@ Notes:
 found in the repo named in the question (type another one under "Other"). Customize shows two
 screens of four: Accessibility, Infrastructure, Launch, Privacy, then Security, SEO / GEO,
 Solution health, Sustainability. Infrastructure, Launch, Privacy, Security and Solution health
-are recommended; Accessibility, SEO / GEO and Sustainability are opt-in. Flags skip the questions:
+are recommended; Accessibility, SEO / GEO and Sustainability are opt-in. It also asks for the
+report's look: Editorial (serif, like a printed report) or Modern (sans-serif). Flags skip the questions:
 
 ```text
 /skills:audit-all https://shop.example.dk --yes               # default audits, no questions

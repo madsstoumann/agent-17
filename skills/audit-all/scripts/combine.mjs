@@ -30,7 +30,7 @@ Usage:
                                        (and, on stderr, the previous run of <name>, to compare with)
 
 Flags:
-  --style serif|sans   Typeface for the HTML and PDF (default serif).
+  --style serif|sans   Typeface for the HTML and PDF (default serif). Also editorial (= serif), modern (= sans).
   --repo PATH          Copy PATH's solution-health report (<reports>/solution-health/<repo name>/report.md,
                        or PATH/.solution-health/report.md for --in-repo setups) into <run-dir>/solution-health-<repo name>/ first.
                        Repeat for several repos.
@@ -40,7 +40,7 @@ Flags:
 <reports> is $AUDIT_OUT_DIR, else the Downloads folder if it exists (XDG download folder on Linux), else ~/audit-reports.
 `;
 
-const STYLES = { serif: 'serif', sans: 'sans' };
+const STYLES = { serif: 'serif', sans: 'sans', editorial: 'serif', modern: 'sans' };
 
 export function parseArgs(argv) {
   const a = { dir: null, style: 'serif', repos: [], pdf: true, chrome: null, newName: null, help: false };
@@ -50,7 +50,7 @@ export function parseArgs(argv) {
     if (v === '--help' || v === '-h') a.help = true;
     else if (v === '--style' || v.startsWith('--style=')) {
       const s = (v.includes('=') ? v.split('=')[1] : next()).toLowerCase();
-      if (!STYLES[s]) throw new Error(`Unknown style "${s}". Styles: serif, sans`);
+      if (!STYLES[s]) throw new Error(`Unknown style "${s}". Styles: serif (editorial), sans (modern)`);
       a.style = STYLES[s];
     } else if (v === '--repo') a.repos.push(next());
     else if (v === '--no-pdf') a.pdf = false;

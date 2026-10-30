@@ -139,6 +139,8 @@ test('parseArgs: style, repos, flags', () => {
   const a = parseArgs(['/run', '--style', 'sans', '--repo', 'a', '--repo', 'b', '--no-pdf']);
   assert.deepEqual([a.dir, a.style, a.repos, a.pdf], ['/run', 'sans', ['a', 'b'], false]);
   assert.equal(parseArgs(['x', '--style=serif']).style, 'serif');
+  assert.equal(parseArgs(['x', '--style', 'Modern']).style, 'sans');
+  assert.equal(parseArgs(['x', '--style=editorial']).style, 'serif');
   assert.throws(() => parseArgs(['--style', 'comic']), /Unknown style/);
   assert.throws(() => parseArgs(['--nope']), /Unknown option/);
 });
