@@ -3,6 +3,7 @@
  * (dev / staging / production) and where the report goes.
  */
 import { parseArgs } from 'node:util';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { normaliseUrl, isPrivateHost, hostOf, stripWww, VERSION } from './http.mjs';
@@ -178,12 +179,38 @@ function expandHome(p, home) {
 }
 
 /**
- * Where the files go. resolveOut({ out, host }, { now, home, cwd })
+ * The folder reports go under when no --out is given. First match wins:
+ * 1. AUDIT_OUT_DIR, 2. the Downloads folder if it exists and is writable (on Linux the XDG
+ * download folder from XDG_DOWNLOAD_DIR or ~/.config/user-dirs.dirs, then ~/Downloads),
+ * 3. ~/audit-reports. Works the same on macOS, Windows and Linux.
+ */
+export function reportsRoot({ env = process.env, home = os.homedir(), isDir = writableDir, readFile = readText } = {}) {
+  if (env.AUDIT_OUT_DIR) return path.resolve(expandHome(env.AUDIT_OUT_DIR, home));
+  const xdg = env.XDG_DOWNLOAD_DIR || xdgDownloadDir(readFile(path.join(env.XDG_CONFIG_HOME || path.join(home, '.config'), 'user-dirs.dirs')));
+  const candidates = [xdg && path.resolve(expandHome(xdg.replace(/^\$HOME(?=$|\/)/, home), home)), path.join(home, 'Downloads')].filter(Boolean);
+  return candidates.find((p) => isDir(p)) || path.join(home, 'audit-reports');
+}
+
+function xdgDownloadDir(text) {
+  const m = String(text || '').match(/^\s*XDG_DOWNLOAD_DIR\s*=\s*"?([^"\n]+)"?/m);
+  return m ? m[1].trim() : null;
+}
+
+function writableDir(p) {
+  try { fs.accessSync(p, fs.constants.W_OK); return fs.statSync(p).isDirectory(); } catch { return false; }
+}
+
+function readText(p) {
+  try { return fs.readFileSync(p, 'utf8'); } catch { return null; }
+}
+
+/**
+ * Where the files go. resolveOut({ out, host }, { now, home, cwd, root })
  *   -> { dir, reportMd, reportJson, rawDir, mode: 'dir' | 'file' }
- * A folder (default ~/Downloads/launch-audit/<host>-<stamp>/) holds report.md, report.json and the raw JSON;
+ * A folder (default <reportsRoot>/launch-audit/<host>-<stamp>/) holds report.md, report.json and the raw JSON;
  * a path ending in .md is the report itself, with <name>.json and <name>-raw/ beside it.
  */
-export function resolveOut({ out, host }, { now = new Date(), home = os.homedir(), cwd = process.cwd() } = {}) {
+export function resolveOut({ out, host }, { now = new Date(), home = os.homedir(), cwd = process.cwd(), root } = {}) {
   if (out && /\.md$/i.test(out)) {
     const reportMd = path.resolve(cwd, expandHome(out, home));
     const base = reportMd.replace(/\.md$/i, '');
@@ -192,7 +219,7 @@ export function resolveOut({ out, host }, { now = new Date(), home = os.homedir(
   const safeHost = String(host || 'site').replace(/[:/\\]/g, '-');
   const dir = out
     ? path.resolve(cwd, expandHome(out, home))
-    : path.join(home, 'Downloads', 'launch-audit', `${safeHost}-${stamp(now)}`);
+    : path.join(root || reportsRoot({ home }), 'launch-audit', `${safeHost}-${stamp(now)}`);
   return { mode: 'dir', dir, reportMd: path.join(dir, 'report.md'), reportJson: path.join(dir, 'report.json'), rawDir: dir };
 }
 
@@ -209,7 +236,8 @@ Usage: node audit.mjs <url> [flags]
   --max-pages N                  Crawl bound (default ${DEFAULTS.maxPages}).   --max-external N   External links checked (default ${DEFAULTS.maxExternal}).
   --skip a,b / --only a,b        Group or check ids: crawl redirects notfound tls dns email exposed headers caching perf a11y privacy links social icons ops.
   --lighthouse local|psi|off     Default: psi when PSI_API_KEY is set, else local (npx lighthouse + Chrome).
-  --out PATH                     Folder for report.md + report.json + raw JSON (default ~/Downloads/launch-audit/<host>-<stamp>/),
+  --out PATH                     Folder for report.md + report.json + raw JSON (default <reports>/launch-audit/<host>-<stamp>/,
+                                 where <reports> is $AUDIT_OUT_DIR, else Downloads, else ~/audit-reports),
                                  or a path ending in .md (JSON and raw files land beside it).
   --baseline FILE                A previous report.json; adds a "Since last run" section.
   --insecure                     Accept a self-signed certificate (local sites).

@@ -6,6 +6,7 @@ All notable changes to the `security-audit` skill. Format follows [Keep a Change
 
 ### Changed
 - Semgrep runs on every audit when it is installed (OWASP Top Ten and secrets rulesets, saved as `semgrep.json` beside `findings.json`), instead of being optional. When it is missing, the report says so under "Not checked" with the install command.
+- The default report folder no longer assumes `~/Downloads`. It is `$AUDIT_OUT_DIR` if set, else the Downloads folder if it exists and is writable (on Linux the XDG download folder first), else `~/audit-reports/`. The same order is used by launch-audit and audit-all.
 
 ### Fixed
 - `--out ~/…` now expands `~` to the home folder instead of creating a folder literally named `~` under the current directory.

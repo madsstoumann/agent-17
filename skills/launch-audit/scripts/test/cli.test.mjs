@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { parseCli, detectEnv, normaliseEnv, isStagingHost, resolveOut, usage, DEFAULTS } from '../lib/cli.mjs';
+import { parseCli, detectEnv, normaliseEnv, isStagingHost, resolveOut, reportsRoot, usage, DEFAULTS } from '../lib/cli.mjs';
 
 test('parseCli applies defaults and normalises the URL', () => {
   const r = parseCli(['example.com/a'], {});
@@ -66,7 +66,7 @@ test('isStagingHost and detectEnv', () => {
 
 test('resolveOut: default folder under Downloads, explicit folder, explicit .md file', () => {
   const now = new Date('2026-09-24T08:05:00');
-  const d = resolveOut({ out: null, host: 'localhost:44380' }, { now, home: '/Users/me', cwd: '/tmp' });
+  const d = resolveOut({ out: null, host: 'localhost:44380' }, { now, home: '/Users/me', cwd: '/tmp', root: '/Users/me/Downloads' });
   assert.equal(d.dir, '/Users/me/Downloads/launch-audit/localhost-44380-20260924-0805');
   assert.equal(d.reportMd, path.join(d.dir, 'report.md'));
   assert.equal(d.reportJson, path.join(d.dir, 'report.json'));
@@ -85,4 +85,14 @@ test('usage mentions every flag', () => {
   for (const f of ['--env', '--production-host', '--pages', '--max-pages', '--skip', '--only', '--lighthouse', '--out', '--baseline', '--insecure', '--email-domain', '--ssllabs', '--no-remote', '--strict', '--json', '--quiet']) {
     assert.ok(u.includes(f), f);
   }
+});
+
+test('reportsRoot: AUDIT_OUT_DIR, then XDG download dir, then ~/Downloads, then ~/audit-reports', () => {
+  const home = '/home/me';
+  const has = (...dirs) => (p) => dirs.includes(p);
+  assert.equal(reportsRoot({ env: { AUDIT_OUT_DIR: '~/reports' }, home, isDir: has() }), '/home/me/reports');
+  assert.equal(reportsRoot({ env: {}, home, isDir: has('/home/me/Downloads') , readFile: () => null }), '/home/me/Downloads');
+  assert.equal(reportsRoot({ env: {}, home, isDir: has('/home/me/Hentet', '/home/me/Downloads'), readFile: () => 'XDG_DOWNLOAD_DIR="$HOME/Hentet"\n' }), '/home/me/Hentet');
+  assert.equal(reportsRoot({ env: { XDG_DOWNLOAD_DIR: '/data/dl' }, home, isDir: has('/data/dl'), readFile: () => null }), '/data/dl');
+  assert.equal(reportsRoot({ env: {}, home, isDir: has(), readFile: () => null }), '/home/me/audit-reports');
 });

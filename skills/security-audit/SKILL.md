@@ -40,7 +40,7 @@ finds; non-zero means the scanner itself failed.
 | `--only` / `--skip` | Narrow questions: "just secrets" → `--only secrets`; "only dependencies" → `--only deps`. Groups: `deps secrets xss injection request crypto config ci`. |
 | `--offline` | No network: lists lockfiles and package counts but skips OSV. Say so in the report. |
 | `--no-tests` | The user wants production code only. By default hits in test, fixture, example and docs paths are kept and tagged `[test]`. |
-| `--out DIR` | The user names where the report goes. Default `~/Downloads/security-audit/<folder>-<stamp>/`. Do not write into the repo unless asked: the report may describe live secrets. |
+| `--out DIR` | The user names where the report goes. Default `<reports>/security-audit/<folder>-<stamp>/`, where `<reports>` is `$AUDIT_OUT_DIR` if set, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. Do not write into the repo unless asked: the report may describe live secrets. |
 | `--max N` | Hits printed per rule (default 6). `findings.json` always has every hit. |
 
 ## Triage
