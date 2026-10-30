@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import {
+  blockedStatus,
   SEO_NOINDEX_AUDITS, compareVersions, findChrome, checkLocalLighthouse, buildLighthouseArgs,
   runLighthouseLocal, runPsi, summariseLhr, pickPerfPages, cwvRating, scoreVerdict,
 } from '../lib/lighthouse.mjs';
@@ -61,7 +62,7 @@ test('scoreVerdict maps a 0-100 score to pass/warn/fail', () => {
 // ---------------------------------------------------------------- local Lighthouse plumbing
 
 test('buildLighthouseArgs produces the exact mobile argv', () => {
-  assert.deepEqual(buildLighthouseArgs({ url: 'https://browser.style/', file: '/tmp/out.json' }), [
+  assert.deepEqual(buildLighthouseArgs({ url: 'https://browser.style/', file: '/tmp/out.json', root: false }), [
     'https://browser.style/',
     '--output=json',
     '--output-path=/tmp/out.json',
@@ -73,8 +74,26 @@ test('buildLighthouseArgs produces the exact mobile argv', () => {
   ]);
 });
 
+test('buildLighthouseArgs merges --header values into --extra-headers', () => {
+  const args = buildLighthouseArgs({ url: 'https://a.dk/', file: '/tmp/o.json', headers: { 'x-bypass': 's3cret' } });
+  assert.ok(args.includes('--extra-headers={"X-Audit":"launch-audit/1.0","x-bypass":"s3cret"}'));
+});
+
+test('buildLighthouseArgs adds --no-sandbox when running as root', () => {
+  assert.ok(buildLighthouseArgs({ url: 'https://a.dk/', file: '/tmp/o.json', root: true }).includes('--chrome-flags=--headless=new --no-sandbox'));
+});
+
+test('blockedStatus reads a WAF status from the runtime error or the main document', () => {
+  assert.equal(blockedStatus({ error: 'runtime error ERRORED_DOCUMENT_REQUEST: Lighthouse was unable to reliably load the page you requested. (Status code: 429)' }), 429);
+  assert.equal(blockedStatus({ lhr: { runtimeError: { message: '(Status code: 403)' } } }), 403);
+  assert.equal(blockedStatus({ lhr: { audits: { 'network-requests': { details: { items: [{ resourceType: 'Document', statusCode: 503 }] } } } } }), 503);
+  assert.equal(blockedStatus({ error: '(Status code: 404)' }), null);
+  assert.equal(blockedStatus({ lhr: { audits: { 'network-requests': { details: { items: [{ resourceType: 'Document', statusCode: 200 }] } } } } }), null);
+  assert.equal(blockedStatus({}), null);
+});
+
 test('buildLighthouseArgs adds the desktop preset and the insecure chrome flag, never --only-categories', () => {
-  const args = buildLighthouseArgs({ url: 'https://dev.example.com/', file: '/tmp/d.json', desktop: true, insecure: true });
+  const args = buildLighthouseArgs({ url: 'https://dev.example.com/', file: '/tmp/d.json', desktop: true, insecure: true, root: false });
   assert.equal(args.at(-1), '--preset=desktop');
   assert.ok(args.includes('--chrome-flags=--headless=new --ignore-certificate-errors'));
   assert.ok(!args.some((a) => a.startsWith('--only-categories')), 'all five categories must run');

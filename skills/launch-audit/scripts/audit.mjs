@@ -4,8 +4,9 @@
  *
  *   node audit.mjs <url> [--env dev|staging|production] [--pages N] [--skip a,b] [--out DIR] [--baseline report.json] ...
  *
- * Phases: A bootstrap (start page, robots, sitemap) → B fast groups in parallel →
- * C Lighthouse (sequential) + the groups that read it → D assemble, write, summarise.
+ * Phases: A bootstrap (start page, robots, sitemap) → Lighthouse (sequential, before the
+ * crawl and probes) → B fast groups in parallel → C the groups that read Lighthouse →
+ * D assemble, write, summarise.
  * A failing check never stops the run; a failing group becomes one skip row.
  */
 import fs from 'node:fs/promises';
@@ -13,14 +14,14 @@ import path from 'node:path';
 import dns from 'node:dns/promises';
 
 import { parseCli, resolveOut, usage } from './lib/cli.mjs';
-import { createHttp, curlProbe, isPrivateHost, isPrivateAddress, hostOf, siblingHost, stripWww, VERSION, UA } from './lib/http.mjs';
+import { createHttp, curlProbe, isPrivateHost, isPrivateAddress, hostOf, siblingHost, stripWww, challengeVendor, VERSION, UA } from './lib/http.mjs';
 import { GROUPS, runGroups, filterGroups, applyEnvPolicy, countStatuses, result, isSkipped } from './lib/registry.mjs';
 import { renderMarkdown, renderStdout, buildManualLinks } from './lib/report.mjs';
 import { diffReports } from './lib/diff.mjs';
 import { extractMeta } from './lib/html.mjs';
 import { parseRobotsTxt, loadSitemaps } from './lib/robots.mjs';
 import { followChain } from './lib/redirects.mjs';
-import { checkLocalLighthouse, findChrome, runLighthouseLocal, runPsi, summariseLhr, pickPerfPages } from './lib/lighthouse.mjs';
+import { checkLocalLighthouse, findChrome, runLighthouseLocal, runPsi, summariseLhr, pickPerfPages, blockedStatus } from './lib/lighthouse.mjs';
 
 import crawlability from './lib/groups/01-crawlability.mjs';
 import redirects from './lib/groups/02-redirects.mjs';
@@ -52,10 +53,6 @@ async function resolvedPrivately(hostname) {
   } catch { return false; }
 }
 
-function looksLikeChallenge(status, body) {
-  return (status === 403 || status === 503) && /just a moment|cf-chl|challenge-platform|attention required|access denied|incapsula|akamai/i.test(body || '');
-}
-
 async function main() {
   const parsed = parseCli(process.argv.slice(2));
   if (parsed.help) { process.stdout.write(`${usage()}\n`); process.exit(0); }
@@ -71,7 +68,9 @@ async function main() {
   await fs.mkdir(out.rawDir, { recursive: true });
 
   const log = opts.quiet ? () => {} : (m) => process.stderr.write(`[${elapsed()}s] ${m}\n`);
-  const http = createHttp({ timeout: opts.timeout, ua: opts.ua || UA, from: opts.from, concurrency: opts.concurrency, log: (m) => { if (process.env.LAUNCH_AUDIT_DEBUG) log(m); } });
+  // --header values go to the audited host (and its www/apex sibling) only, never to third-party services.
+  const siteHosts = [opts.host, siblingHost(opts.host)].filter(Boolean);
+  const http = createHttp({ timeout: opts.timeout, ua: opts.ua || UA, from: opts.from, concurrency: opts.concurrency, siteHeaders: opts.headers, siteHosts, log: (m) => { if (process.env.LAUNCH_AUDIT_DEBUG) log(m); } });
 
   // ------------------------------------------------------------------ Phase A
   log(`launch-audit ${VERSION} — ${opts.url} (env: ${opts.env}, ${opts.envSource})`);
@@ -82,12 +81,14 @@ async function main() {
   const finalUrl = chain.final || opts.url;
   const page = await http.get(finalUrl, { redirect: 'follow', maxBytes: 3 * 1024 * 1024 });
   if (page.status === 0) fail(2, `Cannot fetch ${finalUrl}: ${page.error}${/CERT|certificate|self.signed|SELF_SIGNED/i.test(page.error || '') ? '\nSelf-signed certificate? Re-run with --insecure.' : ''}`);
-  if (looksLikeChallenge(page.status, page.body)) {
-    fail(2, `${finalUrl} answered ${page.status} with a bot challenge. Allowlist this machine's IP in the WAF (Cloudflare: disable Bot Fight Mode / add a WAF skip rule for staging) and re-run.`);
+  const challenge = challengeVendor(page.status, page.body, page.headers);
+  if (challenge) {
+    fail(2, `${finalUrl} answered ${page.status} with a ${challenge === 'WAF' ? 'WAF' : challenge} bot challenge. Add a firewall rule that skips the challenge for a secret header (Vercel: Firewall > custom rule > Bypass; Cloudflare: WAF skip rule) and pass it with --header "Name: value", or allowlist this machine's IP, then re-run.`);
   }
   const html = /text\/html|application\/xhtml/i.test(page.contentType) ? (page.body || '') : '';
   const meta = html ? extractMeta(html, finalUrl) : null;
   const u = new URL(finalUrl);
+  for (const h of [u.host.toLowerCase(), siblingHost(u.host.toLowerCase())]) if (h && !siteHosts.includes(h)) siteHosts.push(h);
   const origin = u.origin;
   const host = u.host.toLowerCase();
   const hostname = u.hostname.toLowerCase();
@@ -95,7 +96,7 @@ async function main() {
   const remote = !isPrivate && !opts.noRemote;
   log(`start page ${page.status} ${page.contentType.split(';')[0]} ${(page.bytes / 1024).toFixed(0)} kB${isPrivate ? ' — private host: remote services will be skipped' : ''}`);
 
-  const curl = await curlProbe(finalUrl, { insecure: opts.insecure, timeout: 20000, ua: opts.ua || UA });
+  const curl = await curlProbe(finalUrl, { insecure: opts.insecure, timeout: 20000, ua: opts.ua || UA, headers: opts.headers });
 
   const robotsRes = await http.get(`${origin}/robots.txt`, { redirect: 'follow', maxBytes: 256 * 1024 });
   const robotsText = robotsRes.status === 200 && /text\/plain/i.test(robotsRes.contentType) ? robotsRes.body : (robotsRes.status === 200 && !/<html/i.test(robotsRes.body || '') ? robotsRes.body : '');
@@ -169,14 +170,9 @@ async function main() {
   process.on('SIGTERM', () => onSignal('SIGTERM'));
   process.on('unhandledRejection', (e) => log(`unhandled rejection: ${e?.message || e}`));
 
-  // ------------------------------------------------------------------ Phase B
-  const phaseB = selected.filter((g) => g.phase === 'B');
-  log(`phase B: ${phaseB.map((g) => g.id).join(', ')}`);
-  const b = await runGroups(phaseB, ctx, { log });
-  results.push(...b.results); Object.assign(timings, b.timings);
-  await writeReport(assemble({ partial: true })); partialWritten = true;
-
-  // ------------------------------------------------------------------ Phase C
+  // ------------------------------------------------------------------ Lighthouse
+  // Runs before phase B: the crawl and the exposed-file probes can trip a WAF's rate or bot rules,
+  // and a headless browser that arrives after them gets the challenge a person never sees.
   // Lighthouse runs only when the perf group is selected (--skip perf skips Lighthouse; a11y/privacy then fall back)
   const perfWanted = selected.some((g) => g.id === 'perf') && opts.lighthouse !== 'off';
   ctx.lh = { runner: 'off', version: null, mobile: null, desktop: null, pages: [], errors: [], loadingExperience: null };
@@ -204,7 +200,23 @@ async function main() {
         return summariseLhr(r.lhr, { source: 'psi', strategy, loadingExperience: r.loadingExperience });
       }
       const file = path.join(out.rawDir, `${name}.json`);
-      const r = await runLighthouseLocal({ url, file, desktop: strategy === 'desktop', insecure: opts.insecure, timeout: opts.lhTimeout, chromePath: ctx.chromePath, log });
+      const r = await runLighthouseLocal({ url, file, desktop: strategy === 'desktop', insecure: opts.insecure, headers: opts.headers, timeout: opts.lhTimeout, chromePath: ctx.chromePath, log });
+      const blocked = blockedStatus(r);
+      if (blocked) {
+        const probe = await http.get(url, { maxBytes: 256 * 1024 });
+        const vendor = challengeVendor(probe.status, probe.body, probe.headers) || challengeVendor(blocked, '', {}) || 'the site\'s firewall';
+        const what = `${vendor === 'WAF' ? 'a WAF' : vendor} bot challenge (HTTP ${blocked})`;
+        log(`lighthouse ${name}: blocked by ${what}`);
+        ctx.lh.blocked = what;
+        if (opts.psiKey && !isPrivate) {
+          ctx.lh.errors.push(`local Lighthouse was blocked by ${what}; used PageSpeed Insights instead`);
+          runner = 'psi'; ctx.lh.runner = 'psi';
+          return runOne({ url, strategy, name });
+        }
+        ctx.lh.errors.push(`${name}: blocked by ${what}, so no scores. Set PSI_API_KEY to run PageSpeed Insights from Google instead, or add a firewall bypass rule for a secret header and pass it with --header`);
+        runner = 'off';
+        return null;
+      }
       if (!r.ok) { ctx.lh.errors.push(`${name}: ${r.error}`); return null; }
       raw[name] = out.mode === 'file' ? path.relative(out.dir, file) : `${name}.json`;
       ctx.lh.version = r.version || r.lhr?.lighthouseVersion || ctx.lh.version;
@@ -212,15 +224,24 @@ async function main() {
     };
     if (runner !== 'off') {
       ctx.lh.mobile = await runOne({ url: finalUrl, strategy: 'mobile', name: 'lighthouse-mobile' });
-      ctx.lh.desktop = await runOne({ url: finalUrl, strategy: 'desktop', name: 'lighthouse-desktop' });
+      if (runner !== 'off') ctx.lh.desktop = await runOne({ url: finalUrl, strategy: 'desktop', name: 'lighthouse-desktop' });
       let i = 0;
       for (const pageUrl of ctx.sampledPages) {
+        if (runner === 'off') break;
         i++;
         const s = await runOne({ url: pageUrl, strategy: 'mobile', name: `lighthouse-page-${i}` });
         if (s) ctx.lh.pages.push({ url: pageUrl, summary: s });
       }
     }
   }
+  // ------------------------------------------------------------------ Phase B
+  const phaseB = selected.filter((g) => g.phase === 'B');
+  log(`phase B: ${phaseB.map((g) => g.id).join(', ')}`);
+  const b = await runGroups(phaseB, ctx, { log });
+  results.push(...b.results); Object.assign(timings, b.timings);
+  await writeReport(assemble({ partial: true })); partialWritten = true;
+
+  // ------------------------------------------------------------------ Phase C
   const phaseC = selected.filter((g) => g.phase === 'C');
   if (phaseC.length) {
     log(`phase C: ${phaseC.map((g) => g.id).join(', ')}`);

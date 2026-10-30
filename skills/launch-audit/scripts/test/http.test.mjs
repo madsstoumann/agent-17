@@ -100,3 +100,33 @@ test('post sends the body and is never retried', async () => {
     globalThis.fetch = realFetch;
   }
 });
+
+test('--header values go to the audited hosts only', async () => {
+  const { createHttp } = await import('../lib/http.mjs');
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => { calls.push({ url, init }); return new Response('ok', { status: 200 }); };
+  try {
+    const http = createHttp({ timeout: 1000, siteHeaders: { 'x-bypass': 's3cret' }, siteHosts: ['shop.example.dk', 'www.shop.example.dk'] });
+    await http.get('https://www.shop.example.dk/');
+    await http.get('https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=x');
+    assert.equal(calls[0].init.headers['x-bypass'], 's3cret');
+    assert.equal(calls[1].init.headers['x-bypass'], undefined);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('parseHeaderLines and challengeVendor', async () => {
+  const { parseHeaderLines, challengeVendor } = await import('../lib/http.mjs');
+  assert.deepEqual(parseHeaderLines(['X-Bypass: abc: d', ' x-two :v ']), { 'x-bypass': 'abc: d', 'x-two': 'v' });
+  assert.throws(() => parseHeaderLines(['no colon']), /Name: value/);
+  assert.throws(() => parseHeaderLines(['X-Empty:']), /Name: value/);
+  assert.equal(challengeVendor(429, '', { 'x-vercel-mitigated': 'challenge' }), 'Vercel');
+  assert.equal(challengeVendor(429, '<title>Vercel Security Checkpoint</title>'), 'Vercel');
+  assert.equal(challengeVendor(403, '', { 'cf-mitigated': 'challenge' }), 'Cloudflare');
+  assert.equal(challengeVendor(503, '<title>Just a moment...</title>'), 'Cloudflare');
+  assert.equal(challengeVendor(403, 'Access Denied'), 'WAF');
+  assert.equal(challengeVendor(200, 'Vercel Security Checkpoint'), null, 'a 200 page that mentions it is not a challenge');
+  assert.equal(challengeVendor(404, 'not found'), null);
+});
