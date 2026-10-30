@@ -2,7 +2,10 @@
 
 All notable changes to the `security-audit` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
-## [1.0.1] - 2026-10-30
+## [1.1.0] - 2026-10-30
+
+### Changed
+- Semgrep runs on every audit when it is installed (OWASP Top Ten and secrets rulesets, saved as `semgrep.json` beside `findings.json`), instead of being optional. When it is missing, the report says so under "Not checked" with the install command.
 
 ### Fixed
 - `--out ~/…` now expands `~` to the home folder instead of creating a folder literally named `~` under the current directory.

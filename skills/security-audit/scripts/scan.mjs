@@ -15,7 +15,7 @@ import { RULES, FILE_RULES, rulesFor, scanText, redact } from './lib/patterns.mj
 import { listFiles, readScannable, historyAddedLines, TEST_PATH } from './lib/files.mjs';
 import { collectPackages, queryOsv } from './lib/deps.mjs';
 
-export const VERSION = '1.0.1';
+export const VERSION = '1.1.0';
 const GROUPS = ['deps', 'secrets', 'xss', 'injection', 'request', 'crypto', 'config', 'ci'];
 const SEV = { high: 3, medium: 2, low: 1 };
 

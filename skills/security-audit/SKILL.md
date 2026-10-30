@@ -4,7 +4,7 @@ description: Use when someone wants a security review, code security audit, vuln
 argument-hint: "[path] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR]"
 allowed-tools: Bash(node:*), Bash(git log:*), Bash(git show:*), Read, Grep, Glob, WebFetch
 metadata:
-  version: "1.0.1"
+  version: "1.1.0"
 ---
 
 # Security audit (code mode)
@@ -93,9 +93,11 @@ checked, with the evidence, or as not checked. Never leave one out silently.
   live result is launch-audit's job.
 - Input validation at the API boundary (zod, joi, data annotations, FluentValidation).
 
-When `semgrep` is already on PATH you may add
-`semgrep scan --config p/owasp-top-ten --config p/secrets --json --quiet <path>` and triage
-its results the same way. Do not install it without asking.
+When `semgrep` is on PATH (`command -v semgrep`), always run
+`semgrep scan --config p/owasp-top-ten --config p/secrets --json --quiet <path> > "<out>/semgrep.json"`
+and triage its results the same way, merging duplicates with the scanner's hits. When it is not
+installed, do not install it without asking: say so under "Not checked" with the install line
+(`brew install semgrep` or `pipx install semgrep`).
 
 ## Report
 
