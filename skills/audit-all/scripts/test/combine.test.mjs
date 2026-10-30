@@ -88,8 +88,8 @@ test('headline: launch-audit, solution-health and security-audit figures', () =>
   assert.deepEqual(la.counts, { pass: 47, warn: 17, fail: 1, info: 54, skipped: 1 });
   assert.match(la.target, /ondigitalocean\.app/);
   const sh = headline({ kind: 'solution-health', target: 'shop-web', md: sample('solution-health') });
-  assert.equal(sh.counts.red, 11);
-  assert.equal(sh.counts.amber, 2);
+  assert.equal(sh.counts.red, 14);
+  assert.equal(sh.counts.amber, 3);
   assert.match(sh.what, /^Action needed: left-pad@1\.3\.0/);
   const sa = headline({ kind: 'security-audit', target: null, md: SECURITY });
   assert.deepEqual(sa.counts, { blockers: 1, findings: 2 });
@@ -160,10 +160,12 @@ test('combine: run folder -> report.md and report.html (no PDF), solution-health
     fs.writeFileSync(path.join(run, 'security-audit-shop-web', 'report.md'), SECURITY);
     fs.mkdirSync(path.join(repo, '.solution-health'));
     fs.writeFileSync(path.join(repo, '.solution-health', 'report.md'), sample('solution-health'));
+    fs.writeFileSync(path.join(repo, '.solution-health', 'tasks.json'), '{"tasks":[]}');
     fs.writeFileSync(path.join(run, 'summary.md'), SUMMARY);
     const logs = [];
     const out = await combine({ dir: run, style: 'sans', repos: [repo], pdf: false }, { now: new Date('2026-10-30T09:00:00Z'), log: (m) => logs.push(m) });
     assert.deepEqual(out.reports, ['launch-audit', 'security-audit-shop-web', `solution-health-${path.basename(repo)}`]);
+    assert.ok(fs.existsSync(path.join(run, `solution-health-${path.basename(repo)}`, 'tasks.json')), 'solution-health draft tasks copied too');
     const md = fs.readFileSync(out.md, 'utf8');
     assert.match(md, /^# Ready to launch, with two things to fix first/);
     assert.match(md, /## At a glance/);

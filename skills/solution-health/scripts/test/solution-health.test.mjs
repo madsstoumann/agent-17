@@ -61,6 +61,36 @@ before(async () => {
   eol('nextjs', [{ cycle: '16', eol: false }, { cycle: '13', eol: '2025-08-26' }]);
   eol('react', [{ cycle: '19', eol: false }, { cycle: '18', eol: false }]);
   eol('mssqlserver', [{ cycle: '2022', eol: '2033-01-11' }, { cycle: '2019', eol: '2030-01-08' }]);
+  // NuGet vulnerability database (shape confirmed against api.nuget.org/v3/vulnerabilities/index.json).
+  const vulnBase = 'https://api.nuget.org/v3-vulnerabilities/test/vulnerability.base.json';
+  put('https://api.nuget.org/v3/vulnerabilities/index.json', [{ '@name': 'base', '@id': vulnBase, '@updated': '2026-10-28T00:00:00Z' }]);
+  put(vulnBase, { 'system.text.encodings.web': [{ url: 'https://github.com/advisories/GHSA-ghhp-997w-qr28', severity: 3, versions: '[4.0.0, 4.5.1)' }], 'serilog': [{ url: 'https://example.test/old', severity: 2, versions: '(, 1.0.0)' }] });
+
+  // A restored Web.csproj: obj/project.assets.json names its package folder, which holds the nuspecs.
+  const pkgs = join(root, 'nuget-packages');
+  const nuspec = (id, version, licence, files = {}) => {
+    const dir = join(pkgs, id.toLowerCase(), version);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${id.toLowerCase()}.nuspec`), `<?xml version="1.0"?><package><metadata><id>${id}</id><version>${version}</version>${licence}</metadata></package>`);
+    for (const [n, text] of Object.entries(files)) writeFileSync(join(dir, n), text);
+  };
+  nuspec('Umbraco.Cms', '10.8.0', '<license type="expression">MIT</license>');
+  nuspec('Newtonsoft.Json', '12.0.3', '<licenseUrl>https://licenses.nuget.org/MIT</licenseUrl>');
+  nuspec('Microsoft.Azure.Storage.Blob', '11.2.3', '<licenseUrl>https://go.microsoft.com/fwlink/?LinkId=329770</licenseUrl>');
+  nuspec('iTextSharp', '5.5.13', '<license type="file">LICENSE.txt</license>', { 'LICENSE.txt': '                    GNU AFFERO GENERAL PUBLIC LICENSE\n                       Version 3, 19 November 2007\n' });
+  nuspec('System.Text.Encodings.Web', '4.5.0', '<license type="expression">MIT</license>');
+  const lib = (id, v, deps = {}) => [`${id}/${v}`, { type: 'package', dependencies: deps }];
+  writeJson(join(root, 'src', 'Web', 'obj', 'project.assets.json'), {
+    version: 3,
+    targets: { 'net6.0': Object.fromEntries([
+      lib('Umbraco.Cms', '10.8.0', { 'iTextSharp': '5.5.13', 'System.Text.Encodings.Web': '4.5.0' }),
+      lib('Newtonsoft.Json', '12.0.3'), lib('Microsoft.Azure.Storage.Blob', '11.2.3'), lib('iTextSharp', '5.5.13'), lib('System.Text.Encodings.Web', '4.5.0'),
+    ]) },
+    libraries: Object.fromEntries(['Umbraco.Cms/10.8.0', 'Newtonsoft.Json/12.0.3', 'Microsoft.Azure.Storage.Blob/11.2.3', 'iTextSharp/5.5.13', 'System.Text.Encodings.Web/4.5.0']
+      .map((k) => [k, { type: 'package', path: k.toLowerCase() }])),
+    packageFolders: { [`${pkgs}/`]: {} },
+    project: { frameworks: { 'net6.0': { dependencies: { 'Umbraco.Cms': {}, 'Newtonsoft.Json': {}, 'Microsoft.Azure.Storage.Blob': {} } } } },
+  });
 
   server = spawn(process.execPath, [join(here, 'mock', 'server.mjs'), String(PORT)], { stdio: ['ignore', 'pipe', 'inherit'] });
   await new Promise((resolve, reject) => {
@@ -106,6 +136,65 @@ test('packages: deprecation, archived repos, vulnerabilities, ignores, central v
   assert.equal(by['Umbraco.Cms'].facts.latest, '16.3.1');
 });
 
+test('packages: licences of the whole tree, judged against a closed-source solution', () => {
+  const p = json('packages.json');
+  assert.equal(p.licenses.project.id, 'proprietary');
+  assert.equal(p.licenses.project.from, 'assumed');
+  const lic = Object.fromEntries(p.licenses.packages.map((x) => [x.name, x]));
+  assert.equal(lic['agpl-thing'].verdict.level, 'red', 'AGPL in a shipped transitive package');
+  assert.equal(lic['agpl-thing'].direct, false);
+  assert.deepEqual(lic['agpl-thing'].parents, ['request'], 'npm parents from the lockfile graph');
+  assert.equal(lic['busl-sdk'].verdict.level, 'red', 'source-available licence');
+  assert.equal(lic['mystery-pkg'].verdict.level, 'amber', 'no licence declared');
+  assert.equal(lic['dual-licensed'].verdict.level, 'green', 'MIT OR GPL-3.0: MIT can be chosen');
+  assert.equal(lic['gpl-build-tool'].verdict.level, 'info', 'GPL in a dev-only tool is not shipped');
+  assert.equal(lic['request'].license, 'Apache-2.0', 'licence read from package-lock.json');
+  assert.equal(lic['iTextSharp'].verdict.level, 'red', 'AGPL found in the licence file the nuspec points to');
+  assert.deepEqual(lic['iTextSharp'].parents, ['umbraco.cms']);
+  assert.equal(lic['Microsoft.Azure.Storage.Blob'].verdict.level, 'green', 'the .NET library licence URL is recognised');
+  assert.equal(lic['Newtonsoft.Json'].license, 'MIT');
+  assert.ok(p.nugetProjects.find((x) => x.path === 'src/Lib/Lib.csproj').notes.some((n) => /dotnet restore/.test(n)), 'an unrestored project says so');
+});
+
+test('packages: vulnerable transitive NuGet packages from the vulnerability database', () => {
+  const p = json('packages.json');
+  const v = p.transitiveVulns.find((x) => x.name === 'System.Text.Encodings.Web');
+  assert.ok(v, 'found through obj/project.assets.json');
+  assert.equal(v.verdict.level, 'red');
+  assert.equal(v.severity, 'critical');
+  assert.deepEqual(v.parents, ['umbraco.cms']);
+  assert.equal(p.transitiveVulns.some((x) => x.name === 'Serilog'), false, 'out-of-range versions do not match');
+});
+
+test('licences: classification, policy and version ranges', async () => {
+  const { classify, licenseVerdict, inNugetRange, normalizeLicense, licenseFromUrl } = await import('../licenses.mjs');
+  assert.equal(classify('MIT').category, 'permissive');
+  assert.equal(classify('(MIT OR GPL-3.0)').category, 'permissive');
+  assert.equal(classify('MIT AND GPL-3.0').category, 'strong-copyleft');
+  assert.equal(classify('GPL-2.0 WITH Classpath-exception-2.0').category, 'weak-copyleft');
+  assert.equal(classify('SEE LICENSE IN LICENSE.md').category, 'unknown');
+  assert.equal(classify('UNLICENSED').category, 'proprietary');
+  assert.equal(classify('Unlicense').category, 'permissive');
+  assert.equal(normalizeLicense('Apache License, Version 2.0'), 'Apache-2.0');
+  assert.equal(normalizeLicense([{ type: 'MIT' }, { type: 'Apache-2.0' }]), '(MIT OR Apache-2.0)');
+  assert.equal(licenseFromUrl('https://opensource.org/licenses/MIT'), 'MIT');
+  const e = (license, extra = {}) => ({ ecosystem: 'npm', name: 'x', license, dev: false, ...extra });
+  assert.equal(licenseVerdict(e('GPL-3.0')).level, 'amber');
+  assert.equal(licenseVerdict(e('GPL-3.0'), { project: { id: 'GPL-3.0-or-later' } }).level, 'green', 'copyleft inside a copyleft solution');
+  assert.equal(licenseVerdict(e('Apache-2.0'), { project: { id: 'GPL-2.0-only' } }).level, 'red', 'Apache-2.0 cannot go into GPL-2.0-only');
+  assert.equal(licenseVerdict(e('GPL-2.0-only'), { project: { id: 'GPL-3.0-only' } }).level, 'red');
+  assert.equal(licenseVerdict(e('MIT'), { policy: { deny: ['MIT'] } }).level, 'red', 'deny list wins');
+  assert.equal(licenseVerdict(e('AGPL-3.0'), { policy: { accept: [{ name: 'x', reason: 'legal ok' }] } }).level, 'ignored');
+  assert.equal(licenseVerdict(e('AGPL-3.0'), { policy: { accept: [{ name: 'x', reason: 'old', expires: '2020-01-01' }] } }).level, 'red', 'expired acceptance');
+  assert.equal(licenseVerdict(e('PolyForm-Noncommercial-1.0.0', { dev: true })).level, 'amber', 'non-commercial stays amber even for dev tools');
+  assert.ok(inNugetRange('4.5.0', '[4.0.0, 4.5.1)'));
+  assert.ok(!inNugetRange('4.5.1', '[4.0.0, 4.5.1)'));
+  assert.ok(inNugetRange('12.0.3', '(, 13.0.1)'));
+  assert.ok(inNugetRange('8.0.4', '[8.0.0, 8.0.4]'));
+  assert.ok(!inNugetRange('8.0.5-preview.1', '[8.0.0, 8.0.4]'));
+  assert.ok(inNugetRange('1.2.0', '[1.2.0]'));
+});
+
 test('runtimes: end-of-life from .nvmrc, TargetFramework, packages and manifest extras', () => {
   assert.equal(run('runtimes').status, 0);
   const r = Object.fromEntries(json('runtimes.json').runtimes.map((x) => [`${x.product} ${x.cycle}`, x]));
@@ -143,6 +232,10 @@ test('finalize: report, state, and unassessed changes keep coming back until ass
   assert.match(report, /### 🔴 DAWA/);
   assert.match(report, /nodejs 16 is end-of-life/);
   assert.match(report, /api\.hubapi\.com/);
+  assert.match(report, /## Licences \(\d+ packages/);
+  assert.match(report, /Solution licence: \*\*proprietary\*\* \(assumed/);
+  assert.match(report, /## Vulnerable transitive packages/);
+  assert.match(report, /System\.Text\.Encodings\.Web/);
   let state = JSON.parse(readFileSync(join(sh, 'state.json'), 'utf8'));
   const url = `http://127.0.0.1:${PORT}/docs`;
   assert.equal(state.apis['DAWA (Danmarks Adressers Web API)'].pages[url].hash, null, 'unassessed page is not accepted as baseline');
@@ -174,6 +267,33 @@ test('finalize: notes.md survives every run; a hand-edited report.md is saved be
   const saved = join(sh, `report.edited-${new Date().toISOString().slice(0, 10)}.md`);
   assert.match(readFileSync(saved, 'utf8'), /Hand-written triage/);
   assert.equal(readFileSync(join(sh, 'notes.md'), 'utf8'), '# DAWA\n\nMigration ticket SHOP-42, owner Anna.\n', 'finalize never writes notes.md');
+});
+
+test('finalize: tasks.json in the shape audit-all and audit-fix take', async () => {
+  const t = JSON.parse(readFileSync(join(sh, 'tasks.json'), 'utf8'));
+  assert.equal(t.subject, basename(root));
+  assert.equal(t.repos[basename(root)], root);
+  const by = (re) => t.tasks.find((x) => re.test(x.title));
+  const blob = by(/^Replace Microsoft\.Azure\.Storage\.Blob/);
+  assert.ok(blob && blob.owner === 'agent' && /Azure\.Storage\.Blobs/.test(blob.fix));
+  assert.deepEqual(blob.files, ['src/Web/Web.csproj']);
+  const lic = by(/licence of agpl-thing/);
+  assert.equal(lic.owner, 'human');
+  assert.equal(lic.severity, 'high');
+  assert.ok(by(/transitive System\.Text\.Encodings\.Web/));
+  assert.equal(by(/^Upgrade dotnet 6\.0/).model, 'opus');
+  assert.equal(by(/Serilog/)?.files?.[0] ?? 'Directory.Packages.props', 'Directory.Packages.props', 'centrally versioned packages point at the props file');
+  assert.ok(t.tasks.every((x) => x.sources[0] === 'health' && /^H\d+$/.test(x.id)));
+  // The audit-all validator accepts it as it is, when that skill sits next to this one.
+  const validator = join(scripts, '..', '..', 'audit-all', 'scripts', 'lib', 'tasks.mjs');
+  if (existsSync(validator)) {
+    const { validateTasks } = await import(validator);
+    const { errors } = validateTasks(t);
+    assert.deepEqual(errors, []);
+  }
+  const state = JSON.parse(readFileSync(join(sh, 'state.json'), 'utf8'));
+  assert.equal(state.licenses['lic:npm:agpl-thing'].level, 'red', 'licence findings are tracked between runs');
+  assert.equal(state.vulns['vuln:nuget:system.text.encodings.web'].level, 'red');
 });
 
 test('state folder: default is outside the repo under the report folder; --in-repo and --dir keep it in the solution', async () => {

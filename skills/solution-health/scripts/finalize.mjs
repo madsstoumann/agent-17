@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Phase 4: merge results + Claude's page assessments, compare with the previous run, write report.md and update state.json.
+// Phase 4: merge results + Claude's page assessments, compare with the previous run, write report.md and tasks.json
+// (red and amber findings as fix tasks for audit-all / audit-fix) and update state.json.
 // Usage: node finalize.mjs [--root <dir>] [--dry-run]
 // Optional input: run/assessments.json  { "<watched url>": { "verdict": "red|amber|info|benign", "summary": "...", "action": "..." } }
 // Snapshots of changed pages are only accepted once assessed, so an unread change keeps showing up until someone reads it.
 import { copyFileSync, existsSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { parseArgs, paths, readJson, writeJson, loadState, loadManifest, ensureDirs, log, nowIso, daysSince, showPath, readNotes } from './lib.mjs';
+import { buildTasks } from './tasks.mjs';
 
 const args = parseArgs();
 const p = paths(args);
@@ -42,9 +44,12 @@ for (const x of packages?.packages || []) findings.push({ key: `pkg:${x.ecosyste
 for (const x of runtimes?.runtimes || []) findings.push({ key: `rt:${x.key}`, area: 'runtime', title: `${x.product} ${x.cycle ?? x.version}`, level: x.verdict.level, reasons: x.verdict.reasons, where: x.sources, extra: x });
 for (const x of packages?.nuget?.findings || []) findings.push({ key: x.key, area: 'nuget', title: x.title, level: x.level, reasons: x.reasons, where: x.where, extra: x });
 for (const x of apis?.apis || []) findings.push({ key: `api:${x.name}`, area: 'api', title: x.name, level: x.verdict.level, reasons: x.verdict.reasons, where: x.codeFiles, extra: x });
+for (const x of packages?.transitiveVulns || []) findings.push({ key: `vuln:${x.ecosystem}:${x.name.toLowerCase()}`, area: 'vulnerability', title: `${x.name}${x.versions.length ? `@${x.versions.join(', ')}` : ''} (transitive)`, ecosystem: x.ecosystem, level: x.verdict.level, reasons: x.verdict.reasons, where: x.projects, extra: x });
+// Licences: only the ones that need a look; the permissive majority is counted in the Licences section.
+for (const x of packages?.licenses?.packages || []) if (x.verdict.level !== 'green') findings.push({ key: `lic:${x.ecosystem}:${x.name.toLowerCase()}`, area: 'licence', title: `${x.name} (${x.license || 'no licence'})`, ecosystem: x.ecosystem, level: x.verdict.level, reasons: x.verdict.reasons, where: x.projects, extra: x });
 
 for (const f of findings) {
-  const before = prev.packages?.[f.key] || prev.runtimes?.[f.key] || prev.nuget?.[f.key] || prev.apis?.[f.key.replace(/^api:/, '')] || null;
+  const before = prev.packages?.[f.key] || prev.runtimes?.[f.key] || prev.nuget?.[f.key] || prev.vulns?.[f.key] || prev.licenses?.[f.key] || prev.apis?.[f.key.replace(/^api:/, '')] || null;
   f.previous = before?.level || null;
   f.since = before && before.level === f.level ? before.since : today;
   f.isNew = !prev.lastRun ? RANK[f.level] >= 2 : (RANK[f.level] >= 2 && (f.previous === null || RANK[f.level] > RANK[f.previous]));
@@ -167,6 +172,47 @@ for (const pr of vulnProjects) {
 }
 if (vulnProjects.length) line();
 
+// Vulnerable packages further down the tree
+const tv = packages?.transitiveVulns || [];
+if (tv.length) {
+  line(`## Vulnerable transitive packages (${tv.length})`);
+  line();
+  line('| | Package | Eco | Severity | Pulled in by | Fix |');
+  line('|---|---|---|---|---|---|');
+  for (const x of tv) line(`| ${ICON[x.verdict.level]} | ${esc(x.name)}${x.versions.length ? ` ${esc(x.versions.join(', '))}` : ''} | ${x.ecosystem} | ${x.severity}${x.devOnly && x.ecosystem === 'npm' ? ' (dev only)' : ''} | ${esc(x.parents.join(', ') || '—')} | ${esc(x.fixes.join('; ') || '?')} |`);
+  line();
+}
+
+// Licences of everything installed or locked
+const lic = packages?.licenses;
+if (lic?.packages?.length) {
+  const lp = lic.packages;
+  line(`## Licences (${lp.length} packages, ${lp.filter((x) => x.direct).length} direct)`);
+  line();
+  line(`Solution licence: **${esc(lic.project.id)}**${lic.project.from === 'assumed' ? ' (assumed: closed source; set `licenses.projectLicense` in the manifest if the solution is open source)' : ` (from \`${esc(lic.project.from)}\`)`}. ` +
+    `Found: ${Object.entries(lic.counts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => `${esc(k)} ${n}`).join(', ')}${Object.keys(lic.counts).length > 8 ? `, ${Object.keys(lic.counts).length - 8} more` : ''}.`);
+  line();
+  const flagged = lp.filter((x) => ['red', 'amber'].includes(x.verdict.level));
+  if (!flagged.length) line('No licence needs a decision.');
+  else {
+    line('| | Package | Eco | Licence | Use | Why |');
+    line('|---|---|---|---|---|---|');
+    for (const x of flagged) line(`| ${ICON[x.verdict.level]} | ${esc(x.name)} ${esc(x.versions.join(', '))} | ${x.ecosystem} | ${esc(x.license || 'none')} | ${x.direct ? 'direct' : 'transitive'}, ${x.dev ? 'dev' : 'shipped'} | ${fmtReasons(x.verdict.reasons)} |`);
+  }
+  line();
+  const linfo = lp.filter((x) => x.verdict.level === 'info');
+  if (linfo.length) {
+    line(`<details><summary>${linfo.length} weak-copyleft or dev-only licences (no action, keep the notices)</summary>`);
+    line();
+    for (const x of linfo) line(`- ${x.ecosystem} ${x.name} (${esc(x.license || 'none')}): ${esc(x.verdict.reasons.join('; '))}`);
+    line();
+    line('</details>');
+    line();
+  }
+  const lign = lp.filter((x) => x.verdict.level === 'ignored');
+  if (lign.length) { line(`Accepted in the manifest: ${lign.map((x) => `${x.name} (${x.license || 'none'})`).join(', ')}`); line(); }
+}
+
 // NuGet sources and folders, as resolved from the solution's own config
 const ng = packages?.nuget;
 if (ng?.contexts?.length) {
@@ -215,6 +261,9 @@ if (packages) {
   if (pk.some((x) => x.ecosystem === 'nuget') && !rch.nugetApi) gaps.push('api.nuget.org unreachable — NuGet deprecation/vulnerabilities only from `dotnet` CLI (if present)');
   if (pk.length && !rch.ecosystems) gaps.push('packages.ecosyste.ms unreachable — archived-repo and last-commit signals missing');
   if (pk.length && !rch.depsDev) gaps.push('api.deps.dev unreachable — OpenSSF Scorecard "Maintained" missing');
+  if (rch.nugetVulnDb === false) gaps.push('NuGet vulnerability database unreachable and no dotnet SDK — transitive NuGet vulnerabilities not checked');
+  const noLicence = (packages.licenses?.packages || []).filter((x) => !x.license).length;
+  if (noLicence) gaps.push(`${noLicence} package(s) with no licence information (not installed here, or the package declares none); see Licences`);
   if (!packages.tools?.npm && (packages.npmProjects || []).length) gaps.push('npm not installed — `npm outdated`/`npm audit` skipped');
   if (!packages.tools?.dotnet && (packages.nugetProjects || []).length) gaps.push('dotnet SDK not installed — NuGet transitive/vulnerability data from CLI skipped');
   for (const pr of [...(packages.npmProjects || []), ...(packages.nugetProjects || [])]) for (const n of pr.notes || []) if (!/not on PATH/.test(n)) gaps.push(`${pr.path}: ${n}`);
@@ -229,6 +278,7 @@ line();
 line('---');
 line(`Generated by the \`solution-health\` skill. Re-run: ask Claude "run the solution health check". Config: \`${showPath(p, p.manifest)}\`.`);
 
+const tasks = buildTasks(findings, { root: p.root });
 if (!args['dry-run']) {
   // report.md edited after the last run (notes written into it by hand): keep that copy, it would be lost.
   const mtime = (f) => { try { return statSync(f).mtimeMs; } catch { return 0; } };
@@ -239,12 +289,14 @@ if (!args['dry-run']) {
   }
   writeFileSync(p.report, L.join('\n') + '\n');
   // State
-  const state = { version: 1, lastRun: nowIso(), packages: {}, runtimes: {}, nuget: {}, apis: {} };
+  const state = { version: 1, lastRun: nowIso(), packages: {}, runtimes: {}, nuget: {}, vulns: {}, licenses: {}, apis: {} };
   for (const f of findings) {
     const entry = { level: f.level, since: f.since };
     if (f.area === 'package') state.packages[f.key] = entry;
     if (f.area === 'runtime') state.runtimes[f.key] = entry;
     if (f.area === 'nuget') state.nuget[f.key] = entry;
+    if (f.area === 'vulnerability') state.vulns[f.key] = entry;
+    if (f.area === 'licence') state.licenses[f.key] = entry;
   }
   for (const a of apis?.apis || []) {
     const prevApi = prev.apis?.[a.name] || {};
@@ -263,7 +315,9 @@ if (!args['dry-run']) {
     state.apis[a.name] = { level: f?.level, since: f?.since, pages };
   }
   writeJson(p.state, state);
+  writeJson(p.tasks, tasks);
 }
 log(`${reds.length} red, ${ambers.length} amber, ${news.length} new since last run, ${changedUnassessed.length} changed page(s) unassessed, ${untracked.length} untracked host(s).`);
-log(args['dry-run'] ? '(dry run: report and state not written)' : `→ ${showPath(p, p.report)} and ${showPath(p, p.state)}`);
+log(`${tasks.tasks.length} fix task(s): ${tasks.tasks.filter((t) => t.owner === 'agent').length} for agents, ${tasks.tasks.filter((t) => t.owner === 'human').length} for people.`);
+log(args['dry-run'] ? '(dry run: report, tasks and state not written)' : `→ ${showPath(p, p.report)}, ${showPath(p, p.tasks)} and ${showPath(p, p.state)}`);
 void manifest;

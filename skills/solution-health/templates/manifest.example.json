@@ -47,6 +47,21 @@
       }
     ]
   },
+  "licenses": {
+    "$comment": "projectLicense: the solution's own licence (SPDX id, or \"proprietary\"). Left out, it is read from package.json/csproj, else assumed proprietary.",
+    "projectLicense": "proprietary",
+    "allow": [],
+    "review": [],
+    "deny": ["AGPL-3.0", "SSPL-1.0"],
+    "accept": [
+      {
+        "name": "some-gpl-cli",
+        "ecosystem": "npm",
+        "reason": "Only runs in CI to generate docs; never shipped. Cleared by @mads",
+        "expires": "2027-04-01"
+      }
+    ]
+  },
   "runtimes": {
     "warnDays": 180,
     "extra": [

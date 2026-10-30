@@ -16,7 +16,7 @@ import { printPdf } from './lib/pdf.mjs';
 import { writeFixPlan } from './lib/tasks.mjs';
 import { targetDir, claimTarget, newRun, previousRuns, readNotes, targetName } from './lib/target-state.mjs';
 
-export const VERSION = '1.2.0';
+export const VERSION = '1.2.1';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, '..', 'assets');
 const SIBLINGS = path.join(HERE, '..', '..');
@@ -178,6 +178,9 @@ export function collectSolutionHealth(runDir, repos, opts = {}) {
     const dest = path.join(runDir, `solution-health-${safeName(path.basename(root))}`);
     fs.mkdirSync(dest, { recursive: true });
     fs.copyFileSync(src, path.join(dest, 'report.md'));
+    // solution-health 2.2+ also writes its red and amber findings as draft fix tasks in this skill's tasks.json shape.
+    const tasks = path.join(path.dirname(src), 'tasks.json');
+    if (fs.existsSync(tasks)) fs.copyFileSync(tasks, path.join(dest, 'tasks.json'));
     copied.push({ repo: root, ok: true, dest });
   }
   return copied;

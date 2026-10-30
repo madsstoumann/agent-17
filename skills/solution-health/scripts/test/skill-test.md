@@ -27,6 +27,10 @@ The fixture solution is deliberately unhealthy:
 | `api.dataforsyningen.dk` in `address.ts` | tracked API, 1 code reference |
 | `api.hubapi.com` in `appsettings.json` | untracked, high priority |
 | `developer.mozilla.org` in a comment | filtered out as documentation |
+| `frontend/package-lock.json` | licences per package: `agpl-thing` (AGPL, red), `busl-sdk` (BUSL, red), `mystery-pkg` (none, amber), `dual-licensed` (MIT OR GPL, green), `gpl-build-tool` (GPL, dev only, info) |
+| `src/Web/obj/project.assets.json` (written by the test) | NuGet inventory from the package folder it names: `iTextSharp` AGPL from its licence file (red, via Umbraco.Cms), the .NET library licence URL recognised |
+| Seeded NuGet vulnerability database | transitive `System.Text.Encodings.Web` 4.5.0 critical, red, pulled in by Umbraco.Cms |
+| `tasks.json` | validated with audit-all's `validateTasks` when that skill sits next to this one |
 | Mock DAWA endpoint | `Deprecation: @1751320800`, `Sunset`, `Link rel="successor-version"` parsed |
 | Mock DAWA docs page with "DAWA lukker den 1. juli 2026" | Danish keyword hit, change file written, API red |
 | Unassessed change | flagged again on the next run, not accepted as baseline |
@@ -45,7 +49,12 @@ into `.solution-health/run/cache/` in the shapes the scripts parse:
   `Maintained = ?` and no archived/last-commit data for every package, check the field names in
   `packages.mjs` → `healthFacts()` against a live response first.
 
-The npm registry and `npm outdated` are called live when the network allows; nothing asserted
+- **api.nuget.org/v3/vulnerabilities** index and base file (2.1.0): shape verified live on 2026-10-30
+  (`{ "<lowercase id>": [{ url, severity 0–3, versions: "<NuGet range>" }] }`). The registration
+  `licenseExpression`/`licenseUrl` fields and the deps.dev version `licenses` array were checked live
+  the same day.
+
+The npm registry, `npm outdated` and `npm audit` are called live when the network allows; nothing asserted
 depends on them, so the test also passes offline.
 
 ## RED/GREEN note

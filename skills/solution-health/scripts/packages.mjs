@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Phase 1: npm + NuGet packages — outdated, vulnerable, deprecated, and "is anyone still maintaining this?".
+// Phase 1: npm + NuGet packages — outdated, vulnerable, deprecated, "is anyone still maintaining this?",
+// plus the whole installed tree: vulnerable transitive packages and every package's licence.
 // Usage: node packages.mjs [--root <dir>] [--transitive] [--no-enrich] [--offline]
 // Reads .solution-health/run/discovery.json (run discover.mjs first). Writes run/packages.json.
 import { readFileSync, existsSync } from 'node:fs';
@@ -7,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { parseArgs, paths, readJson, writeJson, cachedJson, mapLimit, daysSince, loadManifest, ensureDirs, log, nowIso, showPath } from './lib.mjs';
 import { resolveProject, checkNuget, candidateSources, isNugetOrg } from './nuget.mjs';
+import { npmInventory, nugetInventory, normalizeLicense, licenseFromUrl, licenseVerdict, projectLicense, classify, inNugetRange } from './licenses.mjs';
 
 const args = parseArgs();
 const p = paths(args);
@@ -44,6 +46,9 @@ for (const rel of discovery.manifests.npm) {
     }
   }
   const project = { path: rel, name: pkg.name || rel, hasLockfile: !!lock || existsSync(join(dir, 'yarn.lock')) || existsSync(join(dir, 'pnpm-lock.yaml')), deps, outdated: null, audit: null, notes: [] };
+  project.inventory = npmInventory(dir, { lock, directNames: new Set(deps.map((d) => d.name)) });
+  project.lockPkgs = Object.fromEntries(Object.entries(lock?.packages || {}).filter(([k]) => k).map(([k, v]) => [k, { version: v.version, dev: !!(v.dev || v.devOptional) }]));
+  if (!project.inventory.length && deps.length) project.notes.push('No package-lock.json and no node_modules: transitive licences not checked (run `npm install`, or `npm ci`, first).');
   if (npmAvailable && deps.length) {
     const o = run('npm', ['outdated', '--json', ...(args.transitive ? ['--all'] : [])], dir);
     project.outdated = tryJson(o.stdout) || {};
@@ -54,7 +59,7 @@ for (const rel of discovery.manifests.npm) {
         project.audit = {
           counts: aj.metadata?.vulnerabilities || null,
           vulnerabilities: Object.values(aj.vulnerabilities || {}).map((v) => ({
-            name: v.name, severity: v.severity, isDirect: v.isDirect, range: v.range, fixAvailable: v.fixAvailable,
+            name: v.name, severity: v.severity, isDirect: v.isDirect, range: v.range, fixAvailable: v.fixAvailable, effects: v.effects || [], nodes: v.nodes || [],
             via: (v.via || []).map((x) => (typeof x === 'string' ? x : { title: x.title, url: x.url, severity: x.severity })),
           })),
         };
@@ -86,20 +91,27 @@ function parseNuget(rel) {
 const dotnetAvailable = has('dotnet');
 const nugetProjects = [];
 const centralVersions = {};
+const centralFile = {};
 for (const rel of discovery.manifests.nuget.filter((r) => r.endsWith('Directory.Packages.props'))) {
-  for (const r of parseNuget(rel).refs) if (r.version) centralVersions[r.name.toLowerCase()] = r.version;
+  for (const r of parseNuget(rel).refs) if (r.version) { centralVersions[r.name.toLowerCase()] = r.version; centralFile[r.name.toLowerCase()] = rel; }
 }
 for (const rel of discovery.manifests.nuget.filter((r) => !r.endsWith('Directory.Packages.props'))) {
   const { refs, targetFrameworks } = parseNuget(rel);
-  const project = { path: rel, targetFrameworks, deps: refs.map((r) => ({ name: r.name, installed: r.version || centralVersions[r.name.toLowerCase()] || null, kind: 'prod' })), cli: {}, notes: [] };
+  const project = { path: rel, targetFrameworks, deps: refs.map((r) => ({ name: r.name, installed: r.version || centralVersions[r.name.toLowerCase()] || null, kind: 'prod', centralFile: r.version ? null : centralFile[r.name.toLowerCase()] || null })), cli: {}, notes: [] };
   if (dotnetAvailable && rel.endsWith('proj')) {
     for (const flag of ['--outdated', '--deprecated', '--vulnerable']) {
-      const r = run('dotnet', ['list', join(p.root, rel), 'package', flag, '--format', 'json', ...(args.transitive ? ['--include-transitive'] : [])], p.root);
+      // Vulnerabilities are checked through the whole tree: a vulnerable transitive package ships just the same.
+      const r = run('dotnet', ['list', join(p.root, rel), 'package', flag, '--format', 'json', ...(args.transitive || flag === '--vulnerable' ? ['--include-transitive'] : [])], p.root);
       const j = tryJson(r.stdout);
       if (j) project.cli[flag.slice(2)] = j;
       else project.notes.push(`dotnet list package ${flag} failed (try \`dotnet restore\` first): ${(r.stderr || r.stdout || r.error || '').split('\n').find(Boolean) || ''}`);
     }
   } else if (!dotnetAvailable) project.notes.push('dotnet not on PATH: using the NuGet API only (no transitive or local-feed data).');
+  if (rel.endsWith('proj')) {
+    const inv = nugetInventory(join(p.root, rel));
+    if (inv) { project.inventory = inv.packages; project.packageFolders = inv.folders; }
+    else project.notes.push('Not restored (no obj/project.assets.json): transitive packages and licences not checked; run `dotnet restore` first.');
+  }
   nugetProjects.push(project);
 }
 
@@ -110,8 +122,12 @@ const contextOf = Object.fromEntries(nugetContexts.map((c) => [c.project, c]));
 
 // Flatten the dotnet CLI JSON into { name -> {latest, deprecation, vulnerabilities} }
 const cliFacts = {};
+const cliTransitiveVulns = []; // { project, name, version, vulnerabilities }
 for (const proj of nugetProjects) {
   for (const [flag, j] of Object.entries(proj.cli)) {
+    for (const pr of j.projects || []) for (const fw of pr.frameworks || []) {
+      if (flag === 'vulnerable') for (const pkg of fw.transitivePackages || []) if (pkg.vulnerabilities?.length) cliTransitiveVulns.push({ project: proj.path, name: pkg.id, version: pkg.resolvedVersion, vulnerabilities: pkg.vulnerabilities });
+    }
     for (const pr of j.projects || []) for (const fw of pr.frameworks || []) for (const pkg of [...(fw.topLevelPackages || []), ...(args.transitive ? fw.transitivePackages || [] : [])]) {
       const f = (cliFacts[pkg.id.toLowerCase()] ||= {});
       if (flag === 'outdated' && pkg.latestVersion) f.latest = pkg.latestVersion;
@@ -133,9 +149,11 @@ async function npmFacts(name, installed) {
   facts.latest = lj.version || null;
   facts.deprecatedLatest = lj.deprecated || null;
   facts.repo = ghRepo(lj.repository?.url || lj.repository || lj.homepage);
+  facts.license = normalizeLicense(lj.license ?? lj.licenses);
   if (installed && installed !== facts.latest) {
     const v = await cachedJson(`https://registry.npmjs.org/${enc}/${encodeURIComponent(installed)}`, p.cacheDir, { ttlHours: 24 * 7 });
     facts.deprecatedInstalled = v.json?.deprecated || null;
+    if (v.json) facts.license = normalizeLicense(v.json.license ?? v.json.licenses);
   } else facts.deprecatedInstalled = facts.deprecatedLatest;
   return facts;
 }
@@ -169,6 +187,8 @@ async function nugetFacts(name, installed) {
   facts.alternative = (installedEntry || latestEntry)?.deprecation?.alternatePackage?.id || null;
   facts.vulnerabilities = (installedEntry?.vulnerabilities || []).map((v) => ({ severity: ['low', 'moderate', 'high', 'critical'][Number(v.severity)] || v.severity, url: v.advisoryUrl }));
   facts.repo = ghRepo(latestEntry?.projectUrl || installedEntry?.projectUrl);
+  const le = installedEntry || latestEntry;
+  facts.license = le?.licenseExpression || licenseFromUrl(le?.licenseUrl) || (le?.licenseUrl && !/nuget\.org\/packages\/.*\/license/i.test(le.licenseUrl) ? le.licenseUrl : null);
   return facts;
 }
 
@@ -194,6 +214,7 @@ async function healthFacts(ecosystem, name, version, repo) {
     const dv = await cachedJson(`https://api.deps.dev/v3/systems/${sys}/packages/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}`, p.cacheDir, { ttlHours: 24 * 7 });
     if (dv.json) {
       out.publishedAt = dv.json.publishedAt || null;
+      if (dv.json.licenses?.length) out.licenses = dv.json.licenses;
       const src = (dv.json.relatedProjects || []).find((r) => r.relationType === 'SOURCE_REPO');
       if (src?.projectKey?.id) projectKey = src.projectKey.id;
     }
@@ -273,6 +294,7 @@ for (const proj of npmProjects) for (const d of proj.deps) {
   const key = `npm:${d.name}`;
   const rec = unique.get(key) || { ecosystem: 'npm', name: d.name, installed: d.installed, ranges: [], kinds: [], projects: [], vulnerabilities: [] };
   rec.projects.push(proj.path); if (!rec.ranges.includes(d.range)) rec.ranges.push(d.range); if (!rec.kinds.includes(d.kind)) rec.kinds.push(d.kind);
+  rec.files = [...new Set([...(rec.files || []), proj.path, ...(proj.hasLockfile && existsSync(join(p.root, dirname(proj.path), 'package-lock.json')) ? [join(dirname(proj.path), 'package-lock.json').replace(/\\/g, '/')] : [])])];
   rec.installed ||= d.installed;
   const vul = proj.audit?.vulnerabilities?.find((v) => v.name === d.name);
   if (vul) rec.vulnerabilities.push({ severity: vul.severity, fixAvailable: vul.fixAvailable, via: vul.via });
@@ -284,6 +306,7 @@ for (const proj of nugetProjects) for (const d of proj.deps) {
   const key = `nuget:${d.name.toLowerCase()}`;
   const rec = unique.get(key) || { ecosystem: 'nuget', name: d.name, installed: d.installed, ranges: [], kinds: ['prod'], projects: [], vulnerabilities: [] };
   rec.projects.push(proj.path);
+  rec.files = [...new Set([...(rec.files || []), d.centralFile || proj.path])];
   if (d.installed && !rec.ranges.includes(d.installed)) rec.ranges.push(d.installed);
   const cf = cliFacts[d.name.toLowerCase()];
   if (cf?.vulnerabilities) rec.vulnerabilities.push(...cf.vulnerabilities.map((v) => ({ severity: String(v.severity).toLowerCase(), url: v.advisoryurl })));
@@ -312,20 +335,149 @@ await mapLimit(list, 8, async (pkg) => {
 
 const order = { red: 0, amber: 1, unknown: 2, info: 3, ignored: 4, green: 5 };
 list.sort((a, b) => order[a.verdict.level] - order[b.verdict.level] || a.name.localeCompare(b.name));
+
+// ---------- Vulnerable transitive packages ----------
+// Direct packages carry their own vulnerabilities above. These are the ones further down the tree, which
+// ship just the same: npm audit (whole tree), `dotnet list package --vulnerable --include-transitive`,
+// and, when the SDK is missing, NuGet's own vulnerability database matched against obj/project.assets.json.
+const SEV = ['low', 'moderate', 'high', 'critical'];
+const directKeys = new Set(list.map((x) => `${x.ecosystem}:${x.name.toLowerCase()}`));
+const transitive = new Map();
+const addTransitive = (eco, name, rec) => {
+  const key = `${eco}:${name.toLowerCase()}`;
+  if (directKeys.has(key)) return;
+  const t = transitive.get(key) || { ecosystem: eco, name, versions: [], severity: 'low', advisories: [], parents: [], projects: [], fixes: [], devOnly: true };
+  for (const v of rec.versions || []) if (v && !t.versions.includes(v)) t.versions.push(v);
+  if (SEV.indexOf(rec.severity) > SEV.indexOf(t.severity)) t.severity = rec.severity;
+  for (const a of rec.advisories || []) if (!t.advisories.some((x) => x.url === a.url)) t.advisories.push(a);
+  for (const x of rec.parents || []) if (!t.parents.includes(x)) t.parents.push(x);
+  if (!t.projects.includes(rec.project)) t.projects.push(rec.project);
+  if (rec.fix && !t.fixes.includes(rec.fix)) t.fixes.push(rec.fix);
+  t.devOnly &&= !!rec.dev;
+  transitive.set(key, t);
+};
+for (const proj of npmProjects) {
+  const vulns = Object.fromEntries((proj.audit?.vulnerabilities || []).map((v) => [v.name, v]));
+  const directParents = (v) => {
+    const seen = new Set(); const found = new Set(); const queue = [...(v.effects || [])];
+    while (queue.length) { const n = queue.shift(); if (seen.has(n)) continue; seen.add(n); const e = vulns[n]; if (!e || e.isDirect) found.add(n); if (e && !e.isDirect) queue.push(...(e.effects || [])); }
+    return [...found];
+  };
+  for (const v of Object.values(vulns)) {
+    if (v.isDirect) continue;
+    const fa = v.fixAvailable;
+    const fix = fa === true ? '`npm audit fix` resolves it' : fa && typeof fa === 'object' ? `upgrade ${fa.name} to ${fa.version}${fa.isSemVerMajor ? ' (semver major)' : ''}` : 'no fix released yet: add an `overrides` entry once one is, or replace the package that pulls it in';
+    addTransitive('npm', v.name, {
+      project: proj.path, severity: v.severity, parents: directParents(v), fix,
+      versions: (v.nodes || []).map((n) => proj.lockPkgs?.[n]?.version).filter(Boolean),
+      advisories: (v.via || []).filter((x) => typeof x === 'object').map((x) => ({ title: x.title, url: x.url, severity: x.severity })),
+      dev: (v.nodes || []).length > 0 && v.nodes.every((n) => proj.lockPkgs?.[n]?.dev),
+    });
+  }
+}
+const nugetParents = (proj, name) => proj.inventory?.find((i) => i.name.toLowerCase() === name.toLowerCase())?.parents || [];
+for (const t of cliTransitiveVulns) {
+  const proj = nugetProjects.find((x) => x.path === t.project);
+  addTransitive('nuget', t.name, {
+    project: t.project, versions: [t.version], parents: nugetParents(proj, t.name),
+    severity: t.vulnerabilities.map((v) => String(v.severity).toLowerCase()).reduce((a, b) => (SEV.indexOf(b) > SEV.indexOf(a) ? b : a), 'low'),
+    advisories: t.vulnerabilities.map((v) => ({ url: v.advisoryurl, severity: String(v.severity).toLowerCase() })),
+    fix: 'add a direct PackageReference to a fixed version, or upgrade the package that pulls it in',
+  });
+}
+let nugetVulnDb = null;
+const restored = nugetProjects.filter((x) => x.inventory && !Object.keys(x.cli).includes('vulnerable'));
+if (restored.length && !args.offline) {
+  // NuGet's vulnerability database: an index naming a base file and an update file, both { id: [{ url, severity, versions }] }.
+  const idx = await cachedJson('https://api.nuget.org/v3/vulnerabilities/index.json', p.cacheDir, { ttlHours: 12 });
+  if (Array.isArray(idx.json)) {
+    nugetVulnDb = {};
+    for (const part of idx.json) {
+      const r = await cachedJson(part['@id'], p.cacheDir, { ttlHours: 24 * 30, timeoutMs: 60_000 });
+      for (const [id, list] of Object.entries(r.json || {})) (nugetVulnDb[id.toLowerCase()] ||= []).push(...list);
+    }
+  }
+  for (const proj of restored) for (const pkg of proj.inventory) {
+    if (pkg.direct) continue;
+    const hits = (nugetVulnDb?.[pkg.name.toLowerCase()] || []).filter((v) => inNugetRange(pkg.version, v.versions));
+    if (!hits.length) continue;
+    addTransitive('nuget', pkg.name, {
+      project: proj.path, versions: [pkg.version], parents: pkg.parents,
+      severity: hits.map((v) => SEV[Number(v.severity)] || 'low').reduce((a, b) => (SEV.indexOf(b) > SEV.indexOf(a) ? b : a), 'low'),
+      advisories: hits.map((v) => ({ url: v.url, severity: SEV[Number(v.severity)] || String(v.severity), range: v.versions })),
+      fix: 'add a direct PackageReference to a fixed version, or upgrade the package that pulls it in',
+    });
+  }
+}
+for (const t of transitive.values()) {
+  let level = ['high', 'critical'].includes(t.severity) ? 'red' : t.severity === 'moderate' ? 'amber' : 'info';
+  const reasons = [`${t.advisories.length || 1} known vulnerabilit${t.advisories.length === 1 ? 'y' : 'ies'} (${t.severity})${t.versions.length ? ` in ${t.versions.join(', ')}` : ''}`];
+  reasons.push(t.parents.length ? `pulled in by ${t.parents.join(', ')}` : 'pulled in transitively');
+  if (t.ecosystem === 'npm' && t.devOnly) { level = level === 'red' ? 'amber' : 'info'; reasons.push('dev dependency only (build tooling, not shipped)'); }
+  if (t.fixes.length) reasons.push(`fix: ${t.fixes.join('; ')}`);
+  t.verdict = { level, reasons };
+}
+const transitiveVulns = [...transitive.values()].sort((a, b) => ({ red: 0, amber: 1, info: 2 })[a.verdict.level] - ({ red: 0, amber: 1, info: 2 })[b.verdict.level] || a.name.localeCompare(b.name));
+
+// ---------- Licences ----------
+// Every installed or locked package, direct and transitive, judged against the solution's own licence.
+const licensePolicy = manifest.licenses || {};
+const ownLicense = projectLicense({ manifest, root: p.root, npmManifests: discovery.manifests.npm, nugetManifests: discovery.manifests.nuget.filter((r) => r.endsWith('proj')) });
+const lic = new Map();
+const addLicense = (eco, rec, proj) => {
+  const key = `${eco}:${rec.name.toLowerCase()}`;
+  const l = lic.get(key) || { ecosystem: eco, name: rec.name, versions: [], licenses: [], direct: false, dev: true, projects: [], from: [], parents: [] };
+  if (rec.version && !l.versions.includes(rec.version)) l.versions.push(rec.version);
+  const norm = normalizeLicense(rec.license);
+  if (!l.licenses.includes(norm)) l.licenses.push(norm);
+  l.direct ||= !!rec.direct; l.dev &&= !!rec.dev;
+  if (!l.projects.includes(proj)) l.projects.push(proj);
+  if (rec.from && !l.from.includes(rec.from)) l.from.push(rec.from);
+  for (const x of rec.parents || []) if (!l.parents.includes(x)) l.parents.push(x);
+  lic.set(key, l);
+};
+for (const proj of npmProjects) for (const i of proj.inventory || []) addLicense('npm', i, proj.path);
+for (const proj of nugetProjects) for (const i of proj.inventory || []) addLicense('nuget', i, proj.path);
+// Direct packages that are not installed or restored here: fall back to the registry's answer.
+for (const x of list) {
+  const key = `${x.ecosystem}:${x.name.toLowerCase()}`;
+  const have = lic.get(key);
+  const fromRegistry = x.facts?.license || (x.health?.licenses?.length ? x.health.licenses.join(' AND ') : null);
+  if (have && have.licenses.some(Boolean)) { have.direct = true; have.dev = have.dev && !x.kinds?.includes('prod') && !x.kinds?.includes('optional'); continue; }
+  if (have) { have.licenses = [normalizeLicense(fromRegistry)]; have.from.push('registry'); have.direct = true; continue; }
+  addLicense(x.ecosystem, { name: x.name, version: x.installed, license: fromRegistry, direct: true, dev: x.kinds?.length && x.kinds.every((k) => k === 'dev'), from: fromRegistry ? 'registry' : null }, x.projects[0]);
+  if (x.projects.length > 1) lic.get(key).projects.push(...x.projects.slice(1));
+}
+const licenseList = [...lic.values()];
+for (const l of licenseList) {
+  // Versions with different licences: judge the most restrictive one.
+  const worst = l.licenses.map((x) => ({ x, c: classify(x).category })).sort((a, b) => ['permissive', 'weak-copyleft', 'strong-copyleft', 'network-copyleft', 'restricted', 'proprietary', 'unknown'].indexOf(b.c) - ['permissive', 'weak-copyleft', 'strong-copyleft', 'network-copyleft', 'restricted', 'proprietary', 'unknown'].indexOf(a.c))[0];
+  l.license = worst?.x ?? null;
+  l.verdict = licenseVerdict({ ecosystem: l.ecosystem, name: l.name, license: l.license, dev: l.dev, direct: l.direct }, { policy: licensePolicy, project: ownLicense });
+  if (l.licenses.length > 1) l.verdict.reasons.push(`licence differs between versions: ${l.licenses.map((x) => x || 'none').join(', ')}`);
+  if (!l.direct && l.parents.length) l.verdict.reasons.push(`pulled in by ${l.parents.join(', ')}`);
+}
+const licLevel = { red: 0, amber: 1, info: 2, ignored: 3, green: 4 };
+licenseList.sort((a, b) => licLevel[a.verdict.level] - licLevel[b.verdict.level] || a.name.localeCompare(b.name));
+const licenseCounts = {};
+for (const l of licenseList) { const k = l.license || 'none'; licenseCounts[k] = (licenseCounts[k] || 0) + 1; }
 const reachability = {
   npmRegistry: list.some((x) => x.ecosystem === 'npm' && x.facts?.registryReachable),
   nugetApi: list.some((x) => x.ecosystem === 'nuget' && x.facts?.registryReachable),
   ecosystems: list.some((x) => x.health?.ecosystemsReachable),
   depsDev: list.some((x) => x.health?.depsDevReachable),
+  nugetVulnDb: nugetVulnDb ? true : restored.length && !args.offline ? false : null,
 };
 
 const out = {
   generatedAt: nowIso(),
   tools: { npm: npmAvailable, dotnet: dotnetAvailable },
   reachability,
-  npmProjects: npmProjects.map(({ deps, outdated, ...rest }) => ({ ...rest, depCount: deps.length })),
-  nugetProjects: nugetProjects.map(({ deps, cli, ...rest }) => ({ ...rest, depCount: deps.length })),
+  npmProjects: npmProjects.map(({ deps, outdated, inventory, lockPkgs, ...rest }) => ({ ...rest, depCount: deps.length, installedCount: inventory?.length ?? null })),
+  nugetProjects: nugetProjects.map(({ deps, cli, inventory, ...rest }) => ({ ...rest, depCount: deps.length, installedCount: inventory?.length ?? null })),
   packages: list.map(({ cli, ...rest }) => rest),
+  transitiveVulns,
+  licenses: { project: ownLicense, policy: licensePolicy, counts: licenseCounts, packages: licenseList },
   nuget: { contexts: nugetContexts, findings: nugetFindings },
   errors,
 };
@@ -333,9 +485,14 @@ writeJson(join(p.runDir, 'packages.json'), out);
 
 const count = (l) => list.filter((x) => x.verdict.level === l).length;
 log(`Done: ${count('red')} red, ${count('amber')} amber, ${count('unknown')} unknown, ${count('info')} info, ${count('green')} green, ${count('ignored')} ignored.`);
-log(`Reachability: ${Object.entries(reachability).map(([k, v]) => `${k}=${v ? 'ok' : 'NO'}`).join(', ')}`);
+log(`Reachability: ${Object.entries(reachability).filter(([, v]) => v !== null).map(([k, v]) => `${k}=${v ? 'ok' : 'NO'}`).join(', ')}`);
 for (const x of list.filter((x) => x.verdict.level === 'red' || x.verdict.level === 'amber').slice(0, 30)) log(`  [${x.verdict.level}] ${x.ecosystem} ${x.name}@${x.installed || '?'} — ${x.verdict.reasons.join('; ')}`);
 if (nugetFindings.length) log(`NuGet sources and folders: ${['red', 'amber', 'unknown', 'info', 'green'].map((l) => `${nugetFindings.filter((x) => x.level === l).length} ${l}`).join(', ')}`);
 for (const x of nugetFindings.filter((x) => x.level === 'red' || x.level === 'amber')) log(`  [${x.level}] ${x.title} — ${x.reasons.join('; ')}`);
+if (transitiveVulns.length) log(`Vulnerable transitive packages: ${transitiveVulns.length} (${transitiveVulns.filter((x) => x.verdict.level === 'red').length} red)`);
+for (const x of transitiveVulns.filter((x) => x.verdict.level !== 'info').slice(0, 20)) log(`  [${x.verdict.level}] ${x.ecosystem} ${x.name} — ${x.verdict.reasons.join('; ')}`);
+const licFlag = licenseList.filter((x) => ['red', 'amber'].includes(x.verdict.level));
+log(`Licences: ${licenseList.length} packages (${licenseList.filter((x) => x.direct).length} direct), project licence ${ownLicense.id} (${ownLicense.from}); ${licFlag.length} flagged.`);
+for (const x of licFlag.slice(0, 20)) log(`  [${x.verdict.level}] ${x.ecosystem} ${x.name} (${x.license || 'none'}) — ${x.verdict.reasons.join('; ')}`);
 for (const pr of [...npmProjects, ...nugetProjects]) for (const n of pr.notes) log(`  note (${pr.path}): ${n}`);
 log(`→ ${showPath(p, p.runDir)}/packages.json`);
