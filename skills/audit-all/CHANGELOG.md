@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.4.0] - 2026-10-30
+
+### Added
+- seo-audit and eco-audit as sub-audits on the site URL, into `<run>/seo-audit` and `<run>/eco-audit`. The combined report gets a section for each, with fail and warn counts on the cover (and the start page's CO2e per view for eco-audit).
+- `tasks.json` accepts `seo` and `eco` as sources; both skills write a `findings.json` in the task shape to start from. `--skip seo,eco` drops them.
+
 ## [1.3.0] - 2026-10-30
 
 ### Added

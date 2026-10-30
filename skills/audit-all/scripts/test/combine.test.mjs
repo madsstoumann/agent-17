@@ -96,6 +96,17 @@ test('headline: launch-audit, solution-health and security-audit figures', () =>
   assert.equal(sa.target, 'shop-web');
 });
 
+test('headline: seo-audit and eco-audit figures', () => {
+  const seo = headline({ kind: 'seo-audit', target: null, md: sample('seo-audit') });
+  assert.equal(typeof seo.counts.fail, 'number');
+  assert.equal(typeof seo.counts.warn, 'number');
+  assert.match(seo.what, /^\d+ pages crawled\.$/);
+  const eco = headline({ kind: 'eco-audit', target: null, md: sample('eco-audit') });
+  assert.equal(typeof eco.counts.warn, 'number');
+  assert.match(eco.result, /^[\d.]+ g CO2e per view \(A\+\) · \d+ fail/);
+  assert.match(eco.what, /^Start page [\d.]+ g CO2e per view, rating A\+\.$/);
+});
+
 test('parseSummary and parseAction', () => {
   const s = parseSummary(SUMMARY);
   assert.equal(s.meta.subject, 'shop.example.dk');

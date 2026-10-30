@@ -35,11 +35,11 @@ test('validateTasks: reports bad fields, unknown dependencies and cycles', () =>
   const { plan, errors } = validateTasks({ tasks: [
     { id: 'A', title: 'a', fix: 'f', repo: 'r', severity: 'urgent', model: 'gpt', dependsOn: ['Z'] },
     { id: 'A', title: '', fix: '', owner: 'robot' },
-    { id: 'B', title: 'b', fix: 'f', owner: 'human', sources: ['seo'] },
+    { id: 'B', title: 'b', fix: 'f', owner: 'human', sources: ['marketing'] },
   ] });
   assert.equal(plan, null);
   const all = errors.join('\n');
-  for (const re of [/severity "urgent"/, /model "gpt"/, /unknown task Z/, /duplicate id/, /missing title/, /missing fix/, /owner "robot"/, /source "seo"/]) assert.match(all, re);
+  for (const re of [/severity "urgent"/, /model "gpt"/, /unknown task Z/, /duplicate id/, /missing title/, /missing fix/, /owner "robot"/, /source "marketing"/]) assert.match(all, re);
   assert.match(validateTasks({ tasks: [{ id: 'A', title: 'a', fix: 'f', repo: 'r', dependsOn: ['B'] }, { id: 'B', title: 'b', fix: 'f', repo: 'r', dependsOn: ['A'] }] }).errors.join(), /cycle/);
   assert.match(validateTasks({ tasks: [{ title: 'a', fix: 'f' }] }).errors.join(), /needs a repo/);
   assert.match(validateTasks({}).errors.join(), /"tasks" array/);
