@@ -29,7 +29,7 @@ Changes that touch only the changelog or other repo housekeeping do not bump the
 
 ## Report folders
 
-Skills that write report files (audit-all, launch-audit, security-audit, solution-health, tech-stack) use the same default folder, so reports from one machine end up in one place. First match wins:
+Skills that write report files (a11y-audit, audit-all, launch-audit, security-audit, solution-health, tech-stack) use the same default folder, so reports from one machine end up in one place. First match wins:
 
 1. `--out` when the user names a folder,
 2. `$AUDIT_OUT_DIR`,
@@ -54,4 +54,4 @@ Nothing that should carry over between runs lives in a timestamped folder. Each 
 - When a target folder is new, a skill looks once for its earlier results in the old layouts (timestamped folders, audit-all run folders) by their content, not by folder name.
 - solution-health's state folder is `<folder>/solution-health/<solution>/` itself (manifest.json, state.json, snapshots/, notes.md), because each run updates the state in place; `--in-repo` keeps it in the solution for teams that commit it.
 
-Skills install separately, so launch-audit, security-audit and audit-all each carry a copy of `scripts/lib/target-state.mjs` (security-audit's tests check the copies are identical), and each carries its own `reportsRoot()` (see `security-audit/scripts/scan.mjs`); keep them in step. A new skill that writes reports should use the same layout.
+Skills install separately, so launch-audit, security-audit, a11y-audit and audit-all each carry a copy of `scripts/lib/target-state.mjs` (security-audit's tests check the copies are identical), and each carries its own `reportsRoot()` (see `security-audit/scripts/scan.mjs`); keep them in step. A new skill that writes reports should use the same layout.

@@ -233,3 +233,22 @@ test('newRunFolder: one target folder per subject, runs under runs/, previous ru
     fs.rmSync(reports, { recursive: true, force: true });
   }
 });
+
+test('headline: a11y-audit figures and verdict', () => {
+  const h = headline({ kind: 'a11y-audit', target: null, md: sample('a11y-audit') });
+  assert.deepEqual(h.counts, { criteria: 7, issues: 7, review: 2, pages: 1 });
+  assert.deepEqual(h.figures, [[7, 'criteria failed'], [7, 'issues']]);
+  assert.match(h.what, /keyboard user can get stuck/);
+  assert.equal(h.target, 'shop.example.dk');
+});
+
+test('discoverReports: a11y-audit sits after launch-audit', () => {
+  const run = fs.mkdtempSync(path.join(os.tmpdir(), 'aa-a11y-'));
+  try {
+    for (const [dir, md] of [['security-audit', SECURITY], ['a11y-audit', sample('a11y-audit')], ['launch-audit', sample('launch-audit')]]) {
+      fs.mkdirSync(path.join(run, dir));
+      fs.writeFileSync(path.join(run, dir, 'report.md'), md);
+    }
+    assert.deepEqual(discoverReports(run).map((r) => r.kind), ['launch-audit', 'a11y-audit', 'security-audit']);
+  } finally { fs.rmSync(run, { recursive: true, force: true }); }
+});

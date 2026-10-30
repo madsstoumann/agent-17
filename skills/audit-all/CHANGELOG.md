@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.3.0] - 2026-10-30
+
+### Added
+- a11y-audit as a fourth audit: run on the site URL after launch-audit (`--from` its crawl) into `<run>/a11y-audit/`. `combine.mjs` picks up `a11y-audit[-<host>]/report.md`, puts it after the launch audit, and shows criteria failed and issues on the cover and in the at-a-glance table.
+- `a11y` as a task source in `tasks.json`; a11y-audit's own `tasks.json` draft is merged into the run's plan.
+
 ## [1.2.1] - 2026-10-30
 
 ### Added
