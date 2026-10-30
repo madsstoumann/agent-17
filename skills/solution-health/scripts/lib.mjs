@@ -4,7 +4,7 @@ import { join, resolve, extname, relative, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 
-export const USER_AGENT = 'solution-health-skill/1.1 (dependency and API health check; run by developers)';
+export const USER_AGENT = 'solution-health-skill/2.1 (dependency and API health check; run by developers)';
 
 export function parseArgs(argv = process.argv.slice(2)) {
   const args = { _: [] };
@@ -93,6 +93,7 @@ export function paths(args = {}, opts = {}) {
     state: resolve(dir, 'state.json'),
     report: resolve(dir, 'report.md'),
     notes: resolve(dir, 'notes.md'),
+    tasks: resolve(dir, 'tasks.json'),
     runDir: resolve(dir, 'run'),
     cacheDir: resolve(dir, 'run', 'cache'),
     snapshotDir: resolve(dir, 'snapshots'),

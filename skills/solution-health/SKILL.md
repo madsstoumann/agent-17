@@ -1,17 +1,17 @@
 ---
 name: solution-health
-description: Periodic health check of this solution's dependencies and external integrations. Checks npm and NuGet packages (outdated, vulnerable via npm audit / dotnet, deprecated, unmaintained or archived upstream), the NuGet sources and package folders the solution's own NuGet.config resolves to, runtime and framework end-of-life (Node, .NET, Umbraco, Next.js…), and external APIs the code calls (deprecation/sunset headers, shutdown notices on the provider's docs, changelog or status pages, including Danish notices like DAWA's). Keeps a manifest and state per solution in the shared report folder (Downloads by default) so each run reports what changed since last time. Use whenever someone asks to run the solution or dependency health check, audit dependencies or packages, check for deprecated or abandoned packages, check if an API we use is being shut down or deprecated, do a quarterly maintenance check, or asks "is anything in this project end-of-life?", even if they do not name the skill.
+description: Periodic health check of a solution's dependencies and external integrations. Checks npm and NuGet packages (outdated majors; vulnerable, including transitive, via npm audit, dotnet and NuGet's vulnerability database; deprecated, unmaintained or archived upstream), the licence of every installed package with compatibility flags (AGPL, GPL, source-available, missing), the NuGet sources and folders the solution's NuGet.config resolves to, runtime and framework end-of-life (Node, .NET, Umbraco, Next.js…), and external APIs the code calls (deprecation/sunset headers, shutdown notices on provider pages, including Danish ones like DAWA's). Remembers each run, so it reports what changed. Use whenever someone asks for a solution or dependency health check, to audit packages or licences, about deprecated or abandoned packages, whether an API we use is shutting down, a quarterly maintenance check, or "is anything in this project end-of-life?", even if they do not name the skill.
 argument-hint: "[--root PATH] [--in-repo | --dir PATH] [--transitive] [--offline] [--skip packages,runtimes,apis]"
 allowed-tools: Bash(node:*), Bash(npm:*), Bash(dotnet:*), Read, Write, Edit, WebFetch, WebSearch
 metadata:
-  version: "2.1.0"
+  version: "2.2.0"
 ---
 
 # Solution health check
 
-This skill exists because a site kept calling DAWA (the Danish address API) long after its shutdown was announced on DAWA's own docs page. Nobody read that page. `npm audit` and `dotnet list package --vulnerable` only catch known CVEs. They do not tell you that a package's repo was archived, that a runtime is out of support, or that a government API is closing. This skill covers all of these and remembers what it saw last time, so a dev running it every month or quarter sees what changed.
+This skill exists because a site kept calling DAWA (the Danish address API) long after its shutdown was announced on DAWA's own docs page. Nobody read that page. `npm audit` and `dotnet list package --vulnerable` only catch known CVEs. They do not tell you that a package's repo was archived, that a runtime is out of support, that an AGPL package came in three levels down, or that a government API is closing. This skill covers all of these and remembers what it saw last time, so a dev running it every month or quarter sees what changed.
 
-It is **report only**. Do not change code, upgrade packages or edit lockfiles as part of a run. The only exception is `npm audit fix`, and only when the developer explicitly asks for it (never `--force`). The deliverable is `report.md` in the state folder (below) plus a short summary in chat.
+It is **report only**. Do not change code, upgrade packages or edit lockfiles as part of a run. The only exception is `npm audit fix`, and only when the developer explicitly asks for it (never `--force`). The deliverable is `report.md` in the state folder (below) plus a short summary in chat, and `tasks.json`, the red and amber findings as fix tasks that audit-all and audit-fix take as they are.
 
 ## Files
 
@@ -39,6 +39,7 @@ copies the newest one over once and says so.
 | `snapshots/*.txt` | Scripts | Normalized text of each watched page, used to diff the next run |
 | `notes.md` | You and the team | Triage notes, migration plans, decisions. No script writes it; `finalize.mjs` shows it in the report's "Notes" section on every run |
 | `report.md` | Scripts | Latest report, rewritten by every `finalize.mjs` run. Do not write notes into it |
+| `tasks.json` | Scripts + you | Red and amber findings as fix tasks, in audit-all's `tasks.json` shape |
 | `run/` | Scripts | Scratch: raw results, HTTP cache, change files (with `--in-repo`, add `.solution-health/run/` to `.gitignore`) |
 
 Scripts are in `scripts/` next to this file. They are zero-dependency Node (18+), so they run on any dev machine with Node, including .NET-only devs. Run them from the solution root, or pass `--root <path>`. The commands below use `${CLAUDE_SKILL_DIR}`, this skill's folder wherever it is installed (`.claude/skills/solution-health/` in the solution, `~/.claude/skills/`, or a plugin); if it is not filled in, use the folder this `SKILL.md` is in. `references/sample-report.md` shows what a finished report looks like.
@@ -101,7 +102,7 @@ If a red or amber finding gives a date or replacement that should hold for futur
 node "${CLAUDE_SKILL_DIR}/scripts/finalize.mjs"
 ```
 
-This merges everything, compares with the previous `state.json`, writes `report.md`, updates `state.json` and accepts the assessed snapshots. Use `--dry-run` to preview without saving.
+This merges everything, compares with the previous `state.json`, writes `report.md` and `tasks.json`, updates `state.json` and accepts the assessed snapshots. Use `--dry-run` to preview without saving.
 
 ### 5. Look into the red packages, then summarize
 
@@ -109,10 +110,15 @@ Read `notes.md` first: earlier runs may already have looked into the same items.
 
 Write what you found to `notes.md` in the state folder (replacement, migration notes, effort guess), one `## <item>` section per item with the date, and update the sections that are already there instead of adding duplicates. Never edit `report.md`: the next `finalize.mjs` rewrites it. Run `finalize.mjs` again afterwards so the report shows the notes. If `finalize.mjs` says it saved a hand-edited `report.edited-<date>.md`, move the notes in it to `notes.md` and tell the user the old copy can be deleted.
 
+For each red or amber licence, check the signal the same way. A licence the scripts could not recognise (`SEE LICENSE IN …`, a URL, no licence at all) is often fine once read: open the package's LICENSE file (in `node_modules`, the NuGet package folder, or on the repo via WebFetch) and say what it is. A copyleft hit is only a problem if the package ships: a GPL build tool is not, a GPL package in the browser bundle is. These are legal calls for the developer or the client, so describe the finding and the options (replace, buy a licence, accept) and never add a `licenses.accept` entry without their confirmation.
+
+Then bring `tasks.json` in line with what you found: a better replacement in `fix`, a different `model` when the job is bigger or smaller than the default guess, `owner: "human"` for anything that needs a decision first. Keep the ids and the shape (see audit-all's SKILL.md, "Write tasks.json"). Only red and amber findings are in it; info and ignored items are not tasks.
+
 Then reply in chat with:
 - the counts (red/amber, and what is new since last run),
 - every red item with its one-line action,
 - any changed pages you judged red or amber,
+- licences that need a decision, and vulnerable transitive packages with the direct package that pulls them in,
 - the untracked hosts that still need a decision,
 - gaps (unreachable sources, missing tools), so a clean report is not mistaken for a clean bill of health.
 
@@ -127,6 +133,19 @@ Thresholds are in the manifest (`packages.thresholds`, `runtimes.warnDays`, `api
 - 🟠 no release in `quietMonths` (12), OpenSSF Scorecard "Maintained" ≤ 2, moderate/low vulnerability, or 2+ major versions behind.
 - 🔵 updates available. ⚫ ignored. An ignore entry hides amber and info. It also hides a red that comes **only** from staleness (no release and no commits in `staleMonths`), but only when the entry has both a `reason` and an `expires` date; at expiry the red comes back. It never hides deprecated, archived, missing or vulnerable packages.
 - Data comes from the npm registry, api.nuget.org (registration: deprecation, vulnerabilities, publish dates; public metadata, even when the solution restores through a private feed that mirrors nuget.org), `npm outdated`/`npm audit`, `dotnet list package --outdated/--deprecated/--vulnerable` when the SDK is installed, packages.ecosyste.ms (archived, last push, maintainers) and api.deps.dev (Scorecard). npms.io is deliberately **not** used: its data is years stale.
+
+**Vulnerable transitive packages** (the whole tree, not only direct dependencies):
+- npm: every entry `npm audit` reports that is not a direct dependency, with the direct package that pulls it in (from audit's `effects`) and the fix (`npm audit fix`, or the parent version that fixes it). NuGet: `dotnet list package --vulnerable --include-transitive` when the SDK is installed, otherwise NuGet's own vulnerability database (`api.nuget.org/v3/vulnerabilities`) matched against `obj/project.assets.json`, with the direct packages found through the assets file's dependency graph.
+- 🔴 high or critical, 🟠 moderate, 🔵 low. A transitive npm package that is only reached through dev dependencies drops one level (build tooling is not shipped).
+- In `tasks.json`, a transitive vulnerability whose fix is "upgrade the direct package X" is folded into X's task, so one upgrade is one task.
+
+**Licences** (every installed or locked package, direct and transitive):
+- Read from what is on disk, so no network is needed: `package-lock.json` (v2/v3 record each package's licence), `node_modules/*/package.json` when there is no npm lockfile, and for NuGet the `.nuspec` of each package in the folders `obj/project.assets.json` names (licence expression, licence file, or a known `licenseUrl`). A `SEE LICENSE IN` or licence file is identified from its text when it is a well-known licence. Direct packages that are not installed fall back to the registry (npm, api.nuget.org) and deps.dev.
+- Judged against the solution's own licence: `licenses.projectLicense` in the manifest, else the root `package.json` `license`, else a csproj `PackageLicenseExpression`, else assumed closed source (most client solutions).
+- For a closed-source or permissive solution: 🔴 network copyleft (AGPL, OSL) and source-available or non-commercial licences (SSPL, BUSL, Elastic, PolyForm, CC-BY-NC); 🟠 strong copyleft (GPL, EUPL), no licence, an unrecognised licence, or `UNLICENSED`; 🔵 weak copyleft (LGPL, MPL, EPL). Permissive licences (MIT, BSD, Apache-2.0, ISC, …) are green and only counted. `MIT OR GPL-3.0` counts as MIT; `MIT AND GPL-3.0` as GPL.
+- Dev-only packages drop to 🔵, except non-commercial licences, which stay 🟠: using the tool at work is the commercial use they forbid.
+- For a GPL solution, copyleft dependencies are fine, and the known incompatibilities are 🔴: Apache-2.0 or any v3 licence in a GPL-2.0-only work, GPL-2.0-only code in a GPL-3.0 or AGPL-3.0 work.
+- The manifest's `licenses` block overrides this: `allow`, `review` (amber) and `deny` (red) lists of licence ids, and `accept: [{ name, ecosystem, reason, expires }]` for a package someone has cleared.
 
 **NuGet sources and folders** (resolved from the solution, never assumed): for each project, the NuGet.config chain from the project folder up to the drive root plus the user-level config, `<clear/>`, `disabledPackageSources` and `packageSourceMapping`; MSBuild `RestoreSources`, `RestoreAdditionalProjectSources`, `RestorePackagesPath`, `RestoreFallbackFolders` and `RestoreConfigFile` in the project or nearest `Directory.Build.props`; the `NUGET_PACKAGES` env var; `globalPackagesFolder`, `fallbackPackageFolders` and, for packages.config projects, `repositoryPath` (default `<solution dir>/packages`). `%VAR%` and relative paths resolve the way NuGet resolves them. With the SDK installed, `dotnet nuget locals global-packages --list` and `dotnet nuget list source` confirm the result. nuget.org is only assumed when nothing configures a source, and `~/.nuget/packages` only when nothing sets the folder.
 - 🔴 local source folder missing (NU1301), feed URL returns 404/410, a package that source mapping sends to no enabled source (NU1100), every source cleared or disabled, `RestoreConfigFile` pointing nowhere.

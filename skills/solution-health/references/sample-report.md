@@ -2,7 +2,7 @@
 
 Solution: `.` · Previous run: 2026-10-21
 
-**11 red · 2 amber · 0 unknown · 1 info · 3 green**
+**14 red · 3 amber · 0 unknown · 2 info · 3 green**
 
 ## New since 2026-10-21
 
@@ -101,12 +101,32 @@ These pages changed (or mention deprecation on first sight) and nobody has read 
 - Where: `frontend/src/address.ts`
 - Red since: 2026-10-21
 
+### 🔴 System.Text.Encodings.Web@4.5.0 (transitive) _(vulnerability, nuget)_
+- 1 known vulnerability (critical) in 4.5.0
+- pulled in by umbraco.cms
+- fix: add a direct PackageReference to a fixed version, or upgrade the package that pulls it in
+- Where: `src/Web/Web.csproj`
+- Red since: 2026-10-21
+
+### 🔴 agpl-thing (AGPL-3.0-only) _(licence, npm)_
+- AGPL-3.0-only is network copyleft: running it in a site or service other people use can oblige you to publish the source of the whole service
+- pulled in by request
+- Where: `frontend/package.json`
+- Red since: 2026-10-21
+
+### 🔴 iTextSharp (AGPL-3.0) _(licence, nuget)_
+- AGPL-3.0 is network copyleft: running it in a site or service other people use can oblige you to publish the source of the whole service
+- pulled in by umbraco.cms
+- Where: `src/Web/Web.csproj`
+- Red since: 2026-10-21
+
 ## Watch
 
 | | Item | Area | Why | Since |
 |---|---|---|---|---|
 | 🟠 | Umbraco.Cms@10.8.0 | package | single maintainer (bus factor 1); 6 major versions behind (10.8.0 → 16.3.1) | 2026-10-21 |
 | 🟠 | Example: payment provider | api | 2 new deprecation-keyword sentence(s) on http://127.0.0.1:8787/changelog; host not found in code (removed? or built at runtime) | 2026-10-21 |
+| 🟠 | mystery-pkg (no licence) | licence | no licence declared: by default nobody may use, copy or ship it; ask the author or replace it | 2026-10-21 |
 
 ## External APIs
 
@@ -136,6 +156,28 @@ _*OpenSSF Scorecard "Maintained" check, 0–10, via deps.dev. ? = not assessed._
 </details>
 
 npm audit `frontend/package.json`: 4 critical, 8 high, 3 moderate, 2 low (incl. transitive). Run `npm audit fix` (no `--force`) for semver-compatible fixes.
+
+## Vulnerable transitive packages (1)
+
+| | Package | Eco | Severity | Pulled in by | Fix |
+|---|---|---|---|---|---|
+| 🔴 | System.Text.Encodings.Web 4.5.0 | nuget | critical | umbraco.cms | add a direct PackageReference to a fixed version, or upgrade the package that pulls it in |
+
+## Licences (16 packages, 9 direct)
+
+Solution licence: **proprietary** (assumed: closed source; set `licenses.projectLicense` in the manifest if the solution is open source). Found: MIT 8, Apache-2.0 2, AGPL-3.0-only 1, AGPL-3.0 1, none 1, GPL-3.0-or-later 1, WTFPL 1, LicenseRef-MS-NET-Library 1.
+
+| | Package | Eco | Licence | Use | Why |
+|---|---|---|---|---|---|
+| 🔴 | agpl-thing 1.0.0 | npm | AGPL-3.0-only | transitive, shipped | AGPL-3.0-only is network copyleft: running it in a site or service other people use can oblige you to publish the source of the whole service; pulled in by request |
+| 🔴 | iTextSharp 5.5.13 | nuget | AGPL-3.0 | transitive, shipped | AGPL-3.0 is network copyleft: running it in a site or service other people use can oblige you to publish the source of the whole service; pulled in by umbraco.cms |
+| 🟠 | mystery-pkg 0.1.0 | npm | none | transitive, shipped | no licence declared: by default nobody may use, copy or ship it; ask the author or replace it |
+
+<details><summary>1 weak-copyleft or dev-only licences (no action, keep the notices)</summary>
+
+- npm gpl-build-tool (GPL-3.0-or-later): GPL-3.0-or-later is strong copyleft: shipping it (a browser bundle, a desktop or mobile app, an installer, a package you publish) obliges you to release the combined work under the same licence; server-side use without distribution is usually fine, so check how it is used; dev dependency only (not shipped), so it matters less
+
+</details>
 
 ## NuGet sources and folders
 
@@ -170,6 +212,7 @@ Add each real integration to `manifest.json` → `apis` (with a watch page), or 
 ## Coverage and gaps
 
 - dotnet SDK not installed — NuGet transitive/vulnerability data from CLI skipped
+- 1 package(s) with no licence information (not installed here, or the package declares none); see Licences
 - src/Web/Web.csproj: dotnet not on PATH: using the NuGet API only (no transitive or local-feed data).
 
 ---

@@ -4,7 +4,7 @@ description: Use when someone wants the full audit of a site and its code in one
 argument-hint: "[url] [repo path ...] [--style serif|sans] [--out DIR] [--skip launch,security,health]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.2.0"
+  version: "1.2.1"
 ---
 
 # Audit all
@@ -129,6 +129,11 @@ In order. Duplicates across the audits are merged.
 `<run>/tasks.json` is the fix plan as data: **every** confirmed problem worth fixing, not only the
 "Fix first" items. Merge duplicates the same way, one task per fix. Leave out false positives,
 "needs a look" items you could not confirm (list them in summary.md instead) and pure info.
+
+solution-health already writes its red and amber findings in this shape, and `combine.mjs --repo`
+copies them to `solution-health-<repo>/tasks.json` (ids `H1`, `H2`, …). Start from those: renumber
+them, merge each with the same fix from the other audits (a vulnerable package security-audit also
+found), and keep their owner, model and files unless you know better.
 
 ```json
 {

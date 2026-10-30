@@ -2,6 +2,18 @@
 
 All notable changes to the `solution-health` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.2.0] - 2026-10-30
+
+### Added
+- Licence inventory of every installed or locked package, direct and transitive, read from disk: `package-lock.json` (or `node_modules`), and for NuGet the `.nuspec` files in the package folders `obj/project.assets.json` names (licence expression, licence file identified from its text, or a known `licenseUrl`). Direct packages that are not installed fall back to the registry and deps.dev.
+- Licence policy against the solution's own licence (`licenses.projectLicense`, else `package.json`/csproj, else assumed closed source): network copyleft and source-available or non-commercial licences are red; strong copyleft, missing and unrecognised licences amber; weak copyleft info; dev-only packages drop a level except non-commercial ones. GPL-2.0-only/Apache-2.0 and GPL-2.0-only/GPL-3.0 incompatibilities are red for GPL solutions. `licenses.allow`/`review`/`deny`/`accept` in the manifest override it.
+- Vulnerable transitive packages: npm audit's non-direct entries (with the direct package that pulls them in and the fix), `dotnet list package --vulnerable` now always with `--include-transitive`, and NuGet's vulnerability database matched against `obj/project.assets.json` when the dotnet SDK is missing. Dev-only npm paths drop a level.
+- New report sections "Vulnerable transitive packages" and "Licences"; both kinds of finding are tracked in `state.json` (`vulns`, `licenses`), so "New since" covers them.
+- `tasks.json` next to `report.md`: every red and amber finding as a fix task in audit-all's `tasks.json` shape (`H1`…, owner, model, repo, files, evidence, fix, verify). Framework packages fold into their runtime upgrade, and a transitive vulnerability fixed by upgrading a direct package folds into that package's task. Claude refines it in step 5.
+
+### Changed
+- A package whose installed version is deprecated but whose latest is not is an upgrade task, not a replacement.
+
 ## [2.1.0] - 2026-10-30
 
 ### Added
