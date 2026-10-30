@@ -284,8 +284,15 @@ node "${CLAUDE_SKILL_DIR}/scripts/combine.mjs" "<run>" [--style serif|sans] [--r
 ```
 
 It writes `<run>/report.md` (summary, an at-a-glance table, then every report with headings moved
-down a level), `<run>/report.html` (fonts embedded, opens anywhere) and `<run>/report.pdf`. It prints
-the three paths and the fix plan: quote them to the user, with the verdict and the "Fix first" list
+down a level), `<run>/report.html` (fonts embedded, opens anywhere) and `<run>/report.pdf`, plus a
+**compact** version, `report-compact.html` and `report-compact.pdf`: the same cover, verdict, Fix
+first and at-a-glance table, then each audit with only what needs action. Check tables keep every
+warn and fail and count the rest; other lists and tables (URLs, packages, cookies, pages) stop at
+five rows with "…and N more in the full report"; per-item detail under a summary table, long code
+blocks and reference sections (Not covered, Manual checks, Pages) are left out; sections with
+nothing to fix are named in one line. Typically a third to a half of the pages. Both are always
+written (`--no-compact` skips it): the compact one for managers and clients, the full one for the
+people fixing things. It prints the paths and the fix plan: quote them to the user, with the verdict and the "Fix first" list
 in a few lines, then one line on the plan ("12 tasks: 9 for agents, 3 for you; run audit-fix to
 start them").
 

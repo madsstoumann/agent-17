@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseBlocks, renderBlocks, inline, joinLines, escapeHtml, plain } from './markdown.mjs';
+import { compactReport } from './compact.mjs';
 
 export const KINDS = {
   'launch-audit': {
@@ -255,8 +256,9 @@ function coverMeta(reports, heads) {
   }).join('\n');
 }
 
-/** Full HTML document. `css` is the stylesheet text (fonts included); `style` is serif or sans. */
-export function combinedHtml({ summary, reports, heads, date, version, css, style, toolVersions = {} }) {
+/** Full HTML document. `css` is the stylesheet text (fonts included); `style` is serif or sans;
+ *  `compact` shortens every sub-report (see compact.mjs). */
+export function combinedHtml({ summary, reports, heads, date, version, css, style, toolVersions = {}, compact = false }) {
   const subject = summary.meta.subject || heads.find((h) => h.target)?.target || 'Audit';
   const title = summary.meta.title || `Audit report: ${subject}`;
   const names = [...new Set(reports.map((r) => KINDS[r.kind].title))].map((t, i) => (i ? t.toLowerCase() : t));
@@ -264,7 +266,8 @@ export function combinedHtml({ summary, reports, heads, date, version, css, styl
   const tools = [`audit-all ${version}`, ...Object.entries(toolVersions).map(([k, v]) => `${k} ${v}`)].join(' · ');
 
   const audits = reports.map((r, i) => {
-    const { intro, sections } = splitReport(r.md);
+    const split = splitReport(r.md);
+    const { intro, sections } = compact ? compactReport(split) : split;
     const kind = KINDS[r.kind];
     const target = heads[i].target;
     const meta = intro.length ? `<div class="result-line">${renderBlocks(intro)}</div>` : '';

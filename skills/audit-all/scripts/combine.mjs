@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * audit-all: merge the per-audit reports in a run folder into one report.md, report.html and report.pdf.
+ * audit-all: merge the per-audit reports in a run folder into one report.md, report.html and report.pdf,
+ * plus a shorter report-compact.html and report-compact.pdf.
  *
- *   node combine.mjs <run-dir> [--style serif|sans] [--repo PATH]... [--no-pdf] [--chrome PATH]
+ *   node combine.mjs <run-dir> [--style serif|sans] [--repo PATH]... [--no-pdf] [--no-compact] [--chrome PATH]
  *   (also writes fix/TODO.md and fix/tasks/*.md when <run-dir>/tasks.json exists)
  *   node combine.mjs --new <name>      print a fresh run folder path (and create it)
  */
@@ -16,7 +17,7 @@ import { printPdf } from './lib/pdf.mjs';
 import { writeFixPlan } from './lib/tasks.mjs';
 import { targetDir, claimTarget, newRun, previousRuns, readNotes, targetName } from './lib/target-state.mjs';
 
-export const VERSION = '1.5.0';
+export const VERSION = '1.7.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, '..', 'assets');
 const SIBLINGS = path.join(HERE, '..', '..');
@@ -34,7 +35,9 @@ Flags:
   --repo PATH          Copy PATH's solution-health report (<reports>/solution-health/<repo name>/report.md,
                        or PATH/.solution-health/report.md for --in-repo setups) into <run-dir>/solution-health-<repo name>/ first.
                        Repeat for several repos.
-  --no-pdf             Write report.md and report.html only.
+  --no-pdf             Write report.md and the HTML files only.
+  --no-compact         Skip report-compact.html and report-compact.pdf (the full report with long lists
+                       cut to five rows, passing checks and reference sections left out).
   --chrome PATH        Browser to print with (default: CHROME_PATH, installed Chrome/Chromium/Edge, Playwright's Chromium).
 
 <reports> is $AUDIT_OUT_DIR, else the Downloads folder if it exists (XDG download folder on Linux), else ~/audit-reports.
@@ -43,7 +46,7 @@ Flags:
 const STYLES = { serif: 'serif', sans: 'sans', editorial: 'serif', modern: 'sans' };
 
 export function parseArgs(argv) {
-  const a = { dir: null, style: 'serif', repos: [], pdf: true, chrome: null, newName: null, help: false };
+  const a = { dir: null, style: 'serif', repos: [], pdf: true, compact: true, chrome: null, newName: null, help: false };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i];
     const next = () => { if (i + 1 >= argv.length) throw new Error(`${v} needs a value`); return argv[++i]; };
@@ -54,6 +57,7 @@ export function parseArgs(argv) {
       a.style = STYLES[s];
     } else if (v === '--repo') a.repos.push(next());
     else if (v === '--no-pdf') a.pdf = false;
+    else if (v === '--no-compact') a.compact = false;
     else if (v === '--chrome') a.chrome = next();
     else if (v === '--new') a.newName = next();
     else if (v.startsWith('--')) throw new Error(`Unknown option ${v}`);
@@ -207,9 +211,13 @@ export async function combine(args, { now = new Date(), log = (m) => process.std
 
   const md = combinedMarkdown({ summary, reports, heads, date: now, version: VERSION });
   const html = combinedHtml({ summary, reports, heads, date: now, version: VERSION, css: stylesheet(args.style), style: args.style, toolVersions });
-  const out = { md: path.join(runDir, 'report.md'), html: path.join(runDir, 'report.html'), pdf: null, todo: null, reports: reports.map((r) => r.folder) };
+  const out = { md: path.join(runDir, 'report.md'), html: path.join(runDir, 'report.html'), pdf: null, compactHtml: null, compactPdf: null, todo: null, reports: reports.map((r) => r.folder) };
   fs.writeFileSync(out.md, md);
   fs.writeFileSync(out.html, html);
+  if (args.compact !== false) {
+    out.compactHtml = path.join(runDir, 'report-compact.html');
+    fs.writeFileSync(out.compactHtml, combinedHtml({ summary, reports, heads, date: now, version: VERSION, css: stylesheet(args.style), style: args.style, toolVersions, compact: true }));
+  }
   const fix = writeFixPlan(runDir, { date: now, subject: summary.meta.subject || null });
   for (const w of fix.warnings || []) log(`tasks.json: ${w}`);
   if (fix.written) out.todo = fix.todo;
@@ -220,6 +228,11 @@ export async function combine(args, { now = new Date(), log = (m) => process.std
     const r = await printPdf(out.html, pdfFile, { chromePath: args.chrome });
     if (r.ok) out.pdf = pdfFile;
     else log(`PDF skipped: ${r.error}. Open report.html in a browser and print to PDF instead.`);
+    if (r.ok && out.compactHtml) {
+      const c = await printPdf(out.compactHtml, path.join(runDir, 'report-compact.pdf'), { chromePath: args.chrome });
+      if (c.ok) out.compactPdf = path.join(runDir, 'report-compact.pdf');
+      else log(`Compact PDF skipped: ${c.error}.`);
+    }
   }
   return out;
 }
@@ -237,7 +250,7 @@ async function main() {
   if (!args.dir) { process.stderr.write(USAGE); process.exit(2); }
   try {
     const out = await combine(args);
-    process.stdout.write(`combined: ${out.reports.join(', ')}\n\nreport.md:   ${out.md}\nreport.html: ${out.html}\nreport.pdf:  ${out.pdf || '(not written)'}\nfix plan:    ${out.todo || '(not written)'}\n`);
+    process.stdout.write(`combined: ${out.reports.join(', ')}\n\nreport.md:   ${out.md}\nreport.html: ${out.html}\nreport.pdf:  ${out.pdf || '(not written)'}\ncompact:     ${out.compactPdf || out.compactHtml || '(not written)'}\nfix plan:    ${out.todo || '(not written)'}\n`);
   } catch (e) {
     process.stderr.write(`${e.message}\n`);
     process.exit(1);

@@ -87,7 +87,9 @@ found in the repo named in the question (type another one under "Other"). Custom
 screens of four: Accessibility, Infrastructure, Launch, Privacy, then Security, SEO / GEO,
 Solution health, Sustainability. Infrastructure, Launch, Privacy, Security and Solution health
 are recommended; Accessibility, SEO / GEO and Sustainability are opt-in. It also asks for the
-report's look: Editorial (serif, like a printed report) or Modern (sans-serif). Flags skip the questions:
+report's look: Editorial (serif, like a printed report) or Modern (sans-serif). Every run writes
+two PDFs: `report.pdf` (everything) and `report-compact.pdf` (only what needs action, long URL and
+package lists cut to five rows). Flags skip the questions:
 
 ```text
 /skills:audit-all https://shop.example.dk --yes               # default audits, no questions
