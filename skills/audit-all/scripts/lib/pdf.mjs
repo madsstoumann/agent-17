@@ -87,3 +87,36 @@ export async function printPdf(htmlFile, pdfFile, { chromePath, timeout = 120000
     return { ok: false, chrome, error: e.message };
   }
 }
+
+/**
+ * Page numbers (1-based) of the named destinations Chrome writes for in-document links (`<a href="#x">`
+ * to an element with id x): { x: 3, … }. Reads the uncompressed object structure Chrome's PDF writer
+ * uses (catalog /Dests, the /Pages tree). Returns {} when the PDF is laid out some other way.
+ */
+export function pdfDestPages(pdfFile) {
+  let text;
+  try { text = fs.readFileSync(pdfFile).toString('latin1'); } catch { return {}; }
+  const objs = new Map();
+  for (const m of text.matchAll(/(?:^|[\r\n])(\d+) 0 obj\b([\s\S]*?)endobj/g)) objs.set(m[1], m[2]);
+  const catalog = [...objs.values()].find((b) => /\/Type\s*\/Catalog\b/.test(b));
+  const ref = (body, key) => (body?.match(new RegExp(`/${key}\\s+(\\d+) 0 R`)) || [])[1];
+  if (!catalog) return {};
+  const order = [];
+  const walk = (id, depth = 0) => {
+    const body = objs.get(id);
+    if (!body || depth > 32) return;
+    if (/\/Type\s*\/Pages\b/.test(body)) {
+      const kids = (body.match(/\/Kids\s*\[([^\]]*)\]/) || [])[1] || '';
+      for (const k of kids.matchAll(/(\d+) 0 R/g)) walk(k[1], depth + 1);
+    } else order.push(id);
+  };
+  walk(ref(catalog, 'Pages'));
+  const dests = objs.get(ref(catalog, 'Dests')) || '';
+  const out = {};
+  for (const m of dests.matchAll(/\/([^\s/[\]()<>]+)\s*\[\s*(\d+) 0 R/g)) {
+    const name = m[1].replace(/#([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
+    const i = order.indexOf(m[2]);
+    if (i >= 0) out[name] = i + 1;
+  }
+  return out;
+}
