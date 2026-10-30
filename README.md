@@ -82,9 +82,14 @@ Notes:
 
 ## Running every audit at once
 
-`/skills:audit-all` asks first: the live URL (it suggests the one it finds in the repo) and which
-audits to run. Launch, privacy, infra, security and dependency health are ticked by default;
-accessibility, SEO and carbon footprint are opt-in. Flags skip the questions:
+`/skills:audit-all` asks first: **All** (all eight audits) or **Customize**, with the live URL it
+found in the repo named in the question (type another one under "Other"). Customize shows two
+screens of four: Accessibility, Infrastructure, Launch, Privacy, then Security, SEO / GEO,
+Solution health, Sustainability. Infrastructure, Launch, Privacy, Security and Solution health
+are recommended; Accessibility, SEO / GEO and Sustainability are opt-in. It also asks for the
+report's look: Editorial (serif, like a printed report) or Modern (sans-serif). Every run writes
+two PDFs: `report.pdf` (everything) and `report-compact.pdf` (only what needs action, long URL and
+package lists cut to five rows). Flags skip the questions:
 
 ```text
 /skills:audit-all https://shop.example.dk --yes               # default audits, no questions

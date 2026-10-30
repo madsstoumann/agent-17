@@ -6,7 +6,7 @@
  *
  * Start page and redirects → robots.txt and sitemaps → crawl (links, then a sitemap sample) →
  * og:image and external link checks → validator.schema.org on one page per template →
- * checks → report.md, report.json, findings.json, pages.csv.
+ * llms.txt, llms-full.txt and ai.txt → checks → report.md, report.json, findings.json, pages.csv.
  */
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
@@ -22,6 +22,7 @@ import { followChain } from './lib/redirects.mjs';
 import { crawlSite, checkExternal, normalise } from './lib/crawl.mjs';
 import { runChecks, pickSchemaPages, htmlPages } from './lib/checks.mjs';
 import { schemaValidate } from './lib/schema.mjs';
+import { fetchGeo, geoChecks } from './lib/geo.mjs';
 import { renderMarkdown, renderStdout, findings, pagesCsv } from './lib/report.mjs';
 
 const startedAt = Date.now();
@@ -111,10 +112,14 @@ async function main() {
     }
   }
 
+  log('llms.txt, llms-full.txt, ai.txt');
+  const geo = await fetchGeo(http, u.origin);
+
   const rows = runChecks({
     finalUrl, hosts: siteHosts, productionHost: opts.productionHost, pages: crawl.pages, inlinks: crawl.inlinks, blocked: crawl.blocked,
     truncated: crawl.truncated, robots, sitemap, external, externalFrom: crawl.external, ogImages: ogUrls.length ? ogImages : null, schema,
   });
+  rows.push(...geoChecks({ robots, robotsText, geo, start: crawl.pages.find((p) => p.url === finalUrl) }));
 
   const date = new Date().toISOString().slice(0, 10);
   const report = {

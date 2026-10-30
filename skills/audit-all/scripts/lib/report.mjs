@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseBlocks, renderBlocks, inline, joinLines, escapeHtml, plain } from './markdown.mjs';
+import { compactReport } from './compact.mjs';
 
 export const KINDS = {
   'launch-audit': {
@@ -14,11 +15,11 @@ export const KINDS = {
     standfirst: 'A sample of pages checked against WCAG 2.2 AA and EN 301 549 with axe-core and HTML_CodeSniffer, a keyboard-only walk, and reflow at 320 px.',
   },
   'seo-audit': {
-    title: 'SEO audit',
+    title: 'SEO / GEO audit',
     standfirst: 'The whole site crawled the way a search engine sees it: indexing, sitemap and robots.txt, links and redirects, titles, canonical and hreflang, share previews and structured data.',
   },
   'eco-audit': {
-    title: 'Eco audit',
+    title: 'Sustainability audit',
     standfirst: 'Real page loads weighed byte by byte and turned into CO2e per page view with the Sustainable Web Design model, plus a green hosting check.',
   },
   'privacy-audit': {
@@ -255,8 +256,9 @@ function coverMeta(reports, heads) {
   }).join('\n');
 }
 
-/** Full HTML document. `css` is the stylesheet text (fonts included); `style` is serif or sans. */
-export function combinedHtml({ summary, reports, heads, date, version, css, style, toolVersions = {} }) {
+/** Full HTML document. `css` is the stylesheet text (fonts included); `style` is serif or sans;
+ *  `compact` shortens every sub-report (see compact.mjs). */
+export function combinedHtml({ summary, reports, heads, date, version, css, style, toolVersions = {}, compact = false }) {
   const subject = summary.meta.subject || heads.find((h) => h.target)?.target || 'Audit';
   const title = summary.meta.title || `Audit report: ${subject}`;
   const names = [...new Set(reports.map((r) => KINDS[r.kind].title))].map((t, i) => (i ? t.toLowerCase() : t));
@@ -264,7 +266,8 @@ export function combinedHtml({ summary, reports, heads, date, version, css, styl
   const tools = [`audit-all ${version}`, ...Object.entries(toolVersions).map(([k, v]) => `${k} ${v}`)].join(' · ');
 
   const audits = reports.map((r, i) => {
-    const { intro, sections } = splitReport(r.md);
+    const split = splitReport(r.md);
+    const { intro, sections } = compact ? compactReport(split) : split;
     const kind = KINDS[r.kind];
     const target = heads[i].target;
     const meta = intro.length ? `<div class="result-line">${renderBlocks(intro)}</div>` : '';

@@ -1,10 +1,10 @@
 ---
 name: seo-audit
-description: Use when someone wants an SEO or content audit of a whole website, not just the start page — titles and meta descriptions (missing, too long, duplicated), Open Graph and share previews, structured data (JSON-LD that does not parse, validator.schema.org errors), sitemap and robots.txt consistency (noindex, redirecting, blocked or missing URLs, orphan pages), canonical and hreflang problems, broken internal and external links and redirect chains. Also for "why is this page not indexed", re-checking after SEO fixes, or comparing with the last run. Any stack, public or local URLs.
+description: Use when someone wants an SEO or content audit of a whole website, not just the start page — titles and meta descriptions (missing, too long, duplicated), Open Graph and share previews, structured data (JSON-LD that does not parse, validator.schema.org errors), sitemap and robots.txt consistency (noindex, redirecting, blocked or missing URLs, orphan pages), canonical and hreflang problems, broken internal and external links and redirect chains, plus GEO (AI search readiness): llms.txt and llms-full.txt, AI crawler rules in robots.txt (OAI-SearchBot, ClaudeBot, GPTBot, PerplexityBot, Google-Extended…), Content-Signal and ai.txt, and Organization/WebSite entity markup for answer engines. Also for "why is this page not indexed", re-checking after SEO fixes, or comparing with the last run. Any stack, public or local URLs.
 argument-hint: "<url> [--pages N] [--sitemap-sample N] [--external-links N] [--schema-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # SEO audit
@@ -77,6 +77,11 @@ Honesty rules:
   up there too; say so if the site is an SPA.
 - Duplicate titles across language versions are fine when hreflang ties them together.
 - The crawl is a sample when the cap was hit. Say "in the 150 pages crawled", not "on the site".
+- GEO rows are about readiness, not results. Blocking an AI *search* crawler (OAI-SearchBot,
+  ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot) keeps the site out of AI answers and
+  is a warning; blocking only *training* crawlers (GPTBot, ClaudeBot, Google-Extended, CCBot) is
+  a policy choice, reported as info. A missing llms.txt is info: few engines read it yet, so do not
+  sell it as a ranking factor. Nothing here shows whether an AI engine actually cites the site.
 - Nothing here sees rankings, traffic, backlinks or Search Console. Offer Search Console's page
   indexing report as the next step for "why is X not indexed".
 
@@ -94,6 +99,7 @@ plugin, canonical tag). Redirects and robots.txt may be hosting settings rather 
 SEO audit of https://stage.example.dk — production will be https://www.example.dk
 Why are half our pages not in Google? https://www.example.dk
 Check the structured data and share previews across https://shop.example.dk
+Is https://www.example.dk ready for AI search? Do we have an llms.txt?
 Crawl 500 pages of https://www.example.dk and give me the duplicate titles as a spreadsheet   (pages.csv)
 Run the SEO audit again after the fixes
 ```
@@ -103,7 +109,8 @@ Run the SEO audit again after the fixes
 - `scripts/seo.mjs` — the runner (`--help` lists every flag).
 - `scripts/lib/crawl.mjs` — the crawl and the per-page record; `lib/checks.mjs` — every check;
   `lib/report.mjs` — report.md, findings.json, pages.csv; `lib/schema.mjs` — validator.schema.org
-  (the service the validate-schema skill uses); `lib/robotsmatch.mjs` — robots.txt matching.
+  (the service the validate-schema skill uses); `lib/robotsmatch.mjs` — robots.txt matching;
+  `lib/geo.mjs` — llms.txt, ai.txt, AI crawlers and entity markup.
 - `scripts/lib/http.mjs`, `html.mjs`, `robots.mjs`, `redirects.mjs` — copies of launch-audit's;
   `target-state.mjs` — the shared target-folder layout; keep the copies in step.
 - Tests: `cd scripts && node --test test/*.test.mjs`.

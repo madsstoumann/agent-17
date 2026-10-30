@@ -2,6 +2,11 @@
 
 All notable changes to the `seo-audit` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.1.0] - 2026-10-30
+
+### Added
+- An "AI search (GEO)" section: `/llms.txt` (llmstxt.org structure, up to 20 same-site links checked), `/llms-full.txt`, `/ai.txt`, AI crawler rules in robots.txt (search crawlers such as OAI-SearchBot, Claude-SearchBot and PerplexityBot warn when blocked; training crawlers such as GPTBot, ClaudeBot, Google-Extended and CCBot are info), `Content-Signal` lines, and Organization/WebSite entity markup on the start page.
+
 ## [1.0.0] - 2026-10-30
 
 ### Added
