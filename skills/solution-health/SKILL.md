@@ -4,7 +4,7 @@ description: Periodic health check of a solution's dependencies and external int
 argument-hint: "[--root PATH] [--in-repo | --dir PATH] [--transitive] [--offline] [--skip packages,runtimes,apis]"
 allowed-tools: Bash(node:*), Bash(npm:*), Bash(dotnet:*), Read, Write, Edit, WebFetch, WebSearch
 metadata:
-  version: "2.2.0"
+  version: "2.3.0"
 ---
 
 # Solution health check
@@ -110,7 +110,7 @@ Read `notes.md` first: earlier runs may already have looked into the same items.
 
 Write what you found to `notes.md` in the state folder (replacement, migration notes, effort guess), one `## <item>` section per item with the date, and update the sections that are already there instead of adding duplicates. Never edit `report.md`: the next `finalize.mjs` rewrites it. Run `finalize.mjs` again afterwards so the report shows the notes. If `finalize.mjs` says it saved a hand-edited `report.edited-<date>.md`, move the notes in it to `notes.md` and tell the user the old copy can be deleted.
 
-For each red or amber licence, check the signal the same way. A licence the scripts could not recognise (`SEE LICENSE IN …`, a URL, no licence at all) is often fine once read: open the package's LICENSE file (in `node_modules`, the NuGet package folder, or on the repo via WebFetch) and say what it is. A copyleft hit is only a problem if the package ships: a GPL build tool is not, a GPL package in the browser bundle is. These are legal calls for the developer or the client, so describe the finding and the options (replace, buy a licence, accept) and never add a `licenses.accept` entry without their confirmation.
+For each red or amber licence, check the signal the same way. A licence the scripts could not recognise (`SEE LICENSE IN …`, a URL, no licence at all) is often fine once read: open the package's LICENSE file (in `node_modules`, the NuGet package folder, or on the repo via WebFetch) and say what it is. A copyleft hit is only a problem if the package ships: a GPL build tool is not, a GPL package in the browser bundle is. These are legal calls for the developer or the client, so describe the finding and the options (replace, buy a licence, accept) and never add a `licenses.accept` entry without their confirmation. When the licences in the "Check N licences" task all turn out fine, drop them from that task's evidence (or the whole task), say what each one is in `notes.md`, and propose the `licenses.allow` / `licenses.accept` entries that would keep them from coming back.
 
 Then bring `tasks.json` in line with what you found: a better replacement in `fix`, a different `model` when the job is bigger or smaller than the default guess, `owner: "human"` for anything that needs a decision first. Keep the ids and the shape (see audit-all's SKILL.md, "Write tasks.json"). Only red and amber findings are in it; info and ignored items are not tasks.
 
@@ -130,19 +130,22 @@ Thresholds are in the manifest (`packages.thresholds`, `runtimes.warnDays`, `api
 
 **Packages** (direct dependencies by default):
 - 🔴 deprecated on the registry (installed or latest version), repo archived, unpublished/missing, high or critical vulnerability, or no release *and* no commit in `staleMonths` (24).
-- 🟠 no release in `quietMonths` (12), OpenSSF Scorecard "Maintained" ≤ 2, moderate/low vulnerability, or 2+ major versions behind.
-- 🔵 updates available. ⚫ ignored. An ignore entry hides amber and info. It also hides a red that comes **only** from staleness (no release and no commits in `staleMonths`), but only when the entry has both a `reason` and an `expires` date; at expiry the red comes back. It never hides deprecated, archived, missing or vulnerable packages.
+- 🟠 no release in `quietMonths` (12) while a newer version than the installed one exists, OpenSSF Scorecard "Maintained" ≤ 2, moderate/low vulnerability, or 2+ major versions behind.
+- 🔵 updates available, or quiet (no release in 12 months) while the installed version is the newest: a watch item, not a task.
+- Versions set by an MSBuild property (`Version="$(UmbracoAppLocalIcuVersion)"`) are resolved from the `Directory.Build.props` chain, `Directory.Packages.props` and the project file, then from `obj/project.assets.json`. One that cannot be resolved is reported as such, never compared.
+- `@types/node` is kept to the Node major the project runs on (`.nvmrc`, `.node-version`, `.tool-versions`, `volta`, `Dockerfile` `FROM node:`, else `engines.node`, else CI workflows; the lowest if several), not the newest Node. ⚫ ignored. An ignore entry hides amber and info. It also hides a red that comes **only** from staleness (no release and no commits in `staleMonths`), but only when the entry has both a `reason` and an `expires` date; at expiry the red comes back. It never hides deprecated, archived, missing or vulnerable packages.
 - Data comes from the npm registry, api.nuget.org (registration: deprecation, vulnerabilities, publish dates; public metadata, even when the solution restores through a private feed that mirrors nuget.org), `npm outdated`/`npm audit`, `dotnet list package --outdated/--deprecated/--vulnerable` when the SDK is installed, packages.ecosyste.ms (archived, last push, maintainers) and api.deps.dev (Scorecard). npms.io is deliberately **not** used: its data is years stale.
 
 **Vulnerable transitive packages** (the whole tree, not only direct dependencies):
 - npm: every entry `npm audit` reports that is not a direct dependency, with the direct package that pulls it in (from audit's `effects`) and the fix (`npm audit fix`, or the parent version that fixes it). NuGet: `dotnet list package --vulnerable --include-transitive` when the SDK is installed, otherwise NuGet's own vulnerability database (`api.nuget.org/v3/vulnerabilities`) matched against `obj/project.assets.json`, with the direct packages found through the assets file's dependency graph.
 - 🔴 high or critical, 🟠 moderate, 🔵 low. A transitive npm package that is only reached through dev dependencies drops one level (build tooling is not shipped).
-- In `tasks.json`, a transitive vulnerability whose fix is "upgrade the direct package X" is folded into X's task, so one upgrade is one task.
+- In `tasks.json`, a transitive vulnerability whose fix is "upgrade the direct package X" is folded into X's task, so one upgrade is one task. An upgrade task is only written when the registry has a newer version than the installed one.
 
 **Licences** (every installed or locked package, direct and transitive):
 - Read from what is on disk, so no network is needed: `package-lock.json` (v2/v3 record each package's licence), `node_modules/*/package.json` when there is no npm lockfile, and for NuGet the `.nuspec` of each package in the folders `obj/project.assets.json` names (licence expression, licence file, or a known `licenseUrl`). A `SEE LICENSE IN` or licence file is identified from its text when it is a well-known licence. Direct packages that are not installed fall back to the registry (npm, api.nuget.org) and deps.dev.
 - Judged against the solution's own licence: `licenses.projectLicense` in the manifest, else the root `package.json` `license`, else a csproj `PackageLicenseExpression`, else assumed closed source (most client solutions).
-- For a closed-source or permissive solution: 🔴 network copyleft (AGPL, OSL) and source-available or non-commercial licences (SSPL, BUSL, Elastic, PolyForm, CC-BY-NC); 🟠 strong copyleft (GPL, EUPL), no licence, an unrecognised licence, or `UNLICENSED`; 🔵 weak copyleft (LGPL, MPL, EPL). Permissive licences (MIT, BSD, Apache-2.0, ISC, …) are green and only counted. `MIT OR GPL-3.0` counts as MIT; `MIT AND GPL-3.0` as GPL.
+- For a closed-source or permissive solution: 🔴 network copyleft (AGPL, OSL) and source-available or non-commercial licences (SSPL, BUSL, Elastic, PolyForm, CC-BY-NC); 🟠 strong copyleft (GPL, EUPL), no licence, an unrecognised licence, or `UNLICENSED`; 🔵 weak copyleft (LGPL, MPL, EPL), Microsoft licence terms and Umbraco's commercial licence (recognised from the licence URL or file), and NuGet packages whose nuspec is not on disk (not read, so not "no licence").
+- In `tasks.json`, all amber licences become one human task, "Check N licences the scan could not clear", not one task each. Red licences keep a task each. Permissive licences (MIT, BSD, Apache-2.0, ISC, …) are green and only counted. `MIT OR GPL-3.0` counts as MIT; `MIT AND GPL-3.0` as GPL.
 - Dev-only packages drop to 🔵, except non-commercial licences, which stay 🟠: using the tool at work is the commercial use they forbid.
 - For a GPL solution, copyleft dependencies are fine, and the known incompatibilities are 🔴: Apache-2.0 or any v3 licence in a GPL-2.0-only work, GPL-2.0-only code in a GPL-3.0 or AGPL-3.0 work.
 - The manifest's `licenses` block overrides this: `allow`, `review` (amber) and `deny` (red) lists of licence ids, and `accept: [{ name, ecosystem, reason, expires }]` for a package someone has cleared.

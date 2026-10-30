@@ -195,6 +195,60 @@ test('licences: classification, policy and version ranges', async () => {
   assert.ok(inNugetRange('1.2.0', '[1.2.0]'));
 });
 
+test('licences: vendor terms, Unicode/ICU and packages not on disk are not decisions', async () => {
+  const { licenseVerdict, licenseFromUrl, licenseFromText } = await import('../licenses.mjs');
+  const e = (license, extra = {}) => ({ ecosystem: 'nuget', name: 'x', license, dev: false, ...extra });
+  assert.equal(licenseFromUrl('https://go.microsoft.com/fwlink/?linkid=869050'), 'LicenseRef-Microsoft-EULA');
+  assert.equal(licenseFromUrl('https://umbraco.com/licensing/'), 'LicenseRef-Umbraco-Commercial');
+  assert.equal(licenseFromText('UNICODE LICENSE V3\n\nCOPYRIGHT AND PERMISSION NOTICE'), 'Unicode-3.0');
+  assert.equal(licenseFromText('MIT License\nCopyright (c) Umbraco\nPermission is hereby granted, free of charge'), 'MIT', 'an MIT licence that names Umbraco is still MIT');
+  assert.equal(licenseVerdict(e('Unicode-3.0')).level, 'green');
+  assert.equal(licenseVerdict(e('ICU')).level, 'green');
+  assert.equal(licenseVerdict(e('LicenseRef-Umbraco-Commercial')).level, 'info');
+  assert.equal(licenseVerdict(e('LicenseRef-Microsoft-EULA')).level, 'info');
+  assert.equal(licenseVerdict(e(null, { unread: true })).level, 'info', 'no nuspec on disk is not "no licence"');
+  assert.equal(licenseVerdict(e(null)).level, 'amber');
+});
+
+test('versions: comparing, the Node major the project pins, MSBuild properties', async () => {
+  const { compareVersions, isNewer, nodeMajor, msbuildProperties, expandMsbuild } = await import('../versions.mjs');
+  assert.ok(isNewer('1.10.0', '1.9.2'));
+  assert.equal(isNewer('1.2.0', '1.2.0'), false);
+  assert.equal(isNewer('72.1.0.3', '$(UmbracoAppLocalIcuVersion)'), false, 'an unresolved property is never "older"');
+  assert.equal(compareVersions('2.0.0-rc.1', '2.0.0') < 0, true);
+  const dir = mkdtempSync(join(tmpdir(), 'sh-versions-'));
+  try {
+    mkdirSync(join(dir, 'src', 'Web'), { recursive: true });
+    writeFileSync(join(dir, '.nvmrc'), 'v24.11.0\n');
+    writeFileSync(join(dir, 'Dockerfile'), 'FROM node:26-alpine\n');
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ engines: { node: '>=20' } }));
+    assert.deepEqual(nodeMajor({ root: dir, runtimePins: ['.nvmrc', 'Dockerfile'], npmManifests: ['package.json'] }), { major: 24, source: '.nvmrc' }, 'exact pins win over engines; the lowest pin');
+    assert.equal(nodeMajor({ root: dir, runtimePins: [], npmManifests: ['package.json'] }).major, 20);
+    writeFileSync(join(dir, 'Directory.Build.props'), '<Project><PropertyGroup><IcuMajor>72.1</IcuMajor><UmbracoAppLocalIcuVersion>$(IcuMajor).0.3</UmbracoAppLocalIcuVersion></PropertyGroup></Project>');
+    writeFileSync(join(dir, 'src', 'Web', 'Web.csproj'), '<Project><PropertyGroup Condition="\'$(X)\'==\'\'"><IcuMajor>1</IcuMajor></PropertyGroup><ItemGroup><PackageReference Include="Microsoft.ICU.ICU4C.Runtime" Version="$(UmbracoAppLocalIcuVersion)" /></ItemGroup></Project>');
+    const { props, files } = msbuildProperties(dir, 'src/Web/Web.csproj');
+    assert.deepEqual(files, ['Directory.Build.props', 'src/Web/Web.csproj']);
+    assert.equal(expandMsbuild('$(UmbracoAppLocalIcuVersion)', props, {}).value, '72.1.0.3', 'nested properties; a conditional group does not override');
+    assert.deepEqual(expandMsbuild('$(Nope)', props, {}).unresolved, ['$(Nope)']);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('tasks: no upgrade task without a newer version; amber licences become one review task', async () => {
+  const { buildTasks } = await import('../tasks.mjs');
+  const pkg = (name, installed, latest, reasons, level = 'amber', extra = {}) => ({ key: `pkg:nuget:${name.toLowerCase()}`, area: 'package', level, title: name, reasons, where: ['a.csproj'], extra: { ecosystem: 'nuget', name, installed, facts: { latest, ...extra } } });
+  const lic = (name) => ({ key: `lic:nuget:${name}`, area: 'licence', level: 'amber', title: name, reasons: ['licence not recognised'], where: ['a.csproj'], extra: { ecosystem: 'nuget', name, license: 'https://x.test/LICENSE', versions: ['1.0.0'], direct: true } });
+  const { tasks } = buildTasks([
+    pkg('Quiet', '1.2.0', '1.2.0', ['no release in 14 months']),
+    pkg('Icu', null, '72.1.0.3', ['no release in 30 months']),
+    pkg('Behind', '1.0.0', '3.1.0', ['2 major versions behind (1.0.0 → 3.1.0)']),
+    lic('a'), lic('b'), lic('c'),
+  ], { root: '/x/repo' });
+  assert.deepEqual(tasks.map((t) => t.title), ['Upgrade Behind 1.0.0 to 3.1.0', 'Check 3 licences the scan could not clear']);
+  assert.match(tasks[1].evidence, /nuget a .*nuget c/);
+  const typed = buildTasks([{ key: 'pkg:npm:@types/node', area: 'package', level: 'amber', title: '@types/node', reasons: [], where: ['package.json'], extra: { ecosystem: 'npm', name: '@types/node', installed: '20.1.0', facts: { latest: '24.9.0', pinnedTo: { major: 24, source: '.nvmrc' } } } }], { root: '/x/repo' }).tasks[0];
+  assert.match(typed.fix, /Stay on 24\.x/);
+});
+
 test('runtimes: end-of-life from .nvmrc, TargetFramework, packages and manifest extras', () => {
   assert.equal(run('runtimes').status, 0);
   const r = Object.fromEntries(json('runtimes.json').runtimes.map((x) => [`${x.product} ${x.cycle}`, x]));

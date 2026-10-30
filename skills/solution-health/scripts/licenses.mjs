@@ -6,17 +6,23 @@ import { join, dirname } from 'node:path';
 
 // ---------- Classification ----------
 // Categories, least to most restrictive. An OR expression takes the least restrictive choice, AND the most.
-export const CATEGORIES = ['permissive', 'weak-copyleft', 'strong-copyleft', 'network-copyleft', 'restricted', 'proprietary', 'unknown'];
+export const CATEGORIES = ['permissive', 'vendor', 'weak-copyleft', 'strong-copyleft', 'network-copyleft', 'restricted', 'proprietary', 'unknown'];
 const IDS = {
   permissive: ['MIT', 'MIT-0', 'ISC', 'BSD-2-Clause', 'BSD-3-Clause', 'BSD-3-Clause-Clear', 'BSD-4-Clause', 'BSD', '0BSD', 'Apache-2.0', 'Apache-1.1', 'Zlib', 'Unlicense', 'CC0-1.0', 'WTFPL',
     'BlueOak-1.0.0', 'Python-2.0', 'PSF-2.0', 'BSL-1.0', 'Artistic-2.0', 'CC-BY-3.0', 'CC-BY-4.0', 'X11', 'PostgreSQL', 'MS-PL', 'NCSA', 'AFL-2.1', 'AFL-3.0', 'UPL-1.0',
-    'Unicode-DFS-2016', 'Unicode-3.0', 'OFL-1.1', 'Public-Domain', 'LicenseRef-MS-NET-Library'],
+    'Unicode-DFS-2015', 'Unicode-DFS-2016', 'Unicode-3.0', 'Unicode-TOU', 'ICU', 'OFL-1.1', 'Public-Domain', 'LicenseRef-MS-NET-Library'],
   'weak-copyleft': ['LGPL-2.0', 'LGPL-2.1', 'LGPL-3.0', 'LGPL', 'MPL-1.0', 'MPL-1.1', 'MPL-2.0', 'EPL-1.0', 'EPL-2.0', 'CDDL-1.0', 'CDDL-1.1', 'MS-RL', 'CPL-1.0'],
   'strong-copyleft': ['GPL-2.0', 'GPL-3.0', 'GPL', 'EUPL-1.1', 'EUPL-1.2', 'CC-BY-SA-3.0', 'CC-BY-SA-4.0', 'Sleepycat'],
   'network-copyleft': ['AGPL-1.0', 'AGPL-3.0', 'AGPL', 'OSL-3.0', 'RPL-1.5'],
   restricted: ['SSPL-1.0', 'BUSL-1.1', 'Elastic-2.0', 'PolyForm-Noncommercial-1.0.0', 'PolyForm-Small-Business-1.0.0', 'PolyForm-Shield-1.0.0', 'Commons-Clause',
     'CC-BY-NC-3.0', 'CC-BY-NC-4.0', 'CC-BY-NC-SA-3.0', 'CC-BY-NC-SA-4.0', 'CC-BY-NC-ND-3.0', 'CC-BY-NC-ND-4.0', 'CC-BY-ND-3.0', 'CC-BY-ND-4.0', 'JSON'],
   proprietary: ['UNLICENSED'],
+};
+// Vendor terms that are not open source but are the normal, paid-for or free-with-the-platform case:
+// worth a line in the report, not a decision. Recognised from licence URLs and licence file text.
+export const VENDOR_TERMS = {
+  'LicenseRef-Microsoft-EULA': 'Microsoft licence terms (free to use with the platform; not open source)',
+  'LicenseRef-Umbraco-Commercial': "Umbraco's commercial licence: make sure the site has a valid licence key for it",
 };
 const CATEGORY_OF = new Map(Object.entries(IDS).flatMap(([cat, ids]) => ids.map((id) => [id.toLowerCase(), cat])));
 // GPL with a linking exception behaves like a weak copyleft licence.
@@ -65,6 +71,9 @@ export function licenseFromUrl(url) {
   if (/gnu\.org\/licenses\/gpl/i.test(u)) return 'GPL-3.0';
   if (/mozilla\.org\/MPL\/2\.0/i.test(u)) return 'MPL-2.0';
   if (/go\.microsoft\.com\/fwlink\/\?LinkId=(329770|529443)|dotnet_library_license/i.test(u)) return 'LicenseRef-MS-NET-Library';
+  if (/(go\.microsoft\.com\/fwlink\/|microsoft\.com\/.*eula|aka\.ms\/.*(eula|licen[cs]e))/i.test(u)) return 'LicenseRef-Microsoft-EULA';
+  if (/(^|\/\/|\.)umbraco\.com\//i.test(u)) return 'LicenseRef-Umbraco-Commercial';
+  if (/unicode\.org\/(copyright|license)|unicode-org\/icu\/.*LICENSE/i.test(u)) return 'Unicode-3.0';
   return null;
 }
 
@@ -85,6 +94,9 @@ export function licenseFromText(text) {
   if (/Permission to use, copy, modify, and\/or distribute this software for any purpose/i.test(t)) return 'ISC';
   if (/Redistribution and use in source and binary forms/i.test(t)) return /Neither the name/i.test(t) ? 'BSD-3-Clause' : 'BSD-2-Clause';
   if (/MICROSOFT SOFTWARE LICENSE TERMS[\s\S]*\.NET LIBRARY/i.test(t)) return 'LicenseRef-MS-NET-Library';
+  if (/MICROSOFT SOFTWARE (SUPPLEMENTAL )?LICENSE TERMS/i.test(t)) return 'LicenseRef-Microsoft-EULA';
+  if (/UNICODE LICENSE V3|UNICODE,? INC\. LICENSE AGREEMENT|COPYRIGHT AND PERMISSION NOTICE \(ICU/i.test(t)) return 'Unicode-3.0';
+  if (/Umbraco/i.test(t) && /(licen[cs]e (agreement|terms)|EULA|commercial)/i.test(t)) return 'LicenseRef-Umbraco-Commercial';
   return null;
 }
 
@@ -95,6 +107,7 @@ export function licenseFromText(text) {
 export function classify(expr) {
   if (!expr) return { category: 'unknown', ids: [] };
   const s = String(expr).trim();
+  if (VENDOR_TERMS[s]) return { category: 'vendor', ids: [s] };
   if (/^SEE LICEN[CS]E IN\b/i.test(s) || /^https?:\/\//i.test(s) || /^LicenseRef-(?!MS-NET-Library)/i.test(s) || /^custom/i.test(s)) return { category: 'unknown', ids: [s] };
   const rank = (c) => CATEGORIES.indexOf(c);
   const orParts = splitTop(s, 'OR');
@@ -174,6 +187,8 @@ export function licenseVerdict(entry, { policy = {}, project = { id: 'proprietar
   if (inList(policy.deny)) { level = 'red'; reasons.push(`${id} is on the deny list in the manifest`); }
   else if (inList(policy.review)) { level = 'amber'; reasons.push(`${id} is on the review list in the manifest`); }
   else if (inList(policy.allow)) return { level: 'green', category, reasons: [] };
+  else if (category === 'vendor') return { level: 'info', category, reasons: [VENDOR_TERMS[ids[0]]] };
+  else if (!entry.license && entry.unread) return { level: 'info', category, reasons: ['licence not read: the package is not on disk here (install or restore, then run again)'] };
   else {
     level = { permissive: 'green', 'weak-copyleft': 'info', 'strong-copyleft': 'amber', 'network-copyleft': 'red', restricted: 'red', proprietary: 'amber', unknown: 'amber' }[category];
     const incompatible = incompatibleWith(project.id, ids, category);
@@ -236,7 +251,7 @@ export function npmInventory(dir, { lock = null, directNames = new Set() } = {})
       if (!path || !path.includes('node_modules/') || v.link) continue;
       let license = normalizeLicense(v.license ?? v.licenses);
       if (!license) license = installedLicense(join(dir, path));
-      add(path, { version: v.version, license, dev: v.dev || v.devOptional, from: license ? 'lockfile' : null });
+      add(path, { version: v.version, license, dev: v.dev || v.devOptional, from: license ? 'lockfile' : null }); // a lockfile entry with no licence: the package declares none
     }
   } else if (existsSync(join(dir, 'node_modules'))) {
     for (const path of walkNodeModules(join(dir, 'node_modules'))) {
@@ -309,7 +324,7 @@ export function nugetInventory(projectFile) {
     if (lib.type !== 'package') continue;
     const [name, version] = key.split('/');
     const id = name.toLowerCase();
-    let license = null; let from = null;
+    let license = null; let from = 'not on disk';
     for (const folder of folders) {
       const dir = join(folder, lib.path || `${id}/${version.toLowerCase()}`);
       const nuspec = join(dir, `${id}.nuspec`);
@@ -332,7 +347,13 @@ export function nuspecLicense(xml, dir) {
     return { license: guess || `SEE LICENSE IN ${lic[2].trim()}`, from: guess ? 'licence file' : 'nuspec' };
   }
   const url = (xml.match(/<licenseUrl>([^<]+)<\/licenseUrl>/i) || [])[1];
-  if (url) return { license: licenseFromUrl(url) || url.trim(), from: 'licenseUrl' };
+  if (url) {
+    const known = licenseFromUrl(url);
+    if (known) return { license: known, from: 'licenseUrl' };
+    // An unknown URL (often a LICENSE on GitHub): a licence file shipped in the package says more.
+    const sniffed = dir ? sniffFolder(dir) : null;
+    return sniffed ? { license: sniffed, from: 'licence file' } : { license: url.trim(), from: 'licenseUrl' };
+  }
   return { license: null, from: 'nuspec' };
 }
 

@@ -2,6 +2,7 @@
 // SKILL.md, "Write tasks.json"), so audit-all and audit-fix can take them as they are. Claude may refine
 // them (a replacement it found, a better model tier) before they are used; the script writes a first draft.
 import { basename } from 'node:path';
+import { isNewer } from './versions.mjs';
 
 const SEVERITY = { red: 'high', amber: 'medium' };
 // Frameworks whose major upgrade is a project, not a version bump.
@@ -31,8 +32,11 @@ function packageTask(f, repo) {
       : `Upgrade ${x.name} to a version without the advisories${latest ? ` (latest is ${latest})` : ''}${eco === 'npm' ? '; try `npm audit fix` (never `--force`) first' : ''}.`;
     model = (fa ? fa.isSemVerMajor : major) ? 'sonnet' : 'haiku';
   } else {
-    title = `Upgrade ${x.name} ${x.installed || ''} to ${latest || 'the current major'}`.replace(/\s+/g, ' ');
-    fix = `Upgrade ${x.name}${latest ? ` to ${latest}` : ''}, following its migration notes for each major version in between.`;
+    // Amber for being quiet (no release in a year, a low Scorecard) is a watch item, not a task: there is
+    // nothing to upgrade to unless the registry has a newer version than the one installed.
+    if (!isNewer(latest, x.installed)) return null;
+    title = `Upgrade ${x.name} ${x.installed} to ${latest}`;
+    fix = `Upgrade ${x.name} to ${latest}, following its migration notes for each major version in between.${x.facts?.pinnedTo ? ` Stay on ${x.facts.pinnedTo.major}.x: it matches Node ${x.facts.pinnedTo.major}, which the project runs on (${x.facts.pinnedTo.source}).` : ''}`;
     model = FRAMEWORK.test(x.name) ? 'opus' : 'sonnet';
   }
   return {
@@ -94,6 +98,17 @@ function apiTask(f, repo) {
   };
 }
 
+// Amber licences are mostly a licence the scan could not name (a URL, a licence file, none declared) that
+// turns out fine once read. One review task lists them all instead of one task per package.
+function licenceReviewTask(list) {
+  const lines = list.map((f) => `${f.extra.ecosystem} ${f.extra.name} (${f.extra.license || 'none'}${f.extra.direct ? '' : ', transitive'})`);
+  return {
+    title: `Check ${list.length} licence${list.length === 1 ? '' : 's'} the scan could not clear`, owner: 'human', area: 'licences',
+    evidence: lines.join('; '),
+    fix: 'Read each licence (the package folder, its repo, or the URL given). Record the fine ones in the solution-health manifest (`licenses.allow` for a licence id, `licenses.accept` with a reason for a package) so they stop coming back; replace or buy a licence for any that are not.',
+  };
+}
+
 const nugetTask = (f) => ({
   title: `Fix the NuGet source: ${f.title}`, owner: 'human', area: 'nuget',
   evidence: `${f.title}: ${f.reasons.join('; ')}`,
@@ -116,8 +131,15 @@ export function buildTasks(findings, { root }) {
   for (const f of findings) if (f.area === 'runtime' && SEVERITY[f.level]) for (const k of runtimeTask(f, repo, pkgs).absorbs) absorbed.set(k, f.key);
   const tasks = [];
   const byKey = new Map();
+  const licenceReview = findings.filter((f) => f.area === 'licence' && f.level === 'amber');
   for (const f of findings) {
     if (!SEVERITY[f.level]) continue;
+    if (f.area === 'licence' && f.level === 'amber') {
+      if (f !== licenceReview[0]) continue;
+      const t = licenceReviewTask(licenceReview);
+      tasks.push({ id: null, ...t, severity: 'medium', sources: ['health'], refs: [`solution-health-${repo}/report.md`], key: 'lic:review' });
+      continue;
+    }
     let t = null;
     if (f.area === 'package') { if (!absorbed.has(f.key)) t = packageTask(f, repo); }
     else if (f.area === 'vulnerability') {

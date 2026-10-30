@@ -8,7 +8,8 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { parseArgs, paths, readJson, writeJson, cachedJson, mapLimit, daysSince, loadManifest, ensureDirs, log, nowIso, showPath } from './lib.mjs';
 import { resolveProject, checkNuget, candidateSources, isNugetOrg } from './nuget.mjs';
-import { npmInventory, nugetInventory, normalizeLicense, licenseFromUrl, licenseVerdict, projectLicense, classify, inNugetRange } from './licenses.mjs';
+import { npmInventory, nugetInventory, normalizeLicense, licenseFromUrl, licenseVerdict, projectLicense, classify, inNugetRange, CATEGORIES } from './licenses.mjs';
+import { msbuildProperties, expandMsbuild, nodeMajor, isNewer } from './versions.mjs';
 
 const args = parseArgs();
 const p = paths(args);
@@ -92,12 +93,27 @@ const dotnetAvailable = has('dotnet');
 const nugetProjects = [];
 const centralVersions = {};
 const centralFile = {};
+// Versions can come from MSBuild properties (Version="$(UmbracoAppLocalIcuVersion)"): resolve them from the
+// Directory.Build.props chain, Directory.Packages.props and the project, as MSBuild would.
+const resolveVersion = (version, rel) => {
+  if (!version || !/\$\(/.test(version)) return { version };
+  const { props } = msbuildProperties(p.root, rel);
+  const { value, unresolved } = expandMsbuild(version, props);
+  return unresolved.length ? { version: null, expr: version } : { version: value, expr: version };
+};
+const centralExpr = {};
 for (const rel of discovery.manifests.nuget.filter((r) => r.endsWith('Directory.Packages.props'))) {
-  for (const r of parseNuget(rel).refs) if (r.version) { centralVersions[r.name.toLowerCase()] = r.version; centralFile[r.name.toLowerCase()] = rel; }
+  for (const r of parseNuget(rel).refs) if (r.version) {
+    const v = resolveVersion(r.version, rel); const k = r.name.toLowerCase();
+    centralVersions[k] = v.version; centralFile[k] = rel; if (v.expr) centralExpr[k] = v.expr;
+  }
 }
 for (const rel of discovery.manifests.nuget.filter((r) => !r.endsWith('Directory.Packages.props'))) {
   const { refs, targetFrameworks } = parseNuget(rel);
-  const project = { path: rel, targetFrameworks, deps: refs.map((r) => ({ name: r.name, installed: r.version || centralVersions[r.name.toLowerCase()] || null, kind: 'prod', centralFile: r.version ? null : centralFile[r.name.toLowerCase()] || null })), cli: {}, notes: [] };
+  const project = { path: rel, targetFrameworks, deps: refs.map((r) => {
+    const k = r.name.toLowerCase(); const v = resolveVersion(r.version, rel);
+    return { name: r.name, installed: r.version ? v.version : centralVersions[k] || null, versionExpr: r.version ? v.expr : centralExpr[k], kind: 'prod', centralFile: r.version ? null : centralFile[k] || null };
+  }), cli: {}, notes: [] };
   if (dotnetAvailable && rel.endsWith('proj')) {
     for (const flag of ['--outdated', '--deprecated', '--vulnerable']) {
       // Vulnerabilities are checked through the whole tree: a vulnerable transitive package ships just the same.
@@ -109,7 +125,15 @@ for (const rel of discovery.manifests.nuget.filter((r) => !r.endsWith('Directory
   } else if (!dotnetAvailable) project.notes.push('dotnet not on PATH: using the NuGet API only (no transitive or local-feed data).');
   if (rel.endsWith('proj')) {
     const inv = nugetInventory(join(p.root, rel));
-    if (inv) { project.inventory = inv.packages; project.packageFolders = inv.folders; }
+    if (inv) {
+      project.inventory = inv.packages; project.packageFolders = inv.folders;
+      // A version MSBuild could not resolve here (a property set inside a package's build files) is still
+      // in what restore recorded.
+      for (const d of project.deps) if (!d.installed && d.versionExpr) {
+        const hit = inv.packages.find((x) => x.direct && x.name.toLowerCase() === d.name.toLowerCase());
+        if (hit) { d.installed = hit.version; d.versionFrom = 'obj/project.assets.json'; }
+      }
+    }
     else project.notes.push('Not restored (no obj/project.assets.json): transitive packages and licences not checked; run `dotnet restore` first.');
   }
   nugetProjects.push(project);
@@ -262,7 +286,9 @@ function verdict(pkg) {
   if (relDays !== null && relDays > thresholds.staleMonths * 30 && (pushDays === null || pushDays > thresholds.staleMonths * 30)) {
     bump('red', 'stale'); reasons.push(`no release in ${Math.round(relDays / 30)} months${pushDays !== null ? `, no commits in ${Math.round(pushDays / 30)} months` : ''}`);
   } else if (relDays !== null && relDays > thresholds.quietMonths * 30) {
-    bump('amber'); reasons.push(`no release in ${Math.round(relDays / 30)} months${pushDays !== null ? ` (last commit ${Math.round(pushDays / 30)} months ago)` : ''}`);
+    // Quiet on its own is nothing to act on when the newest release is what is installed: a watch item.
+    bump(isNewer(f.latest, pkg.installed) ? 'amber' : 'info');
+    reasons.push(`no release in ${Math.round(relDays / 30)} months${pushDays !== null ? ` (last commit ${Math.round(pushDays / 30)} months ago)` : ''}`);
   }
   if (h.maintainedCheck !== null && h.maintainedCheck !== undefined && h.maintainedCheck >= 0 && h.maintainedCheck <= 2) { bump('amber'); reasons.push(`OpenSSF Scorecard "Maintained" = ${h.maintainedCheck}/10`); }
   if (h.maintainers === 1) reasons.push('single maintainer (bus factor 1)');
@@ -270,10 +296,16 @@ function verdict(pkg) {
     if (['high', 'critical'].includes(v.severity)) bump('red'); else bump('amber');
   }
   if (pkg.vulnerabilities?.length) reasons.push(`${pkg.vulnerabilities.length} known vulnerabilit${pkg.vulnerabilities.length === 1 ? 'y' : 'ies'} (${[...new Set(pkg.vulnerabilities.map((v) => v.severity))].join(', ')})`);
+  if (pkg.versionExpr && !pkg.installed) reasons.push(`version is ${pkg.versionExpr}, an MSBuild property not set in the solution's own files (likely set by a package's build props); restore the project so the restored version can be read`);
+  else if (pkg.versionExpr) reasons.push(`version ${pkg.installed} from ${pkg.versionExpr}${pkg.versionFrom ? ` (read from ${pkg.versionFrom})` : ''}`);
+  if (f.pinnedTo) {
+    reasons.push(`kept to Node ${f.pinnedTo.major}, the runtime the project pins (${f.pinnedTo.source})${f.latestOverall ? `; ${f.latestOverall} is for a newer Node` : ''}`);
+    if (majorOf(pkg.installed) > f.pinnedTo.major) { bump('info'); reasons.push(`installed ${pkg.installed} describes a newer Node than ${f.pinnedTo.major}: APIs it types may not exist at runtime`); }
+  }
   const behind = f.latest && pkg.installed ? majorOf(f.latest) - majorOf(pkg.installed) : 0;
   if (behind >= 2) { bump('amber'); reasons.push(`${behind} major versions behind (${pkg.installed} → ${f.latest})`); }
   else if (behind === 1) { bump('info'); reasons.push(`1 major behind (${pkg.installed} → ${f.latest})`); }
-  else if (f.latest && pkg.installed && f.latest !== pkg.installed) { bump('info'); reasons.push(`update available (${pkg.installed} → ${f.latest})`); }
+  else if (isNewer(f.latest, pkg.installed)) { bump('info'); reasons.push(`update available (${pkg.installed} → ${f.latest})`); }
   if (privateFeed && level === 'green') level = 'unknown';
   if (!f.registryReachable && !h.ecosystemsReachable) { if (level === 'green') level = 'unknown'; reasons.push('registry and health APIs unreachable from this machine'); }
   const ig = ignoreFor(pkg.ecosystem, pkg.name);
@@ -305,6 +337,9 @@ for (const proj of npmProjects) for (const d of proj.deps) {
 for (const proj of nugetProjects) for (const d of proj.deps) {
   const key = `nuget:${d.name.toLowerCase()}`;
   const rec = unique.get(key) || { ecosystem: 'nuget', name: d.name, installed: d.installed, ranges: [], kinds: ['prod'], projects: [], vulnerabilities: [] };
+  rec.installed ||= d.installed;
+  if (d.versionExpr) rec.versionExpr ||= d.versionExpr;
+  if (d.versionFrom) rec.versionFrom ||= d.versionFrom;
   rec.projects.push(proj.path);
   rec.files = [...new Set([...(rec.files || []), d.centralFile || proj.path])];
   if (d.installed && !rec.ranges.includes(d.installed)) rec.ranges.push(d.installed);
@@ -318,6 +353,22 @@ for (const proj of nugetProjects) for (const d of proj.deps) {
 }
 
 const list = [...unique.values()];
+// @types/node follows the Node the project runs on, not the newest Node.
+const runtimeNode = nodeMajor({ root: p.root, runtimePins: discovery.runtimePins, npmManifests: discovery.manifests.npm });
+function pinTypesNode(pkg) {
+  if (pkg.ecosystem !== 'npm' || pkg.name !== '@types/node' || !runtimeNode) return;
+  const f = pkg.facts;
+  f.pinnedTo = runtimeNode;
+  if (!f.latest || majorOf(f.latest) <= runtimeNode.major) return;
+  f.latestOverall = f.latest;
+  f.latest = null;
+  if (npmAvailable && !args.offline) {
+    const r = run('npm', ['view', `@types/node@${runtimeNode.major}`, 'version', '--json'], p.root, 60_000);
+    const v = tryJson(r.stdout) ?? (r.stdout.trim().replace(/^"|"$/g, '') || null);
+    f.latest = (Array.isArray(v) ? v[v.length - 1] : v) || null;
+  }
+  if (!f.latest && majorOf(pkg.installed) === runtimeNode.major) f.latest = pkg.installed;
+}
 log(`Checking ${list.length} direct packages (${list.filter((x) => x.ecosystem === 'npm').length} npm, ${list.filter((x) => x.ecosystem === 'nuget').length} NuGet)${enrich ? ' with health enrichment' : ''}…`);
 await mapLimit(list, 8, async (pkg) => {
   try {
@@ -327,6 +378,7 @@ await mapLimit(list, 8, async (pkg) => {
     if (pkg.cli?.deprecation && !pkg.facts.deprecatedInstalled) pkg.facts.deprecatedInstalled = pkg.cli.deprecation.reasons.join(', ') || 'deprecated';
     if (pkg.cli?.deprecation?.alternative) pkg.facts.alternative ||= pkg.cli.deprecation.alternative.id || String(pkg.cli.deprecation.alternative);
     if (pkg.npmOutdated?.latest) pkg.facts.latest ||= pkg.npmOutdated.latest;
+    pinTypesNode(pkg);
     if (pkg.ecosystem === 'nuget' && pkg.facts.vulnerabilities?.length && !pkg.vulnerabilities.length) pkg.vulnerabilities.push(...pkg.facts.vulnerabilities);
     pkg.health = enrich ? await healthFacts(pkg.ecosystem, pkg.name, pkg.installed, pkg.facts.repo) : {};
   } catch (err) { errors.push(`${pkg.ecosystem}:${pkg.name}: ${err.message}`); pkg.facts ||= {}; pkg.health ||= {}; }
@@ -444,16 +496,16 @@ for (const x of list) {
   const have = lic.get(key);
   const fromRegistry = x.facts?.license || (x.health?.licenses?.length ? x.health.licenses.join(' AND ') : null);
   if (have && have.licenses.some(Boolean)) { have.direct = true; have.dev = have.dev && !x.kinds?.includes('prod') && !x.kinds?.includes('optional'); continue; }
-  if (have) { have.licenses = [normalizeLicense(fromRegistry)]; have.from.push('registry'); have.direct = true; continue; }
+  if (have) { have.licenses = [normalizeLicense(fromRegistry)]; if (fromRegistry || x.facts?.registryReachable) have.from.push('registry'); have.direct = true; continue; }
   addLicense(x.ecosystem, { name: x.name, version: x.installed, license: fromRegistry, direct: true, dev: x.kinds?.length && x.kinds.every((k) => k === 'dev'), from: fromRegistry ? 'registry' : null }, x.projects[0]);
   if (x.projects.length > 1) lic.get(key).projects.push(...x.projects.slice(1));
 }
 const licenseList = [...lic.values()];
 for (const l of licenseList) {
   // Versions with different licences: judge the most restrictive one.
-  const worst = l.licenses.map((x) => ({ x, c: classify(x).category })).sort((a, b) => ['permissive', 'weak-copyleft', 'strong-copyleft', 'network-copyleft', 'restricted', 'proprietary', 'unknown'].indexOf(b.c) - ['permissive', 'weak-copyleft', 'strong-copyleft', 'network-copyleft', 'restricted', 'proprietary', 'unknown'].indexOf(a.c))[0];
+  const worst = l.licenses.map((x) => ({ x, c: classify(x).category })).sort((a, b) => CATEGORIES.indexOf(b.c) - CATEGORIES.indexOf(a.c))[0];
   l.license = worst?.x ?? null;
-  l.verdict = licenseVerdict({ ecosystem: l.ecosystem, name: l.name, license: l.license, dev: l.dev, direct: l.direct }, { policy: licensePolicy, project: ownLicense });
+  l.verdict = licenseVerdict({ ecosystem: l.ecosystem, name: l.name, license: l.license, dev: l.dev, direct: l.direct, unread: l.from.length > 0 && l.from.every((x) => x === 'not on disk') }, { policy: licensePolicy, project: ownLicense });
   if (l.licenses.length > 1) l.verdict.reasons.push(`licence differs between versions: ${l.licenses.map((x) => x || 'none').join(', ')}`);
   if (!l.direct && l.parents.length) l.verdict.reasons.push(`pulled in by ${l.parents.join(', ')}`);
 }
