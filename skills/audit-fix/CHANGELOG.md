@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-fix` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.0.2] - 2026-10-30
+
+### Changed
+- The offer to re-run audit-all passes `--url`/`--no-site` and `--only`, so audit-all 1.6.0 does not stop to ask which audits to run.
+
 ## [1.0.1] - 2026-10-30
 
 ### Changed

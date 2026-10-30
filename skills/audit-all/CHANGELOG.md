@@ -2,6 +2,15 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.6.0] - 2026-10-30
+
+### Added
+- Asks before starting, in one `AskUserQuestion` call: the live URL (detected candidates first, "No site" or a typed URL), the default site audits (launch, privacy, infra), the opt-in ones (a11y, SEO, carbon) and the code audits (security, health). A re-run recommends the audits that ran last time.
+- `--only`, `--add`, `--url`, `--no-site` and `--yes` answer the questions, so scripted runs and audit-fix re-runs never stop to ask. Without the tool (claude.ai, `claude -p`, subagents) the flags and defaults apply and summary.md lists what was skipped.
+
+### Changed
+- a11y-audit, seo-audit and eco-audit are opt-in: the default set is launch, privacy, infra, security and health. Use `--add a11y,seo,eco` or `--only all` for the old behaviour.
+
 ## [1.5.0] - 2026-10-30
 
 ### Added

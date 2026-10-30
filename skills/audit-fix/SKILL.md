@@ -4,7 +4,7 @@ description: Use when someone wants the problems from an audit-all run fixed —
 argument-hint: "[run folder] [--only T1,T4] [--skip T7] [--max-parallel N] [--dry-run]"
 allowed-tools: Bash(git:*), Bash(node:*), Bash(npm:*), Bash(npx:*), Bash(dotnet:*), Bash(ls:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, Agent
 metadata:
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 
 # Audit fix
@@ -97,7 +97,8 @@ what the agent or the reviewer said and the worktree path to look at.
 In chat, keep it short: how many tasks were merged per repo and the branch to review
 (`git -C <repo> log --oneline <base>..audit-fix/<run name>`), the tasks that need the user, the
 human tasks still open, and the path to `results.md`. Then offer, in one line, to open a pull
-request per repo or to re-run audit-all to confirm the fixes. Do either only when asked.
+request per repo or to re-run audit-all to confirm the fixes (pass `--url`, or `--no-site`, and
+`--only` with the audits from the original run so it does not stop to ask). Do either only when asked.
 
 Clean up when the user is done reviewing (not before): `git -C <repo> worktree remove <path>` for
 each worktree, and the per-task branches once merged.

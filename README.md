@@ -80,6 +80,18 @@ Notes:
   this rule and replace it if it leaks. It is redacted in the saved Lighthouse JSON.
 - Cloudflare works the same way: a WAF custom rule (header equals your value) with the **Skip** action.
 
+## Running every audit at once
+
+`/skills:audit-all` asks first: the live URL (it suggests the one it finds in the repo) and which
+audits to run. Launch, privacy, infra, security and dependency health are ticked by default;
+accessibility, SEO and carbon footprint are opt-in. Flags skip the questions:
+
+```text
+/skills:audit-all https://shop.example.dk --yes               # default audits, no questions
+/skills:audit-all --url https://shop.example.dk --add a11y,seo
+/skills:audit-all --no-site --only security,health
+```
+
 ## Fixing what an audit finds
 
 audit-all writes a fix plan next to its report: `fix/TODO.md` and one prompt per task in `fix/tasks/`,
