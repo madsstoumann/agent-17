@@ -13,6 +13,14 @@ export const KINDS = {
     title: 'Accessibility audit',
     standfirst: 'A sample of pages checked against WCAG 2.2 AA and EN 301 549 with axe-core and HTML_CodeSniffer, a keyboard-only walk, and reflow at 320 px.',
   },
+  'seo-audit': {
+    title: 'SEO audit',
+    standfirst: 'The whole site crawled the way a search engine sees it: indexing, sitemap and robots.txt, links and redirects, titles, canonical and hreflang, share previews and structured data.',
+  },
+  'eco-audit': {
+    title: 'Eco audit',
+    standfirst: 'Real page loads weighed byte by byte and turned into CO2e per page view with the Sustainable Web Design model, plus a green hosting check.',
+  },
   'security-audit': {
     title: 'Security audit',
     standfirst: 'The repository and its git history, scanned for secrets, injection, unsafe request handling and vulnerable dependencies, then triaged by hand.',
@@ -97,6 +105,19 @@ export function headline(report) {
     h.figures = [[nBlockers, nBlockers === 1 ? 'blocker' : 'blockers'], [nFindings, nFindings === 1 ? 'finding' : 'findings']];
     h.result = verdict ? plain(verdict[1]) : `${nBlockers} blockers, ${nFindings} findings`;
     h.what = verdict ? plain(verdict[1]) : null;
+  } else if (kind === 'seo-audit' || kind === 'eco-audit') {
+    const line = md.match(/\*\*Result:\*\*\s*(.+)/);
+    h.counts = line ? countsIn(line[1], ['fail', 'warn', 'pass', 'info', 'skipped']) : {};
+    h.figures = [[h.counts.fail, 'fail'], [h.counts.warn, 'warn']];
+    if (kind === 'seo-audit') {
+      const crawled = md.match(/\*\*Crawled:\*\*\s*(\d+) HTML pages/);
+      h.result = line ? plain(line[1]) : null;
+      h.what = crawled ? `${crawled[1]} pages crawled.` : null;
+    } else {
+      const start = line && line[1].match(/start page ([\d.]+) g CO2e per view \(rating ([A-F]\+?)\)/);
+      h.result = start ? `${start[1]} g CO2e per view (${start[2]}) · ${plain(line[1]).split(' · ')[0]}` : (line ? plain(line[1]) : null);
+      h.what = start ? `Start page ${start[1]} g CO2e per view, rating ${start[2]}.` : null;
+    }
   } else if (kind === 'solution-health') {
     const line = md.match(/\*\*(\d+\s+red\b[^*]*)\*\*/i);
     h.counts = line ? countsIn(line[1], ['red', 'amber', 'unknown', 'info', 'green']) : {};

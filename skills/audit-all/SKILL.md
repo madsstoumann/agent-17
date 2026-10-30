@@ -1,16 +1,16 @@
 ---
 name: audit-all
-description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, code security and dependency health. Runs launch-audit and a11y-audit (WCAG 2.2 / EN 301 549) on the live URL, security-audit and solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing launch-audit, a11y-audit, security-audit or solution-health reports into one.
-argument-hint: "[url] [repo path ...] [--style serif|sans] [--out DIR] [--skip launch,a11y,security,health]"
+description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, accessibility, SEO, carbon footprint, code security and dependency health. Runs launch-audit, a11y-audit (WCAG 2.2 / EN 301 549), seo-audit and eco-audit on the live URL, security-audit and solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing launch-audit, a11y-audit, seo-audit, eco-audit, security-audit or solution-health reports into one.
+argument-hint: "[url] [repo path ...] [--style serif|sans] [--out DIR] [--skip launch,a11y,seo,eco,security,health]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # Audit all
 
-One run folder, four audits, one report. This skill does not check anything itself: it runs the
-sibling skills (launch-audit, a11y-audit, security-audit, solution-health), each writing its own `report.md`
+One run folder, six audits, one report. This skill does not check anything itself: it runs the
+sibling skills (launch-audit, a11y-audit, seo-audit, eco-audit, security-audit, solution-health), each writing its own `report.md`
 as usual, then you write a short `summary.md` and `scripts/combine.mjs` merges everything into a
 combined `report.md`, a self-contained `report.html` and a typeset `report.pdf`. You also write
 `tasks.json`, and `combine.mjs` turns it into a fix plan: `fix/TODO.md` and one prompt per task in
@@ -22,15 +22,15 @@ other way, invoke them by name instead (`skills:launch-audit` in the plugin, `la
 
 ## 1. Work out the targets
 
-- **Site URL** for launch-audit and a11y-audit. If the user named one, use it. Otherwise look in each repo for the
+- **Site URL** for launch-audit, a11y-audit, seo-audit and eco-audit. If the user named one, use it. Otherwise look in each repo for the
   live URL: `package.json` `homepage`, a `CNAME` file, the site URL in `nuxt.config.*`,
   `next.config.*`, `astro.config.*` or `.env.production`, Umbraco `appsettings.Production.json`,
   then the README. One candidate: ask the user once to confirm it. None: ask for one, and accept
-  "no site" to skip both. Staging URLs are fine; launch-audit works out the environment.
+  "no site" to skip the site audits. Staging URLs are fine; launch-audit works out the environment.
 - **Repos** for security-audit and solution-health. Default: the current directory when it is a
   repo root (has `.git`). The user can name several ("audit-all ~/code/shop-web ~/code/shop-api
   https://shop.example.dk"); each gets its own run of both.
-- **Skips.** "only launch and security", "--skip health" and the like drop an audit.
+- **Skips.** "only launch and security", "--skip health", "no SEO", "skip the carbon check" and the like drop an audit (`launch`, `a11y`, `seo`, `eco`, `security`, `health`).
 - **Style.** `--style serif` (default, Newsreader) or `--style sans` (IBM Plex Sans). "sans",
   "sans-serif", "plain" or "classic look" mean sans.
 
@@ -62,7 +62,8 @@ folder the output goes to. Run folders are marked with an `.audit-run` file and 
 ## 3. Run the audits
 
 Run them one after another, each into its own sub-folder of the run folder. Folder names matter:
-`combine.mjs` finds reports by the prefix `launch-audit`, `a11y-audit`, `security-audit` or `solution-health`,
+`combine.mjs` finds reports by the prefix `launch-audit`, `a11y-audit`, `seo-audit`, `eco-audit`,
+`security-audit` or `solution-health`,
 optionally followed by `-<target>`. With one repo, plain names are fine; with several, add the repo
 folder name.
 
@@ -70,6 +71,8 @@ folder name.
 |---|---|---|
 | launch-audit | Follow launch-audit's SKILL.md with `--out "<run>/launch-audit"` (one folder per URL: `launch-audit-<host>`) | `report.md`, `report.json` |
 | a11y-audit | Follow a11y-audit's SKILL.md with `--out "<run>/a11y-audit"` (one folder per URL: `a11y-audit-<host>`). Run it after launch-audit and pass `--from "<run>/launch-audit/report.json"` so it samples the pages the crawl found; pass `--repo <name>` when one of the repos renders the site | `report.md`, `report.json`, `tasks.json` |
+| seo-audit | Follow seo-audit's SKILL.md with `--out "<run>/seo-audit"` (pass `--production-host` and `--header` as for launch-audit) | `report.md`, `findings.json`, `pages.csv` |
+| eco-audit | Follow eco-audit's SKILL.md with `--out "<run>/eco-audit"`. Add `--grid` and `--views` only when the user gives a country or traffic | `report.md`, `findings.json` |
 | security-audit | Follow security-audit's SKILL.md with `--out "<run>/security-audit-<repo>"`, including the triage and `report.md` it asks you to write. Semgrep runs automatically when installed | `findings.json`, `report.md` |
 | solution-health | Follow solution-health's SKILL.md in the repo, **without** `--dir` or `--out`: it keeps its manifest, state and report in its own folder (`<reports>/solution-health/<repo>/`, or `.solution-health/` with `--in-repo`), never in the run folder. Pass the repo to `combine.mjs --repo` and it copies the report in | `report.md` in its state folder |
 
@@ -113,11 +116,12 @@ In order. Duplicates across the audits are merged.
   are optional.
 - **Fix first**: 3 to 7 items, most urgent first, across all audits. The trailing `[status · source]`
   sets the coloured mark: Blocker/Fail/High/Red, Warn/Medium/Amber, or Low/Info. Source is Launch,
-  A11y, Security or Health, comma-separated when several audits found the same thing.
+  A11y, SEO, Eco, Security or Health, comma-separated when several audits found the same thing.
 - **Merge duplicates.** The same problem often shows up twice: an exposed `.env` (launch-audit) and a
   committed `.env` (security-audit), a weak CSP in headers and in `nuxt.config`, a vulnerable package
   in both security-audit and solution-health, missing alt text or low contrast in both launch-audit's
-  Lighthouse section and a11y-audit. One item, both sources.
+  Lighthouse section and a11y-audit, a canonical on the staging host (launch-audit on the start page,
+  seo-audit site-wide), uncompressed or uncached files (launch-audit and eco-audit). One item, both sources.
 - Use only facts from the reports. More `##` sections (for example "Can wait") are rendered too.
 - **Since last run.** When `--new` printed a previous run, read its `summary.md` and `tasks.json` and
   add a `## Since last run` section: what was fixed, what is new, what is still open, using the
@@ -171,11 +175,15 @@ found), and keep their owner, model and files unless you know better.
 | `files` | Paths relative to the repo. Tasks in one repo that share a file, or that list no files, never run at the same time, so list them when you know them. |
 | `evidence`, `fix` | From the reports: what is wrong where, and the fix. Quote code as code; never paste a secret, redact it. |
 | `verify` | How to prove it is fixed: a command, a test to add, or the launch-audit check that should pass on the next run. |
-| `sources` | `launch`, `a11y`, `security`, `health`. `refs` (optional) points at the sub-report. |
+| `sources` | `launch`, `a11y`, `seo`, `eco`, `security`, `health`. `refs` (optional) points at the sub-report. seo-audit and eco-audit write a `findings.json` in this shape (severity, evidence, fix, verify, affected URLs): start from it, merge duplicates, and decide owner, repo and files. |
 
 Launch-audit findings are often fixed outside the code (CDN headers, DNS, redirects at the host).
 Make them agent tasks only when the repo holds the setting (`nuxt.config`, `web.config`,
 `next.config`, `vercel.json`, `staticwebapp.config.json`, middleware); otherwise `owner: "human"`.
+The same goes for seo-audit and eco-audit: titles, canonicals, image formats and lazy loading are
+usually templates or components in the repo, while sitemap plugins, image CDN settings and
+content (descriptions, alt text, a hero video) are often CMS work for a person. Green hosting is
+always `owner: "human"`.
 
 a11y-audit writes a draft in the same shape, `<run>/a11y-audit/tasks.json` (ids `A1`, `A2`, …,
 `sources: ["a11y"]`). Copy its tasks in with new `T` ids, merging any that duplicate a launch-audit
