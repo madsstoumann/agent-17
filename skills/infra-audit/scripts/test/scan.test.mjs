@@ -10,7 +10,7 @@ import { detectCdn, domainChecks, emailChecks } from '../lib/checks.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import { reportsRoot, prepareRun, finishRun, diffRows, carryOverSections, taskCandidates, result } from '../lib/common.mjs';
-import { parseArgs, parseTarget, siblingOf, markIntercepted, renderMarkdown, run } from '../scan.mjs';
+import { parseArgs, parseTarget, siblingOf, markIntercepted, renderMarkdown, run, platformOf } from '../scan.mjs';
 
 /** A resolver over a fixed zone: { 'name TYPE': [data] }, NXDOMAIN for names not in it. */
 function fakeResolver(zone) {
@@ -193,6 +193,19 @@ test('run with --only domain,email writes a report with the result line and task
   const tasks = taskCandidates(report.results, { source: 'infra', ref: 'infra-audit/report.md' });
   assert.ok(tasks.length >= 3);
   assert.ok(tasks.every((t) => t.sources[0] === 'infra' && t.owner === 'human' && ['blocker', 'high', 'medium'].includes(t.severity)));
+});
+
+test('a hosting platform address (Umbraco Cloud) skips the platform domain, mail and subdomains', async () => {
+  assert.equal(platformOf('helm-live.euwest01.umbraco.io'), 'umbraco.io');
+  assert.equal(platformOf('helmsecurity.ai'), null);
+  assert.equal(platformOf('notumbraco.io'), null);
+  const report = await run({ target: 'https://helm-live.euwest01.umbraco.io/', only: ['domain', 'email', 'ct'], skip: [] }, { resolver: fakeResolver(ZONE), fetch: noFetch });
+  assert.equal(report.target.platform, 'umbraco.io');
+  assert.deepEqual(report.results.map((r) => r.id), ['dns.platform']);
+  assert.match(renderMarkdown(report), /Not the site's own domain/);
+  const forced = await run({ target: 'https://helm-live.euwest01.umbraco.io/', only: ['domain'], skip: [], platformOk: true }, { resolver: fakeResolver(ZONE), fetch: noFetch });
+  assert.equal(forced.target.platform, undefined);
+  assert.equal(parseArgs(['x.umbraco.io', '--platform-ok']).platformOk, true);
 });
 
 // ---------------------------------------------------------------- CLI and plumbing

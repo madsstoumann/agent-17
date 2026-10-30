@@ -10,7 +10,7 @@ import { SECTIONS, domainChecks, emailChecks, tlsChecks, edgeChecks, ctChecks } 
 import { DKIM_SELECTORS } from './lib/email.mjs';
 import { result, countStatuses, prepareRun, finishRun, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, settle, GLYPH } from './lib/common.mjs';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 const UA = `Mozilla/5.0 (compatible; infra-audit/${VERSION})`;
 
 const USAGE = `infra-audit ${VERSION}: domain, DNS, email, TLS and subdomain audit
@@ -27,6 +27,7 @@ Usage: node scan.mjs <url or host> [options]
   --max-subdomains N     Subdomains to probe from CT (default 30)
   --no-legacy            Skip the TLS 1.0/1.1 acceptance probe
   --header "Name: value" Sent with the one GET of the home page (WAF bypass rule); also AUDIT_HEADERS
+  --platform-ok          Audit the platform's own domain anyway when the host is a hosting platform's address
   -h, --help
 `;
 
@@ -47,6 +48,7 @@ export function parseArgs(argv, env = process.env) {
     else if (k === '--max-subdomains') a.maxSubdomains = Math.max(0, Number(next()) || 0);
     else if (k === '--no-legacy') a.legacy = false;
     else if (k === '--header') addHeader(a.headers, next());
+    else if (k === '--platform-ok') a.platformOk = true;
     else if (k.startsWith('-')) throw new Error(`Unknown option ${k}`);
     else if (!a.target) a.target = k;
     else throw new Error(`Unexpected argument ${k}`);
@@ -69,6 +71,16 @@ export function parseTarget(t) {
   return { host: u.hostname.toLowerCase(), url: u.href };
 }
 
+// Hosting platforms that hand out sub-domains of their own domain (a staging or default address). For
+// such a host the "registrable domain" is the platform's: its registration, DNS, mail and subdomains
+// say nothing about the site. umbraco.io is Umbraco Cloud's.
+const PLATFORMS = ['umbraco.io', 'azurewebsites.net', 'azurestaticapps.net', 'azurefd.net', 'cloudapp.azure.com', 'trafficmanager.net', 'vercel.app',
+  'netlify.app', 'pages.dev', 'workers.dev', 'herokuapp.com', 'ondigitalocean.app', 'onrender.com', 'fly.dev', 'web.app', 'firebaseapp.com',
+  'github.io', 'gitlab.io', 'appspot.com', 'cloudfront.net', 'amazonaws.com', 'elasticbeanstalk.com', 'railway.app', 'surge.sh', 'wpengine.com',
+  'kinsta.cloud', 'pantheonsite.io', 'myshopify.com', 'wixsite.com', 'webflow.io', 'squarespace.com', 'hubspotpagebuilder.com'];
+/** The hosting platform's domain when host is one of its addresses ("x.euwest01.umbraco.io" -> "umbraco.io"), else null. */
+export const platformOf = (host) => PLATFORMS.find((p) => host === p || host.endsWith(`.${p}`)) || null;
+
 export const siblingOf = (host, apex) => (host === apex ? `www.${apex}` : host === `www.${apex}` ? apex : null);
 
 const GROUPS = [
@@ -81,16 +93,19 @@ const GROUPS = [
 
 export async function run(args, deps = {}) {
   const { host, url } = parseTarget(args.target);
-  const apex = apexOf(host);
+  // A platform address (x.umbraco.io): only the endpoint itself (tls, edge) belongs to the site, and
+  // the platform's domain must not stand in for the site's (CAA, HSTS preload, www sibling).
+  const platform = args.platformOk ? null : platformOf(host);
+  const apex = platform ? host : apexOf(host);
   const now = deps.now || new Date();
   const ctx = {
-    host, url, apex, sibling: siblingOf(host, apex), emailDomain: args.emailDomain || apex,
+    host, url, apex, sibling: platform ? null : siblingOf(host, apex), emailDomain: args.emailDomain || apex,
     resolver: deps.resolver || createResolver({ fetch: deps.fetch }), fetch: deps.fetch || globalThis.fetch, connect: deps.connect,
     now, ua: UA, siteHeaders: args.headers || {}, legacy: args.legacy !== false, maxSubdomains: args.maxSubdomains ?? 30,
     dkimSelectors: [...new Set([...(args.selectors || []), ...DKIM_SELECTORS])], customSelectors: Boolean(args.selectors?.length),
     shared: {},
   };
-  const want = (g) => (args.only ? args.only.includes(g) : true) && !(args.skip || []).includes(g) && !(g === 'ct' && args.ct === false);
+  const want = (g) => (args.only ? args.only.includes(g) : true) && !(args.skip || []).includes(g) && !(g === 'ct' && args.ct === false) && !(platform && ['domain', 'email', 'ct'].includes(g));
   const runGroup = async ([id, fn, budget]) => {
     if (!want(id)) return [];
     const t = Date.now();
@@ -100,11 +115,12 @@ export async function run(args, deps = {}) {
   };
   // domain first (CAA and addresses feed tls and ct), edge before ct (HSTS feeds the no-https verdict).
   const results = [...await runGroup(GROUPS[0])];
+  if (platform) results.push(result('dns.platform', 'warn', 'Hosting platform address', `${host} is an address on ${platform}, a hosting platform: its domain, DNS, mail and subdomains are the platform's, so those checks were skipped`, { fix: `Run infra-audit on the site's own domain (the live URL), not the platform address. Use --platform-ok only to audit ${platform} itself.` }));
   const [email, tls, edge] = await Promise.all([runGroup(GROUPS[1]), runGroup(GROUPS[2]), runGroup(GROUPS[3])]);
   results.push(...email, ...tls, ...edge, ...await runGroup(GROUPS[4]));
   markIntercepted(results);
   const counts = countStatuses(results);
-  return { tool: 'infra-audit', version: VERSION, generatedAt: now.toISOString(), target: { url, host, apex, emailDomain: ctx.emailDomain, sibling: ctx.sibling }, counts, results };
+  return { tool: 'infra-audit', version: VERSION, generatedAt: now.toISOString(), target: { url, host, apex, emailDomain: ctx.emailDomain, sibling: ctx.sibling, ...(platform ? { platform } : {}) }, counts, results };
 }
 
 /** With TLS inspection on the network, certificate rows describe the proxy: turn them into skips. */
@@ -123,7 +139,8 @@ export function markIntercepted(results) {
 export function renderMarkdown(report) {
   const { target: t, counts, results } = report;
   const out = [`# Infrastructure audit — ${t.host}`, ''];
-  out.push(`**Site:** ${t.url}  ·  **Domain:** ${t.apex}${t.emailDomain !== t.apex ? `  ·  **Mail domain:** ${t.emailDomain}` : ''}  ·  **Date:** ${report.generatedAt.slice(0, 16).replace('T', ' ')} UTC  ·  **Tool:** infra-audit ${report.version}`, '');
+  if (t.platform) out.push(`> **Not the site's own domain.** ${t.host} is a ${t.platform} address, so only TLS and the edge were checked. Run infra-audit again on the live domain.`, '');
+  out.push(`**Site:** ${t.url}  ·  **Domain:** ${t.platform ? `${t.platform} (hosting platform, not checked)` : t.apex}${t.emailDomain !== t.apex ? `  ·  **Mail domain:** ${t.emailDomain}` : ''}  ·  **Date:** ${report.generatedAt.slice(0, 16).replace('T', ' ')} UTC  ·  **Tool:** infra-audit ${report.version}`, '');
   out.push(resultLine(counts), '');
   out.push(...fixFirst(results));
   const warns = results.filter((r) => r.status === 'warn');

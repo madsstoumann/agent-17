@@ -4,7 +4,7 @@ description: Use when someone wants the infrastructure or domain hygiene of a si
 argument-hint: "<url or domain> [--email-domain D] [--dkim-selector S] [--no-ct] [--max-subdomains N] [--only domain,email,tls,edge,ct] [--out DIR]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Infrastructure audit
@@ -33,7 +33,8 @@ skips) to stdout. Exit code 0 whatever it finds; non-zero means the script faile
 
 | Flag | Use it when |
 |---|---|
-| `<url or domain>` | The site (`https://www.shop.dk/`) or a bare domain. Mail checks run on the registrable domain (`shop.dk`). |
+| `<url or domain>` | The site (`https://www.shop.dk/`) or a bare domain. Mail checks run on the registrable domain (`shop.dk`). Always the live, public domain: a hosting platform's address (`*.umbraco.io`, `*.azurewebsites.net`, `*.vercel.app`, `*.netlify.app`, …) gets only its TLS and edge checked, with a warning, because that domain, its DNS and its mail are the platform's. When the URL came from a repo and is such an address, ask for the live domain. |
+| `--platform-ok` | Only when the user wants the platform's own domain audited. |
 | `--email-domain D` | Mail is sent from another domain than the site's. |
 | `--dkim-selector S` | The user knows their provider's selector (it is `s=` in the DKIM-Signature header of a sent mail). Repeatable. About 25 common selectors are always tried. |
 | `--no-ct` / `--max-subdomains N` | crt.sh is down or slow, or the domain has hundreds of hosts. Default probes the first 30 names. |
