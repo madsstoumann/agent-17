@@ -11,12 +11,12 @@
  */
 import { parseArgs } from 'node:util';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { collect, normaliseUrl, VERSION } from './lib/fetch.mjs';
 import { detect, GLOBAL_PATHS } from './lib/detect.mjs';
 import { loadPlaywright, render } from './lib/browser.mjs';
 import { markdown, siteLine } from './lib/report.mjs';
+import { resolveOutDir } from './lib/out-dir.mjs';
 
 const HELP = `tech-stack ${VERSION}: detect a website's technology stack
 
@@ -28,7 +28,8 @@ Usage: node tech-stack.mjs <url> [<url> …] [options]
   --assets N         Same-site scripts/stylesheets to read per site (default 12, 0 = none)
   --jobs N           Sites analysed in parallel (default 4; 2 with --browser)
   --timeout MS       Per-request timeout (default 15000)
-  --out DIR          Output folder (default ~/Downloads/tech-stack/<name>-<YYYYMMDD-HHMM>/)
+  --out DIR          Output folder (default <reports>/tech-stack/<name>-<YYYYMMDD-HHMM>/, where
+                     <reports> is $AUDIT_OUT_DIR, else Downloads, else ~/audit-reports)
   --insecure         Accept self-signed certificates (localhost, dev boxes)
   --json             Print results.json to stdout instead of the summary
   --quiet            No progress on stderr
@@ -98,7 +99,7 @@ await Promise.all(Array.from({ length: Math.min(jobs, urls.length) }, async () =
 
 const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 13);
 const name = urls.length === 1 ? new URL(urls[0]).host.replace(/[^a-z0-9.-]/gi, '_') : `batch-${urls.length}`;
-const outDir = path.resolve(opt.out ? opt.out.replace(/^~(?=$|\/)/, os.homedir()) : path.join(os.homedir(), 'Downloads', 'tech-stack', `${name}-${stamp}`));
+const outDir = resolveOutDir(opt.out, name, { now: stamp });
 mkdirSync(outDir, { recursive: true });
 const generatedAt = new Date().toISOString();
 const doc = { tool: 'tech-stack', version: VERSION, generatedAt, browser: !!pw, results };

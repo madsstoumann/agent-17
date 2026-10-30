@@ -2,6 +2,14 @@
 
 All notable changes to the `tech-stack` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.1.0] - 2026-10-30
+
+### Changed
+- The default report folder no longer assumes `~/Downloads`. It is `$AUDIT_OUT_DIR` if set, else the Downloads folder if it exists and is writable (on Linux the XDG download folder first), else `~/audit-reports/`. The same order is used by launch-audit, security-audit and audit-all.
+
+### Fixed
+- The version the script reports (and sends in its user agent) was still 1.0.1.
+
 ## [1.0.2] - 2026-10-29
 
 ### Changed

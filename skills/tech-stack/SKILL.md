@@ -4,7 +4,7 @@ description: Use when someone asks what a website is built with or runs on — i
 argument-hint: "<url> [<url> …] [--file urls.txt] [--browser] [--out DIR] [--json]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "1.0.2"
+  version: "1.1.0"
 ---
 
 # Tech stack
@@ -37,7 +37,7 @@ paths; progress goes to stderr. Exit code is 0 unless every site failed.
 |---|---|
 | `--file urls.txt` | The user gives a list or a file. One URL per line, `#` comments allowed. Bare hosts are fine. |
 | `--browser` | The user asks about analytics, trackers, tags or consent, or the site is a client-rendered SPA. Renders the page in headless Chromium so tags loaded by a tag manager, cookies set by JavaScript and window globals (`jQuery.fn.jquery`, `next.version`) count too. Needs Playwright; without it the script says so and continues with raw HTML. |
-| `--out DIR` | The user says where the report should go. Default `~/Downloads/tech-stack/<host or batch-N>-<YYYYMMDD-HHMM>/`. |
+| `--out DIR` | The user says where the report should go. Default `<reports>/tech-stack/<host or batch-N>-<YYYYMMDD-HHMM>/`, where `<reports>` is `$AUDIT_OUT_DIR` if set, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. The folder is created and its path printed last on stdout. Do not point it into the current repo unless the user asks. |
 | `--assets N` | Default 12 same-site scripts and stylesheets per site. Raise it (30) for big SPAs where the framework hides in a later chunk; `0` for headers and markup only. |
 | `--jobs N` | Sites in parallel, default 4 (2 with `--browser`). |
 | `--insecure` | `localhost` or a self-signed certificate. |
@@ -112,4 +112,6 @@ SPA that shows little → `--browser`; "save it in …" → `--out`.
 - `scripts/lib/detect.mjs`: matching, versions, implied technologies, confidence.
 - `scripts/lib/fetch.mjs`, `page.mjs`, `browser.mjs`, `report.mjs`: fetching, HTML parsing,
   the browser pass and the report.
+- `scripts/lib/out-dir.mjs`: the default report folder, shared logic with launch-audit,
+  security-audit and audit-all.
 - `scripts/test/*.test.mjs`: `cd scripts && node --test test/*.test.mjs`.
