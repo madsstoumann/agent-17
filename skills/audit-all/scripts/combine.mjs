@@ -16,12 +16,12 @@ import { printPdf } from './lib/pdf.mjs';
 import { writeFixPlan } from './lib/tasks.mjs';
 import { targetDir, claimTarget, newRun, previousRuns, readNotes, targetName } from './lib/target-state.mjs';
 
-export const VERSION = '1.4.0';
+export const VERSION = '1.5.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, '..', 'assets');
 const SIBLINGS = path.join(HERE, '..', '..');
 
-const USAGE = `audit-all ${VERSION}: combine launch-audit, a11y-audit, seo-audit, eco-audit, security-audit and solution-health reports
+const USAGE = `audit-all ${VERSION}: combine launch-audit, a11y-audit, seo-audit, eco-audit, privacy-audit, infra-audit, security-audit and solution-health reports
 
 Usage:
   node combine.mjs <run-dir> [flags]   Combine <run-dir>/<kind>[-<target>]/report.md into <run-dir>/report.{md,html,pdf},
@@ -192,7 +192,7 @@ export async function combine(args, { now = new Date(), log = (m) => process.std
   for (const c of collectSolutionHealth(runDir, args.repos)) log(c.ok ? `solution-health: copied ${c.repo} -> ${c.dest}` : `solution-health: no report for ${c.repo} (run solution-health there first)`);
 
   const reports = discoverReports(runDir);
-  if (!reports.length) throw new Error(`No reports in ${runDir}. Expected sub-folders like launch-audit/, a11y-audit/, security-audit-<repo>/, solution-health-<repo>/ with a report.md each.`);
+  if (!reports.length) throw new Error(`No reports in ${runDir}. Expected sub-folders like launch-audit/, a11y-audit/, privacy-audit/, infra-audit/, security-audit-<repo>/, solution-health-<repo>/ with a report.md each.`);
   const summaryFile = path.join(runDir, 'summary.md');
   let summaryMd = fs.existsSync(summaryFile) ? fs.readFileSync(summaryFile, 'utf8') : '';
   if (!summaryMd) log('summary.md not found: the report will have no verdict or "Fix first" list.');
