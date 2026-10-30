@@ -2,6 +2,17 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.8.0] - 2026-10-30
+
+### Added
+- A contents page after the cover when the report combines more than one audit: Summary, then each audit with its section number and the page it starts on. The PDF is printed twice; the first print gives the page numbers (from the named destinations Chrome writes for the contents links), the second fills them in. The compact report gets one too.
+- A warning, in the log and under "At a glance", when a site audit checked another domain than the report's subject (say infra-audit on an Umbraco Cloud address instead of the live domain).
+
+### Fixed
+- The cover stays on one page: tile text is cut at whole sentences (else at a clause, with an ellipsis) and clamped, and with more than six audits or a long title the cover uses a tighter set. The full text is still in the report.
+- In the sans style the running header and page numbers were set in a serif fallback: page margin boxes do not see the body's style class, so their typeface is now set per style.
+- A test keeps `combine.mjs`'s version and SKILL.md's together, so it cannot go stale again.
+
 ## [1.7.0] - 2026-10-30
 
 ### Added

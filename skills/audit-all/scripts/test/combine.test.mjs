@@ -6,9 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { parseBlocks, renderBlocks, inline, plain } from '../lib/markdown.mjs';
-import { discoverReports, headline, parseSummary, parseAction, statusClass, splitReport } from '../lib/report.mjs';
-import { findChrome, buildPrintArgs } from '../lib/pdf.mjs';
-import { parseArgs, reportsRoot, safeName, combine } from '../combine.mjs';
+import { discoverReports, headline, parseSummary, parseAction, statusClass, splitReport, clipSentences, combinedHtml, siteMismatches } from '../lib/report.mjs';
+import { findChrome, buildPrintArgs, pdfDestPages } from '../lib/pdf.mjs';
+import { parseArgs, reportsRoot, safeName, combine, VERSION } from '../combine.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILLS = path.join(HERE, '..', '..', '..');
@@ -200,6 +200,9 @@ test('combine: run folder -> report.md and report.html (no PDF), solution-health
     assert.match(html, /<ol class="actions">/);
     assert.match(html, /<span class="st fail">Blocker<\/span>/);
     assert.equal((html.match(/<section class="audit"/g) || []).length, 3);
+    assert.match(html, /<section class="toc" id="contents">/, 'more than one report: a contents page');
+    assert.match(html, /<a href="#audit-2"><span class="no">2<\/span><span class="t">Security audit/);
+    assert.match(html, /@bottom-right \{ font-family: "AA Plex Sans"/, 'page numbers and running header in the chosen typeface');
     assert.equal(out.pdf, null);
   } finally {
     fs.rmSync(run, { recursive: true, force: true });
@@ -273,4 +276,55 @@ test('discoverReports: a11y-audit sits after launch-audit', () => {
     }
     assert.deepEqual(discoverReports(run).map((r) => r.kind), ['launch-audit', 'a11y-audit', 'security-audit']);
   } finally { fs.rmSync(run, { recursive: true, force: true }); }
+});
+
+test('VERSION matches SKILL.md', () => {
+  const skill = fs.readFileSync(path.join(HERE, '..', '..', 'SKILL.md'), 'utf8');
+  assert.equal(VERSION, skill.match(/^\s+version:\s*"([\d.]+)"/m)[1]);
+});
+
+test('clipSentences: whole sentences, else a clause, never mid-word', () => {
+  assert.equal(clipSentences('Short.'), 'Short.');
+  assert.equal(clipSentences(`One. Two is here. ${'word '.repeat(40)}`, 60), 'One. Two is here.');
+  assert.equal(clipSentences('Not ready to launch: two secrets are committed to the repository history, including a live SMTP password in appsettings.Production.json and more text after it.', 110), 'Not ready to launch: two secrets are committed to the repository history…');
+  assert.match(clipSentences('a'.repeat(30) + ' ' + 'b'.repeat(200), 100), /^a{30}…$|…$/);
+});
+
+test('combinedHtml: one report has no contents page; a long cover is dense and its tiles clipped', () => {
+  const security = { kind: 'security-audit', target: 'web', folder: 'security-audit-web', md: SECURITY.replace('1 blocker: a live Stripe key in git history.', `Not ready. ${'Very long verdict text. '.repeat(20)}`) };
+  const args = { summary: parseSummary(SUMMARY), date: new Date('2026-10-30T09:00:00Z'), version: VERSION, css: '', style: 'serif' };
+  const one = combinedHtml({ ...args, reports: [security], heads: [headline(security)] });
+  assert.equal(one.includes('class="toc"'), false);
+  const many = Array.from({ length: 7 }, () => security);
+  const html = combinedHtml({ ...args, reports: many, heads: many.map(headline), pages: { summary: 3, 'audit-1': 4 } });
+  assert.match(html, /<section class="cover dense">/);
+  assert.match(html, /href="#summary">.*<span class="pg">3<\/span>/);
+  assert.match(html, /href="#audit-1">.*<span class="pg">4<\/span>/);
+  assert.equal(html.includes('Very long verdict text. Very long verdict text. Very long verdict text. Very long verdict text. Very long verdict text.'), true, 'the full verdict stays in the report');
+  const tile = html.match(/<div class="what">([^<]*)<\/div>/)[1];
+  assert.ok(tile.length <= 110 && /\.$/.test(tile), `tile ends on a sentence: ${tile}`);
+});
+
+test('pdfDestPages: named destinations mapped to page numbers through the page tree', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-all-pdf-'));
+  try {
+    const pdf = ['%PDF-1.4', '1 0 obj\n<</Type /Catalog /Pages 2 0 R /Dests 9 0 R>>\nendobj', '2 0 obj\n<</Type /Pages /Kids [3 0 R 4 0 R] /Count 3>>\nendobj',
+      '3 0 obj\n<</Type /Page /Parent 2 0 R>>\nendobj', '4 0 obj\n<</Type /Pages /Kids [5 0 R 6 0 R]>>\nendobj', '5 0 obj\n<</Type /Page>>\nendobj', '6 0 obj\n<</Type /Page>>\nendobj',
+      '9 0 obj\n<</summary [5 0 R /XYZ 6 777 0]\n/audit-1 [6 0 R /XYZ 6 777 0]>>\nendobj', '%%EOF'].join('\n');
+    fs.writeFileSync(path.join(dir, 'a.pdf'), pdf);
+    assert.deepEqual(pdfDestPages(path.join(dir, 'a.pdf')), { summary: 2, 'audit-1': 3 });
+    assert.deepEqual(pdfDestPages(path.join(dir, 'missing.pdf')), {});
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('siteMismatches: a site audit run on another domain than the subject is flagged', () => {
+  const infra = { kind: 'infra-audit', target: null, folder: 'infra-audit', md: '# Infrastructure audit — helm-live.euwest01.umbraco.io\n\n**Result:** 3 pass · 2 warn · 0 fail\n' };
+  const launch = { kind: 'launch-audit', target: null, folder: 'launch-audit', md: '# Launch audit — www.helmsecurity.ai\n\n**Result:** 3 pass · 0 warn · 0 fail\n' };
+  const security = { kind: 'security-audit', target: 'helm', folder: 'security-audit-helm', md: SECURITY };
+  const reports = [launch, infra, security];
+  const heads = reports.map(headline);
+  assert.deepEqual(siteMismatches(reports, heads, 'helmsecurity.ai').map((m) => [m.kind, m.target]), [['infra-audit', 'helm-live.euwest01.umbraco.io']]);
+  assert.deepEqual(siteMismatches(reports, heads, 'Helm'), [], 'a subject that is not a host name is not compared');
+  const html = combinedHtml({ summary: parseSummary(SUMMARY.replace('shop.example.dk', 'helmsecurity.ai')), reports, heads, date: new Date(), version: VERSION, css: '', style: 'sans' });
+  assert.match(html, /class="mismatch">.*Infrastructure audit checked helm-live\.euwest01\.umbraco\.io, not helmsecurity\.ai/);
 });

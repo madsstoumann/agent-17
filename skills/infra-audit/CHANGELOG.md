@@ -2,6 +2,11 @@
 
 All notable changes to the `infra-audit` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.1.0] - 2026-10-30
+
+### Fixed
+- A hosting platform's address (`*.umbraco.io`, `*.azurewebsites.net`, `*.vercel.app`, `*.netlify.app`, `*.ondigitalocean.app` and others) is no longer audited as if the platform's domain were the site's: domain, mail and subdomain checks are skipped with a "Hosting platform address" warning and a note at the top of the report, and CAA, HSTS preload and the www sibling use the host itself. `--platform-ok` audits the platform's domain anyway. A run on an Umbraco Cloud address had reported umbraco.io's CAA and DKIM as the site's.
+
 ## [1.0.0] - 2026-10-30
 
 ### Added

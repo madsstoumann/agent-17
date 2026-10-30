@@ -12,12 +12,12 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { discoverReports, headline, parseSummary, combinedMarkdown, combinedHtml } from './lib/report.mjs';
-import { printPdf } from './lib/pdf.mjs';
+import { discoverReports, headline, parseSummary, combinedMarkdown, combinedHtml, siteMismatches } from './lib/report.mjs';
+import { printPdf, pdfDestPages } from './lib/pdf.mjs';
 import { writeFixPlan } from './lib/tasks.mjs';
 import { targetDir, claimTarget, newRun, previousRuns, readNotes, targetName } from './lib/target-state.mjs';
 
-export const VERSION = '1.7.0';
+export const VERSION = '1.8.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, '..', 'assets');
 const SIBLINGS = path.join(HERE, '..', '..');
@@ -207,16 +207,18 @@ export async function combine(args, { now = new Date(), log = (m) => process.std
   const summary = parseSummary(summaryMd);
   summary.raw = summaryMd.replace(/^---\n[\s\S]*?\n---\n?/, '');
   const heads = reports.map(headline);
+  for (const m of siteMismatches(reports, heads, summary.meta.subject)) log(`Warning: ${m.title} checked ${m.target}, not ${m.subject}. Re-run ${m.kind} on ${m.subject}; the report says so too.`);
   const toolVersions = Object.fromEntries([...new Set(reports.map((r) => r.kind))].map((k) => [k, skillVersion(k)]).filter(([, v]) => v));
 
   const md = combinedMarkdown({ summary, reports, heads, date: now, version: VERSION });
-  const html = combinedHtml({ summary, reports, heads, date: now, version: VERSION, css: stylesheet(args.style), style: args.style, toolVersions });
-  const out = { md: path.join(runDir, 'report.md'), html: path.join(runDir, 'report.html'), pdf: null, compactHtml: null, compactPdf: null, todo: null, reports: reports.map((r) => r.folder) };
+  const htmlArgs = { summary, reports, heads, date: now, version: VERSION, css: stylesheet(args.style), style: args.style, toolVersions };
+  const html = combinedHtml(htmlArgs);
+  const out = { md: path.join(runDir, 'report.md'), html: path.join(runDir, 'report.html'), pdf: null, todo: null, reports: reports.map((r) => r.folder) };
   fs.writeFileSync(out.md, md);
   fs.writeFileSync(out.html, html);
   if (args.compact !== false) {
     out.compactHtml = path.join(runDir, 'report-compact.html');
-    fs.writeFileSync(out.compactHtml, combinedHtml({ summary, reports, heads, date: now, version: VERSION, css: stylesheet(args.style), style: args.style, toolVersions, compact: true }));
+    fs.writeFileSync(out.compactHtml, combinedHtml({ ...htmlArgs, compact: true }));
   }
   const fix = writeFixPlan(runDir, { date: now, subject: summary.meta.subject || null });
   for (const w of fix.warnings || []) log(`tasks.json: ${w}`);
@@ -225,16 +227,30 @@ export async function combine(args, { now = new Date(), log = (m) => process.std
   else log('tasks.json not found: no fix plan written.');
   if (args.pdf) {
     const pdfFile = path.join(runDir, 'report.pdf');
-    const r = await printPdf(out.html, pdfFile, { chromePath: args.chrome });
+    const r = await printWithContents(htmlArgs, out.html, pdfFile, { chromePath: args.chrome, log });
     if (r.ok) out.pdf = pdfFile;
     else log(`PDF skipped: ${r.error}. Open report.html in a browser and print to PDF instead.`);
     if (r.ok && out.compactHtml) {
-      const c = await printPdf(out.compactHtml, path.join(runDir, 'report-compact.pdf'), { chromePath: args.chrome });
+      const c = await printWithContents({ ...htmlArgs, compact: true }, out.compactHtml, path.join(runDir, 'report-compact.pdf'), { chromePath: args.chrome, log });
       if (c.ok) out.compactPdf = path.join(runDir, 'report-compact.pdf');
       else log(`Compact PDF skipped: ${c.error}.`);
     }
   }
   return out;
+}
+
+/**
+ * Print report.html to PDF. With a contents page, print twice: the first print shows on which page each
+ * section starts (Chrome's named destinations), the second has those numbers in the contents. The numbers
+ * take the same space either way, so nothing moves between the two prints.
+ */
+export async function printWithContents(htmlArgs, htmlFile, pdfFile, { chromePath, log = () => {} } = {}) {
+  const first = await printPdf(htmlFile, pdfFile, { chromePath });
+  if (!first.ok || htmlArgs.reports.length < 2) return first;
+  const pages = pdfDestPages(pdfFile);
+  if (!pages.summary) { log('Contents page: page numbers not found in the PDF, left blank.'); return first; }
+  fs.writeFileSync(htmlFile, combinedHtml({ ...htmlArgs, pages }));
+  return printPdf(htmlFile, pdfFile, { chromePath });
 }
 
 async function main() {

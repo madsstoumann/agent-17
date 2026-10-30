@@ -2,6 +2,16 @@
 
 All notable changes to the `solution-health` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.3.0] - 2026-10-30
+
+### Fixed
+- No more "Upgrade X 1.2.0 to 1.2.0" tasks: an upgrade task is only written when the registry has a newer version than the installed one. A package that is only quiet (no release in 12 months) while the newest version is installed is now info, a watch item.
+- `@types/node` is kept to the Node major the project runs on (`.nvmrc`, `.node-version`, `.tool-versions`, `volta`, `Dockerfile`, else `engines.node`, else CI workflows), so a Node 24 project is no longer told to move to `@types/node` 26.
+- NuGet versions set by an MSBuild property (`$(UmbracoAppLocalIcuVersion)`) are resolved from the `Directory.Build.props` chain, `Directory.Packages.props` and the project file, then from `obj/project.assets.json`; one that cannot be resolved is reported as such instead of giving a false amber.
+
+### Changed
+- Less licence noise: all amber licences become one "Check N licences the scan could not clear" task instead of one task each. Microsoft licence terms and Umbraco's commercial licence are recognised (from the licence URL or file) and reported as info; Unicode/ICU licences are permissive; an unknown licence URL falls back to the licence file in the package; a NuGet package whose nuspec is not on disk is info ("not read"), not "no licence".
+
 ## [2.2.0] - 2026-10-30
 
 ### Added

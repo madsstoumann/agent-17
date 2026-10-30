@@ -139,6 +139,23 @@ export function headline(report) {
   return h;
 }
 
+const SITE_KINDS = new Set(['launch-audit', 'a11y-audit', 'seo-audit', 'eco-audit', 'privacy-audit', 'infra-audit']);
+const hostOf = (s) => { const m = String(s || '').trim().toLowerCase().match(/^(?:[a-z]+:\/\/)?([a-z0-9.-]+\.[a-z]{2,})(?:[:/]|$)/); return m ? m[1].replace(/^www\./, '') : null; };
+const baseDomain = (host) => { const l = host.split('.'); return l.slice(/^(co|com|net|org|gov|ac|edu)\.[a-z]{2}$/.test(l.slice(-2).join('.')) ? -3 : -2).join('.'); };
+
+/**
+ * Site audits that checked another domain than the report's subject (the confirmed live site): a
+ * staging or platform address detected from a repo, say. [{ kind, title, target, subject }]
+ */
+export function siteMismatches(reports, heads, subject) {
+  const want = hostOf(subject);
+  if (!want) return [];
+  return reports.map((r, i) => ({ r, host: hostOf(heads[i].target) }))
+    .filter(({ r, host }) => SITE_KINDS.has(r.kind) && host && baseDomain(host) !== baseDomain(want))
+    .map(({ r, host }) => ({ kind: r.kind, title: KINDS[r.kind].title, target: host, subject: want }));
+}
+const mismatchNote = (m) => `${m.title} checked ${m.target}, not ${m.subject}: its findings may belong to another site or a hosting platform. Run it again on ${m.subject}.`;
+
 /** summary.md: optional `---` front matter (title, subject, deck, prepared-for), then Markdown. */
 export function parseSummary(md) {
   const meta = {};
@@ -189,6 +206,7 @@ export function combinedMarkdown({ summary, reports, heads, date, version }) {
   out.push('## At a glance', '', '| Audit | Target | Result | Report |', '|---|---|---|---|');
   reports.forEach((r, i) => out.push(`| ${KINDS[r.kind].title} | ${heads[i].target || ''} | ${(heads[i].result || '').replace(/\|/g, '\\|')} | \`${r.folder}/report.md\` |`));
   out.push('');
+  for (const m of siteMismatches(reports, heads, summary.meta.subject)) out.push(`> ⚠️ ${mismatchNote(m)}`, '');
   for (const r of reports) {
     out.push(demote(r.md).trim(), '');
   }
@@ -247,18 +265,49 @@ function glanceTable(reports, heads) {
   return `<div class="tbl-wrap"><table class="glance"><thead><tr><th>Audit</th><th>Result</th><th>Full report</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+/**
+ * Cover tile text: whole sentences up to `max` characters, so a tile never ends mid-sentence. A first
+ * sentence that is already too long ends at a clause or word and gets an ellipsis.
+ */
+export function clipSentences(text, max = 140) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  let out = '';
+  for (const s of t.split(/(?<=[.!?])\s+/)) { const next = out ? `${out} ${s}` : s; if (next.length > max) break; out = next; }
+  if (out) return out;
+  // No whole sentence fits: end at the last clause (a comma, colon or semicolon), else at a word.
+  const cut = t.slice(0, max - 1);
+  const clause = Math.max(...[', ', ': ', '; ', ' – ', ' — '].map((c) => cut.lastIndexOf(c)));
+  const end = clause > max / 2 ? clause : Math.max(cut.lastIndexOf(' '), max / 2);
+  return `${cut.slice(0, end).replace(/[\s,;:–—-]+$/, '')}…`;
+}
+
+/** Contents page: the summary, then every audit with its section number. `pages` maps an id to its page. */
+function tocPage(reports, heads, pages = {}) {
+  const entry = (id, no, title, target) => `<li><a href="#${id}"><span class="no">${no}</span><span class="t">${title}${target ? ` <span class="sub mono">${escapeHtml(target)}</span>` : ''}</span><span class="pg">${pages[id] ?? ''}</span></a></li>`;
+  const items = [entry('summary', '', 'Summary'), ...reports.map((r, i) => entry(`audit-${i + 1}`, i + 1, KINDS[r.kind].title, reports.filter((x) => x.kind === r.kind).length > 1 ? heads[i].target : null))];
+  return `<section class="toc" id="contents">${row('Contents', `<ol class="toc-list">${items.join('\n')}</ol>`)}</section>`;
+}
+
 function coverMeta(reports, heads) {
   return reports.map((r, i) => {
     const h = heads[i];
     const figs = (h.figures || []).filter(([n]) => n !== undefined).map(([n, w]) => `${n} <small>${w}</small>`).join(' ');
     const label = `${KINDS[r.kind].title}${reports.filter((x) => x.kind === r.kind).length > 1 && h.target ? ` · <span class="mono">${escapeHtml(h.target)}</span>` : ''}`;
-    return `<div><div class="label">${label}</div>${figs ? `<div class="n">${figs}</div>` : ''}${h.what ? `<div class="what">${escapeHtml(h.what)}</div>` : ''}</div>`;
+    return `<div><div class="label">${label}</div>${figs ? `<div class="n">${figs}</div>` : ''}${h.what ? `<div class="what">${escapeHtml(clipSentences(h.what, reports.length > 6 ? 110 : 140))}</div>` : ''}</div>`;
   }).join('\n');
 }
 
-/** Full HTML document. `css` is the stylesheet text (fonts included); `style` is serif or sans;
- *  `compact` shortens every sub-report (see compact.mjs). */
-export function combinedHtml({ summary, reports, heads, date, version, css, style, toolVersions = {}, compact = false }) {
+// Page margin boxes do not inherit the body's style class, so their typeface is set per style here.
+const PAGE_FONT = { serif: '"AA Newsreader", "Iowan Old Style", Charter, Georgia, serif', sans: '"AA Plex Sans", "Helvetica Neue", Helvetica, Arial, sans-serif' };
+
+/**
+ * Full HTML document. `css` is the stylesheet text (fonts included); `style` is serif or sans;
+ * `compact` shortens every sub-report (see compact.mjs).
+ * With more than one report a contents page follows the cover; `pages` ({ summary, 'audit-1', … })
+ * fills in its page numbers once a first print has shown where each section starts.
+ */
+export function combinedHtml({ summary, reports, heads, date, version, css, style, toolVersions = {}, compact = false, pages = {} }) {
   const subject = summary.meta.subject || heads.find((h) => h.target)?.target || 'Audit';
   const title = summary.meta.title || `Audit report: ${subject}`;
   const names = [...new Set(reports.map((r) => KINDS[r.kind].title))].map((t, i) => (i ? t.toLowerCase() : t));
@@ -272,32 +321,33 @@ export function combinedHtml({ summary, reports, heads, date, version, css, styl
     const target = heads[i].target;
     const meta = intro.length ? `<div class="result-line">${renderBlocks(intro)}</div>` : '';
     const opener = `<div class="row opener"><div class="margin"><div class="sec-no">${i + 1}</div></div><div class="body"><h2>${kind.title}${target ? ` <span class="target mono">${escapeHtml(target)}</span>` : ''}</h2><p class="standfirst">${kind.standfirst}</p>${meta}</div></div>`;
-    return `<section class="audit" data-kind="${r.kind}">\n${opener}\n${sections.map(renderSection).join('\n')}\n</section>`;
+    return `<section class="audit" id="audit-${i + 1}" data-kind="${r.kind}">\n${opener}\n${sections.map(renderSection).join('\n')}\n</section>`;
   }).join('\n');
 
   return `<!doctype html>
-<html lang="en">
+<html lang="en" class="style-${style}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)} · ${escapeHtml(subject)}</title>
 <style>
 ${css}
-@page { @top-left { content: "${cssString(subject)}"; } @top-right { content: "Combined audit · ${cssString(fmtDate(date))}"; } }
+@page { @top-left { content: "${cssString(subject)}"; } @top-right { content: "Combined audit · ${cssString(fmtDate(date))}"; font-family: ${PAGE_FONT[style] || PAGE_FONT.serif}; } @bottom-right { font-family: ${PAGE_FONT[style] || PAGE_FONT.serif}; } }
 </style>
 </head>
 <body class="style-${style}">
 <article class="report">
-<section class="cover">
+<section class="cover${reports.length > 6 || plain(title).length > 40 ? ' dense' : ''}">
   <div class="label kicker">Audit report</div>
   <h1>${inline(title)}<span class="host mono">${escapeHtml(subject)}</span></h1>
   <p class="deck">${inline(deck)}</p>
   <div class="meta cols-${Math.min(reports.length, 3)}">${coverMeta(reports, heads)}</div>
   <div class="colophon"><span>${summary.meta['prepared-for'] ? `Prepared for ${escapeHtml(summary.meta['prepared-for'])}` : fmtDate(date)}</span><span>${escapeHtml(tools)}</span></div>
 </section>
-<section class="summary">
+${reports.length > 1 ? tocPage(reports, heads, pages) : ''}
+<section class="summary" id="summary">
 ${renderSummary(summary)}
-${row('At a glance', glanceTable(reports, heads))}
+${row('At a glance', glanceTable(reports, heads) + siteMismatches(reports, heads, summary.meta.subject).map((m) => `<p class="mismatch"><span class="mk warn"></span>${escapeHtml(mismatchNote(m))}</p>`).join(''))}
 </section>
 ${audits}
 </article>
