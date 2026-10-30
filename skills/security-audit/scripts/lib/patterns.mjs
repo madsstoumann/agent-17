@@ -195,6 +195,24 @@ export const FILE_RULES = [
     title: 'Credentials-type file', review: 'Open it: a token reference (${NPM_TOKEN}) is fine. appsettings.<Environment>.json and local.settings.json often hold the real tokens and connection strings for that environment.', fix: 'Remove and rotate; inject at deploy.' },
 ];
 
+/**
+ * Files a hosting platform writes into the repo itself, credentials included. They are part of the
+ * platform's workflow, so removing them breaks deploys: the secret rules still read them, but every
+ * secret hit in one is reported under the platform rule instead, at review level, owned by a person.
+ * The severity follows the repo's visibility (see scan.mjs): private or internal → low, unknown →
+ * medium, public → high.
+ */
+export const PLATFORM_FILES = [
+  { id: 'secrets.umbraco-cloud', group: 'secrets', platform: 'Umbraco Cloud', owner: 'human',
+    test: (rel) => /(^|\/)umbraco-cloud\.json$/i.test(rel),
+    title: 'Umbraco Cloud credentials in umbraco-cloud.json (platform file)',
+    review: 'Expected, not a leak: Umbraco Cloud commits umbraco-cloud.json itself (commits by support@umbraco.io such as "Update Umbraco Deploy api key"). Deploy.Settings.ApiKey is the Umbraco Deploy key for environment-to-environment transfers; Identity.ClientId/ClientSecret are for the Umbraco Cloud Identity login (redirect.identity.umbraco.com). Neither is the CI/CD Deployment API key for api.cloud.umbraco.com, which belongs in a CI secret. Accepted risk when the repo is private and access is controlled; a blocker when the repo is or was public.',
+    fix: 'Keep the file. Private repo: accept the risk in triage.json (reason + expiry) and keep repo access tight. Public now or ever: rotate the Deploy key and the Identity credentials in the Umbraco Cloud portal, make the repo private, and check the CI/CD Deployment API key is a CI secret, not in the repo.' },
+];
+
+/** The platform rule for a file, or null. */
+export const platformFor = (rel) => PLATFORM_FILES.find((p) => p.test(rel)) || null;
+
 export const CI_FILE = /(^|\/)(\.github\/workflows\/[^/]+\.ya?ml|\.gitlab-ci\.ya?ml|azure-pipelines\.ya?ml|bitbucket-pipelines\.ya?ml|\.circleci\/config\.ya?ml)$/;
 
 export function extOf(rel) {

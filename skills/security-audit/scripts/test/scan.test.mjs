@@ -6,12 +6,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-import { scanText, rulesFor, redact, FILE_RULES } from '../lib/patterns.mjs';
+import { scanText, rulesFor, redact, FILE_RULES, platformFor } from '../lib/patterns.mjs';
 import {
   parsePackageLock, parseYarnLock, parsePnpmLock, parseComposerLock, parseNugetLock, parseMsbuild,
   parseRequirements, parseTomlLock, parseGemfileLock, parseGoMod, osvSeverity, osvFixed,
 } from '../lib/deps.mjs';
-import { run, parseArgs, resolveOutDir, resolveStateDir, resolveBaseline, reportsRoot } from '../scan.mjs';
+import { run, parseArgs, resolveOutDir, resolveStateDir, resolveBaseline, reportsRoot, repoVisibility, platformSeverity } from '../scan.mjs';
 import { annotate, hitFp } from '../lib/baseline.mjs';
 
 // Fake secrets are assembled at runtime so GitHub push protection does not flag this file.
@@ -256,4 +256,83 @@ test('target-state.mjs is identical in every skill that carries a copy', () => {
     const f = path.join(here, '..', '..', '..', s, 'scripts', 'lib', 'target-state.mjs');
     if (fs.existsSync(f)) assert.equal(fs.readFileSync(f, 'utf8'), mine, s);
   }
+});
+
+// ---------------------------------------------------------------- platform credential files (umbraco-cloud.json)
+
+const UMBRACO_CLOUD = JSON.stringify({
+  Deploy: { Settings: { ApiKey: 'Q7f2Lk9Wm3Xp8Rt4Vb6Ny1Zc' }, Project: { CurrentWorkspaceAlias: 'live' } },
+  Identity: { ClientId: 'a1b2c3d4-e5f6-4711-8899-aabbccddeeff', ClientSecret: 'Hs8Jd2Kq6Lw0Pz4Mx7Nv3Bc1' },
+}, null, 2);
+
+function umbracoRepo() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sa-uc-'));
+  const g = (...a) => execFileSync('git', ['-C', dir, '-c', 'user.email=a@b', '-c', 'user.name=a', ...a], { stdio: 'ignore' });
+  g('init', '-q');
+  fs.mkdirSync(path.join(dir, 'src/UmbracoProject'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'src/UmbracoProject/umbraco-cloud.json'), UMBRACO_CLOUD);
+  fs.writeFileSync(path.join(dir, 'src/UmbracoProject/other.json'), '{ "ApiKey": "Q7f2Lk9Wm3Xp8Rt4Vb6Ny1Zc" }');
+  g('add', '-A'); g('commit', '-qm', 'Update Umbraco Deploy api key');
+  return dir;
+}
+
+test('platformFor: umbraco-cloud.json at any depth, nothing else', () => {
+  assert.equal(platformFor('src/UmbracoProject/umbraco-cloud.json')?.id, 'secrets.umbraco-cloud');
+  assert.equal(platformFor('umbraco-cloud.json')?.owner, 'human');
+  assert.equal(platformFor('src/appsettings.json'), null);
+  assert.equal(platformFor('src/umbraco-cloud.json.bak'), null);
+});
+
+test('platformSeverity: private and internal low, unknown medium, public high', () => {
+  assert.deepEqual(['private', 'internal', 'unknown', 'public'].map(platformSeverity), ['low', 'low', 'medium', 'high']);
+});
+
+test('repoVisibility: gh answer, --visibility override, gh missing', () => {
+  const ok = () => JSON.stringify({ visibility: 'PRIVATE', nameWithOwner: 'acme/site' });
+  assert.deepEqual(repoVisibility('/x', { exec: ok }), { visibility: 'private', repo: 'acme/site', via: 'gh repo view' });
+  assert.equal(repoVisibility('/x', { given: 'public', exec: ok }).visibility, 'public');
+  const missing = () => { const e = new Error('spawn gh ENOENT'); e.code = 'ENOENT'; throw e; };
+  assert.deepEqual(repoVisibility('/x', { exec: missing }), { visibility: 'unknown', via: 'gh repo view', reason: 'gh is not installed' });
+});
+
+test('run(): secrets in umbraco-cloud.json go to the platform rule, at a severity set by repo visibility', async () => {
+  const dir = umbracoRepo();
+  const gh = (v) => () => JSON.stringify({ visibility: v, nameWithOwner: 'acme/site' });
+  const priv = await run({ ...parseArgs([dir, '--offline']), exec: gh('PRIVATE') });
+  const uc = priv.rules.find((r) => r.id === 'secrets.umbraco-cloud');
+  assert.ok(uc, 'platform rule reported');
+  assert.equal(uc.severity, 'low');
+  assert.equal(uc.owner, 'human');
+  assert.equal(uc.visibility, 'private');
+  assert.deepEqual(uc.hits.map((h) => h.matchedBy).sort(), ['secrets.generic', 'secrets.generic']);
+  assert.ok(uc.hits.every((h) => h.file.endsWith('umbraco-cloud.json') && !h.text.includes('Q7f2Lk9Wm3Xp8Rt4')));
+  const generic = priv.rules.find((r) => r.id === 'secrets.generic');
+  assert.deepEqual(generic.hits.map((h) => h.file), ['src/UmbracoProject/other.json'], 'the same key elsewhere is still a normal secret');
+  assert.equal(priv.repo.repo, 'acme/site');
+
+  const pub = await run({ ...parseArgs([dir, '--offline']), exec: gh('PUBLIC') });
+  assert.equal(pub.rules.find((r) => r.id === 'secrets.umbraco-cloud').severity, 'high');
+  assert.equal(pub.rules[0].id, 'secrets.umbraco-cloud', 'a public repo sorts it first');
+  const unknown = await run({ ...parseArgs([dir, '--offline']), exec: () => { throw Object.assign(new Error('x'), { code: 'ENOENT' }); } });
+  assert.equal(unknown.rules.find((r) => r.id === 'secrets.umbraco-cloud').severity, 'medium');
+  const given = await run(parseArgs([dir, '--offline', '--visibility', 'internal']));
+  assert.equal(given.rules.find((r) => r.id === 'secrets.umbraco-cloud').severity, 'low');
+  assert.throws(() => parseArgs(['--visibility', 'secret']), /--visibility/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('annotate: a secret moved to the platform rule is open, not fixed and new, and keeps an acceptance', () => {
+  const m = 'Q7f2Lk…[24 chars]';
+  const line = `"ApiKey": "${m}"`;
+  const file = 'src/UmbracoProject/umbraco-cloud.json';
+  const before = { rules: [{ id: 'secrets.generic', severity: 'medium', hits: [{ file, line: 4, text: line, match: m }] }] };
+  const now = { rules: [{ id: 'secrets.umbraco-cloud', severity: 'low', hits: [{ file, line: 4, text: line, match: m }] }] };
+  const oldFp = hitFp('secrets.generic', file, line, m);
+  annotate(now, { baseline: before, triage: { findings: { [oldFp]: { verdict: 'accepted', reason: 'Umbraco Cloud file, private repo', expires: '2099-01-01' } } }, from: 'x' });
+  const h = now.rules[0].hits[0];
+  assert.equal(h.status, 'open');
+  assert.equal(h.movedFrom.id, 'secrets.generic');
+  assert.equal(h.triage.verdict, 'accepted');
+  assert.equal(now.baseline.counts.fixed, 0);
+  assert.equal(now.baseline.counts.new, 0);
 });
