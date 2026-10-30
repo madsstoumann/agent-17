@@ -25,7 +25,9 @@
     "thresholds": { "staleMonths": 24, "quietMonths": 12 },
     "ignore": [
       { "name": "left-pad", "ecosystem": "npm", "reason": "test: an ignore must not hide a red", "expires": "2099-01-01" },
-      { "name": "react", "reason": "test: expired ignore", "expires": "2025-01-01" }
+      { "name": "react", "reason": "test: expired ignore", "expires": "2025-01-01" },
+      { "name": "clsx", "ecosystem": "npm", "reason": "test: finished, dependency-free", "expires": "2099-01-01" },
+      { "name": "classnames", "ecosystem": "npm", "reason": "test: no expiry, so the stale red stays" }
     ]
   },
   "runtimes": { "warnDays": 180, "extra": [{ "product": "mssqlserver", "version": "2019", "note": "test" }] },

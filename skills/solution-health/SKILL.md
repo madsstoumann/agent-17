@@ -4,7 +4,7 @@ description: Periodic health check of this solution's dependencies and external 
 argument-hint: "[--root PATH] [--in-repo | --dir PATH] [--transitive] [--offline] [--skip packages,runtimes,apis]"
 allowed-tools: Bash(node:*), Bash(npm:*), Bash(dotnet:*), Read, Write, Edit, WebFetch, WebSearch
 metadata:
-  version: "2.0.0"
+  version: "2.1.0"
 ---
 
 # Solution health check
@@ -26,13 +26,19 @@ A team that wants the state committed, so every developer and the PR history see
 `.solution-health/` from before 2.0.0 is copied to the state folder on the first run (not `run/`), and left in
 place: tell the user it is no longer used and can be deleted, unless they want `--in-repo`.
 
+Never point `--dir` at an audit run folder (audit-all's or any skill's timestamped `runs/<stamp>/`, marked with
+an `.audit-run` file): the next run would not look there. The scripts ignore such a `--dir` and use the state
+folder above. When the state folder has no manifest yet but an earlier run left one in an audit run folder
+under `<reports>/audit-all/` (found by its `root.txt` or `run/discovery.json`, not by folder name), `check.mjs`
+copies the newest one over once and says so.
+
 | File | Owner | Purpose |
 |---|---|---|
-
 | `manifest.json` | Team (you propose, a dev approves) | External APIs to watch, ignore lists, thresholds. Template: `templates/manifest.example.json` |
 | `state.json` | Scripts | Last verdict per item, page hashes, assessments |
 | `snapshots/*.txt` | Scripts | Normalized text of each watched page, used to diff the next run |
-| `report.md` | Scripts + you | Latest report |
+| `notes.md` | You and the team | Triage notes, migration plans, decisions. No script writes it; `finalize.mjs` shows it in the report's "Notes" section on every run |
+| `report.md` | Scripts | Latest report, rewritten by every `finalize.mjs` run. Do not write notes into it |
 | `run/` | Scripts | Scratch: raw results, HTTP cache, change files (with `--in-repo`, add `.solution-health/run/` to `.gitignore`) |
 
 Scripts are in `scripts/` next to this file. They are zero-dependency Node (18+), so they run on any dev machine with Node, including .NET-only devs. Run them from the solution root, or pass `--root <path>`. The commands below use `${CLAUDE_SKILL_DIR}`, this skill's folder wherever it is installed (`.claude/skills/solution-health/` in the solution, `~/.claude/skills/`, or a plugin); if it is not filled in, use the folder this `SKILL.md` is in. `references/sample-report.md` shows what a finished report looks like.
@@ -99,9 +105,9 @@ This merges everything, compares with the previous `state.json`, writes `report.
 
 ### 5. Look into the red packages, then summarize
 
-For each red package, spend a minute confirming the signal and finding the way out: the npm deprecation message often names the replacement, NuGet has `alternatePackage`, and the repo README of an archived project often points to a fork or successor. A package with no release in two years that is small, dependency-free and feature-complete can be fine. Say so, and suggest an `ignore` entry with a reason and an expiry date (6–12 months) rather than leaving it red forever. Never add ignore entries yourself without the developer's confirmation.
+Read `notes.md` first: earlier runs may already have looked into the same items. For each red package, spend a minute confirming the signal and finding the way out: the npm deprecation message often names the replacement, NuGet has `alternatePackage`, and the repo README of an archived project often points to a fork or successor. A package with no release in two years that is small, dependency-free and feature-complete can be fine. Say so, and suggest an `ignore` entry with a reason and an expiry date (6–12 months) rather than leaving it red forever. Never add ignore entries yourself without the developer's confirmation.
 
-Add what you found to the "Action needed" section of `report.md` (replacement, migration notes, effort guess).
+Write what you found to `notes.md` in the state folder (replacement, migration notes, effort guess), one `## <item>` section per item with the date, and update the sections that are already there instead of adding duplicates. Never edit `report.md`: the next `finalize.mjs` rewrites it. Run `finalize.mjs` again afterwards so the report shows the notes. If `finalize.mjs` says it saved a hand-edited `report.edited-<date>.md`, move the notes in it to `notes.md` and tell the user the old copy can be deleted.
 
 Then reply in chat with:
 - the counts (red/amber, and what is new since last run),
@@ -119,7 +125,7 @@ Thresholds are in the manifest (`packages.thresholds`, `runtimes.warnDays`, `api
 **Packages** (direct dependencies by default):
 - 🔴 deprecated on the registry (installed or latest version), repo archived, unpublished/missing, high or critical vulnerability, or no release *and* no commit in `staleMonths` (24).
 - 🟠 no release in `quietMonths` (12), OpenSSF Scorecard "Maintained" ≤ 2, moderate/low vulnerability, or 2+ major versions behind.
-- 🔵 updates available. ⚫ ignored (with reason and expiry; an ignored package that turns red shows up again).
+- 🔵 updates available. ⚫ ignored. An ignore entry hides amber and info. It also hides a red that comes **only** from staleness (no release and no commits in `staleMonths`), but only when the entry has both a `reason` and an `expires` date; at expiry the red comes back. It never hides deprecated, archived, missing or vulnerable packages.
 - Data comes from the npm registry, api.nuget.org (registration: deprecation, vulnerabilities, publish dates; public metadata, even when the solution restores through a private feed that mirrors nuget.org), `npm outdated`/`npm audit`, `dotnet list package --outdated/--deprecated/--vulnerable` when the SDK is installed, packages.ecosyste.ms (archived, last push, maintainers) and api.deps.dev (Scorecard). npms.io is deliberately **not** used: its data is years stale.
 
 **NuGet sources and folders** (resolved from the solution, never assumed): for each project, the NuGet.config chain from the project folder up to the drive root plus the user-level config, `<clear/>`, `disabledPackageSources` and `packageSourceMapping`; MSBuild `RestoreSources`, `RestoreAdditionalProjectSources`, `RestorePackagesPath`, `RestoreFallbackFolders` and `RestoreConfigFile` in the project or nearest `Directory.Build.props`; the `NUGET_PACKAGES` env var; `globalPackagesFolder`, `fallbackPackageFolders` and, for packages.config projects, `repositoryPath` (default `<solution dir>/packages`). `%VAR%` and relative paths resolve the way NuGet resolves them. With the SDK installed, `dotnet nuget locals global-packages --list` and `dotnet nuget list source` confirm the result. nuget.org is only assumed when nothing configures a source, and `~/.nuget/packages` only when nothing sets the folder.

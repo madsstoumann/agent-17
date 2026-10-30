@@ -10,10 +10,12 @@
  * A failing check never stops the run; a failing group becomes one skip row.
  */
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import dns from 'node:dns/promises';
 
-import { parseCli, resolveOut, usage } from './lib/cli.mjs';
+import { parseCli, resolveOut, resolveState, reportsRoot, usage } from './lib/cli.mjs';
+import { claimTarget, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
 import { createHttp, curlProbe, isPrivateHost, isPrivateAddress, hostOf, siblingHost, stripWww, challengeVendor, VERSION, UA } from './lib/http.mjs';
 import { GROUPS, runGroups, filterGroups, applyEnvPolicy, countStatuses, result, isSkipped } from './lib/registry.mjs';
 import { renderMarkdown, renderStdout, buildManualLinks } from './lib/report.mjs';
@@ -63,8 +65,10 @@ async function main() {
   // Must happen before the first TLS connection.
   if (opts.insecure) process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-  const out = resolveOut({ out: opts.out, host: opts.host });
+  const stateDir = claimTarget(resolveState({ state: opts.state, host: opts.host }), opts.host);
+  const out = resolveOut({ out: opts.out, host: opts.host }, { state: stateDir, exists: fsSync.existsSync });
   await fs.mkdir(out.dir, { recursive: true });
+  if (out.mode === 'dir') markRun(out.dir, { skill: 'launch-audit', target: opts.host });
   await fs.mkdir(out.rawDir, { recursive: true });
 
   const log = opts.quiet ? () => {} : (m) => process.stderr.write(`[${elapsed()}s] ${m}\n`);
@@ -251,19 +255,39 @@ async function main() {
 
   // ------------------------------------------------------------------ Phase D
   const report = assemble({ partial: false });
-  if (opts.baseline) {
+  report.state = stateDir;
+  const notes = readNotes(stateDir);
+  if (notes) report.notes = notes;
+  const baselineFile = findBaseline(opts, stateDir, out.dir);
+  if (baselineFile) {
     try {
-      const prev = JSON.parse(await fs.readFile(path.resolve(opts.baseline), 'utf8'));
-      report.diff = diffReports(prev, report);
+      const prev = JSON.parse(await fs.readFile(path.resolve(baselineFile), 'utf8'));
+      report.diff = { ...diffReports(prev, report), from: baselineFile };
     } catch (e) {
-      report.diff = { error: `could not read ${opts.baseline}: ${e.message}`, fixed: [], regressed: [], newFindings: [], removed: [], scores: [] };
+      report.diff = { error: `could not read ${baselineFile}: ${e.message}`, fixed: [], regressed: [], newFindings: [], removed: [], scores: [] };
     }
   }
   await writeReport(report);
+  await fs.writeFile(path.join(stateDir, 'last-report.json'), JSON.stringify(report, null, 1));
   if (opts.json) process.stdout.write(`${JSON.stringify(report, null, 1)}\n`);
-  else process.stdout.write(`${renderStdout(report, { reportMd: out.reportMd, reportJson: out.reportJson })}\n`);
+  else process.stdout.write(`${renderStdout(report, { reportMd: out.reportMd, reportJson: out.reportJson })}\nState: ${stateDir}${baselineFile ? `\nCompared with: ${baselineFile}` : '\nCompared with: nothing (first run for this host)'}${notes ? '\nNotes: notes.md included in the report' : ''}\n`);
   if (opts.strict && report.counts.fail > 0) process.exit(3);
   process.exit(0);
+}
+
+/**
+ * --baseline, else the last run for this host (last-report.json in the target folder), else (first
+ * run after upgrading) the newest earlier report.json for this host under <reports>/launch-audit/
+ * or <reports>/audit-all/, found by its content rather than its folder name.
+ */
+function findBaseline(opts, stateDir, outDir) {
+  if (opts.noBaseline) return null;
+  if (opts.baseline) return opts.baseline;
+  const last = path.join(stateDir, 'last-report.json');
+  if (fsSync.existsSync(last)) return last;
+  const reports = reportsRoot();
+  return findEarlier([path.join(reports, 'launch-audit'), path.join(reports, 'audit-all')], 'report.json',
+    (j) => j?.tool === 'launch-audit' && !j.partial && (() => { try { return hostOf(j.input.url) === opts.host; } catch { return false; } })(), { exclude: outDir })[0] || null;
 }
 
 main().catch((e) => {

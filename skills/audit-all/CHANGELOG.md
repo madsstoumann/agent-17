@@ -2,6 +2,16 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.2.0] - 2026-10-30
+
+### Added
+- A target folder per site or solution, `<reports>/audit-all/<name>/`, with run folders under `runs/<stamp>/` (marked `.audit-run`). `--new` also prints the target folder and the previous run, including an old-layout `<name>-<stamp>/` run.
+- `notes.md` in the target folder is shown as a "Notes" section in every combined report. No script writes it.
+- SKILL.md: a "Since last run" section in summary.md from the previous run, task ids reused across runs, and the rule that state lives in each skill's target folder, never in a run folder (solution-health runs without `--dir`).
+
+### Changed
+- `combine.mjs --new` creates `<reports>/audit-all/<name>/runs/<stamp>/` instead of `<reports>/audit-all/<name>-<stamp>/`.
+
 ## [1.1.0] - 2026-10-30
 
 ### Added

@@ -2,6 +2,20 @@
 
 All notable changes to the `solution-health` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.1.0] - 2026-10-30
+
+### Added
+- `notes.md` in the state folder for hand-written triage notes. No script writes it; `finalize.mjs` shows it in a "Notes" section of every report.
+- When `report.md` was edited by hand after the last run, `finalize.mjs` saves that version as `report.edited-<date>.md` before rewriting it.
+- When the state folder has no manifest but an earlier run left one in an audit run folder under `<reports>/audit-all/`, `check.mjs` copies the newest one over once. The folder is found by its `root.txt` or `run/discovery.json`, not by its name.
+- `root.txt` is also written for `--dir` folders outside the solution.
+
+### Changed
+- An ignore entry with a `reason` and an `expires` date now hides a red caused only by staleness (no release and no commits in `staleMonths`). Deprecated, archived, missing and vulnerable packages stay red.
+- `--dir` pointing into an audit run folder (marked with `.audit-run`) is ignored in favour of the stable state folder, because the next run would not look there.
+
+The state folder, `manifest.json` and `state.json` format are unchanged, so existing baselines and verdicts carry over.
+
 ## [2.0.0] - 2026-10-30
 
 ### Changed

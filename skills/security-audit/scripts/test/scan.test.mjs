@@ -11,7 +11,8 @@ import {
   parsePackageLock, parseYarnLock, parsePnpmLock, parseComposerLock, parseNugetLock, parseMsbuild,
   parseRequirements, parseTomlLock, parseGemfileLock, parseGoMod, osvSeverity, osvFixed,
 } from '../lib/deps.mjs';
-import { run, parseArgs, resolveOutDir, reportsRoot } from '../scan.mjs';
+import { run, parseArgs, resolveOutDir, resolveStateDir, resolveBaseline, reportsRoot } from '../scan.mjs';
+import { annotate, hitFp } from '../lib/baseline.mjs';
 
 // Fake secrets are assembled at runtime so GitHub push protection does not flag this file.
 const STRIPE = ['sk', 'live', 'abcdefghijklmnopqrstuvwx'].join('_');
@@ -159,11 +160,17 @@ test('parseArgs rejects unknown groups and options', () => {
   assert.equal(parseArgs(['--history']).history, 1000);
 });
 
-test('resolveOutDir: default under Downloads, ~ expanded, relative paths resolved', () => {
-  assert.equal(resolveOutDir(null, '/src/my-repo', { home: '/Users/me', now: '20261030-0800', base: '/Users/me/Downloads' }), '/Users/me/Downloads/security-audit/my-repo-20261030-0800');
-  assert.equal(resolveOutDir('~/Downloads/audit-all/x/security-audit', '/src/r', { home: '/Users/me' }), '/Users/me/Downloads/audit-all/x/security-audit');
-  assert.equal(resolveOutDir('~', '/src/r', { home: '/Users/me' }), '/Users/me');
-  assert.equal(resolveOutDir('/abs/out', '/src/r', { home: '/Users/me' }), '/abs/out');
+test('resolveOutDir / resolveStateDir: stable target folder per repo, ~ expanded', () => {
+  assert.equal(resolveOutDir(null), null);
+  assert.equal(resolveOutDir('~/Downloads/audit-all/x/security-audit', { home: '/Users/me' }), '/Users/me/Downloads/audit-all/x/security-audit');
+  assert.equal(resolveOutDir('~', { home: '/Users/me' }), '/Users/me');
+  assert.equal(resolveOutDir('/abs/out', { home: '/Users/me' }), '/abs/out');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'sa-state-'));
+  assert.equal(resolveStateDir(null, '/src/my-repo', { base }), path.join(base, 'security-audit', 'my-repo'));
+  assert.equal(resolveStateDir('~/s', '/src/r', { home: '/Users/me' }), '/Users/me/s');
+  fs.mkdirSync(path.join(base, 'security-audit', 'my-repo'), { recursive: true });
+  fs.writeFileSync(path.join(base, 'security-audit', 'my-repo', 'target.txt'), '/other/my-repo\n');
+  assert.match(resolveStateDir(null, '/src/my-repo', { base }), /security-audit\/my-repo-[0-9a-f]{8}$/);
 });
 
 test('reportsRoot: AUDIT_OUT_DIR, then XDG download dir, then ~/Downloads, then ~/audit-reports', () => {
@@ -174,4 +181,79 @@ test('reportsRoot: AUDIT_OUT_DIR, then XDG download dir, then ~/Downloads, then 
   assert.equal(reportsRoot({ env: {}, home, isDir: has('/home/me/Hentet', '/home/me/Downloads'), readFile: () => 'XDG_DOWNLOAD_DIR="$HOME/Hentet"\n' }), '/home/me/Hentet');
   assert.equal(reportsRoot({ env: { XDG_DOWNLOAD_DIR: '/data/dl' }, home, isDir: has('/data/dl'), readFile: () => null }), '/data/dl');
   assert.equal(reportsRoot({ env: {}, home, isDir: has(), readFile: () => null }), '/home/me/audit-reports');
+});
+
+// ---------------------------------------------------------------- tokens in config files
+
+test('secrets.config-token: BearerToken, Token and AccessToken keys in JSON/YAML config; placeholders skipped', () => {
+  const tok = ['a8F3kd92', 'LmQp0zX7wq'].join('');
+  assert.deepEqual(ids('appsettings.json', `"Loby": { "BearerToken": "${tok}" },`), ['secrets.config-token']);
+  assert.deepEqual(ids('appsettings.Production.json', `"Token": "Bearer ${tok}"`), ['secrets.config-token']);
+  assert.deepEqual(ids('appsettings.json', `"AccessToken": "${tok}"`), ['secrets.config-token'], 'one hit, not one per rule');
+  assert.deepEqual(ids('config/app.yml', `token: ${tok}`), ['secrets.config-token']);
+  for (const safe of ['"Token": "#{LobyToken}#"', '"Token": "${LOBY_TOKEN}"', '"TokenType": "Bearer"', '"accessTokenLifetime": 3600', '"Token": ""', '"Token": "__LobyToken__"'])
+    assert.deepEqual(ids('appsettings.json', safe), [], safe);
+});
+
+test('credentials-file: appsettings.<Environment>.json and local.settings.json, not Development', () => {
+  const cred = FILE_RULES.find((r) => r.id === 'secrets.credentials-file');
+  for (const f of ['appsettings.Staging.json', 'src/Web/appsettings.Production.json', 'appsettings.Local.json', 'local.settings.json']) assert.ok(cred.test(f), f);
+  for (const f of ['appsettings.json', 'appsettings.Development.json']) assert.ok(!cred.test(f), f);
+});
+
+// ---------------------------------------------------------------- baseline and carried-over triage
+
+const rep = (hits, vulns = []) => ({ startedAt: '2026-10-01T10:00:00Z', rules: [{ id: 'secrets.config-token', severity: 'medium', hits }], deps: { vulnerable: vulns } });
+const hit = (line, text, match) => ({ file: 'appsettings.json', line, text, match });
+
+test('annotate: new, still open and fixed; line moves and trailing commas do not make a hit new', () => {
+  const before = rep([hit(2, '"A": "x1…[20 chars]",', 'x1…[20 chars]'), hit(3, '"B": "y1…[20 chars]"', 'y1…[20 chars]')],
+    [{ ecosystem: 'npm', name: 'lodash', version: '4.17.15', files: ['package-lock.json'], vulns: [{ id: 'GHSA-1', severity: 'HIGH', summary: 'x' }] }]);
+  const now = rep([hit(9, '"B": "y1…[20 chars]",', 'y1…[20 chars]'), hit(10, '"C": "z1…[20 chars]"', 'z1…[20 chars]')]);
+  annotate(now, { baseline: before, from: 'last-findings.json' });
+  assert.deepEqual(now.rules[0].hits.map((h) => h.status), ['open', 'new']);
+  assert.equal(now.baseline.counts.new, 1);
+  assert.equal(now.baseline.counts.open, 1);
+  assert.deepEqual(now.baseline.fixed.map((f) => f.id).sort(), ['GHSA-1', 'secrets.config-token']);
+});
+
+test('annotate: triage carries over; false positives never count as fixed; acceptances need a reason and an unexpired date', () => {
+  const a = hit(2, '"A": "x1…"', 'x1…'); const b = hit(3, '"B": "y1…"', 'y1…'); const c = hit(4, '"C": "z1…"', 'z1…');
+  const fp = (x) => hitFp('secrets.config-token', x.file, x.text, x.match);
+  const triage = { findings: {
+    [fp(a)]: { verdict: 'false-positive', note: 'test tenant' },
+    [fp(b)]: { verdict: 'accepted', reason: 'read-only demo key', expires: '2099-01-01' },
+    [fp(c)]: { verdict: 'accepted', reason: 'old', expires: '2020-01-01' },
+  } };
+  const now = rep([structuredClone(b), structuredClone(c)]);
+  annotate(now, { baseline: rep([a, b, c]), triage, from: 'x' });
+  assert.deepEqual(now.rules[0].hits.map((h) => h.triage.verdict), ['accepted', 'expired']);
+  assert.equal(now.baseline.counts.fixed, 0, 'the false positive that disappeared is not "fixed"');
+  assert.equal(now.baseline.counts.accepted, 1);
+  assert.equal(now.baseline.counts.open, 1, 'only the expired acceptance counts as open');
+});
+
+test('resolveBaseline: explicit file or folder, then last-findings.json, then an earlier run of the same repo found by content', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'sa-base-'));
+  const state = path.join(base, 'security-audit', 'r');
+  const old = path.join(base, 'audit-all', 'whatever-name', 'security-audit-r');
+  fs.mkdirSync(old, { recursive: true });
+  fs.writeFileSync(path.join(old, 'findings.json'), JSON.stringify({ tool: 'security-audit', root: '/src/r', rules: [] }));
+  fs.mkdirSync(path.join(base, 'audit-all', 'other'), { recursive: true });
+  fs.writeFileSync(path.join(base, 'audit-all', 'other', 'findings.json'), JSON.stringify({ tool: 'security-audit', root: '/src/other', rules: [] }));
+  assert.equal(resolveBaseline({}, '/src/r', state, { base }), path.join(old, 'findings.json'));
+  assert.equal(resolveBaseline({ noBaseline: true }, '/src/r', state, { base }), null);
+  assert.equal(resolveBaseline({ baseline: old }, '/src/r', state, { base }), path.join(old, 'findings.json'));
+  fs.mkdirSync(state, { recursive: true });
+  fs.writeFileSync(path.join(state, 'last-findings.json'), '{}');
+  assert.equal(resolveBaseline({}, '/src/r', state, { base }), path.join(state, 'last-findings.json'));
+});
+
+test('target-state.mjs is identical in every skill that carries a copy', () => {
+  const here = path.dirname(new URL(import.meta.url).pathname);
+  const mine = fs.readFileSync(path.join(here, '..', 'lib', 'target-state.mjs'), 'utf8');
+  for (const s of ['launch-audit', 'audit-all']) {
+    const f = path.join(here, '..', '..', '..', s, 'scripts', 'lib', 'target-state.mjs');
+    if (fs.existsSync(f)) assert.equal(fs.readFileSync(f, 'utf8'), mine, s);
+  }
 });

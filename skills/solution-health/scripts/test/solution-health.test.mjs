@@ -41,6 +41,7 @@ before(async () => {
   eco('npmjs.org', 'request', { status: 'deprecated', repository_url: 'https://github.com/request/request', latest_release_published_at: '2020-02-11T00:00:00Z', maintainers: [{}, {}], repo_metadata: { archived: true, pushed_at: '2024-01-01T00:00:00Z' } });
   eco('npmjs.org', 'left-pad', { status: null, latest_release_published_at: '2018-04-09T00:00:00Z', maintainers: [{}], repo_metadata: { archived: true, pushed_at: '2018-04-09T00:00:00Z' } });
   eco('npmjs.org', 'node-sass', { status: 'deprecated', latest_release_published_at: '2023-10-01T00:00:00Z', maintainers: [{}], repo_metadata: { archived: true, pushed_at: '2024-07-24T00:00:00Z' } });
+  for (const n of ['clsx', 'classnames']) eco('npmjs.org', n, { status: null, latest_release_published_at: '2022-01-01T00:00:00Z', maintainers: [{}], repo_metadata: { archived: false, pushed_at: '2022-01-01T00:00:00Z' } });
   for (const n of ['axios', 'react', 'next']) eco('npmjs.org', n, { status: null, latest_release_published_at: ago(1), maintainers: [{}, {}], repo_metadata: { archived: false, pushed_at: ago(0.1) } });
   eco('nuget.org', 'Umbraco.Cms', { status: null, latest_release_published_at: ago(0.5), maintainers: [{}], repo_metadata: { archived: false, pushed_at: ago(0.1) } });
   eco('nuget.org', 'Newtonsoft.Json', { status: null, latest_release_published_at: '2023-03-08T00:00:00Z', maintainers: [{}], repo_metadata: { archived: false, pushed_at: ago(14) } });
@@ -98,6 +99,9 @@ test('packages: deprecation, archived repos, vulnerabilities, ignores, central v
   assert.equal(by['left-pad'].verdict.level, 'red', 'an ignore entry never hides a red');
   assert.match(by['left-pad'].verdict.reasons[0], /ignore list/);
   assert.match(by['react'].verdict.reasons[0], /expired/);
+  assert.equal(by['clsx'].verdict.level, 'ignored', 'an ignore with reason and expiry hides a red caused only by staleness');
+  assert.equal(by['classnames'].verdict.level, 'red', 'without an expiry the stale red stays');
+  assert.match(by['classnames'].verdict.reasons[0], /reason and an expiry/);
   assert.equal(by['request'].health.maintainedCheck, 0, 'Scorecard Maintained read from deps.dev project');
   assert.equal(by['Umbraco.Cms'].facts.latest, '16.3.1');
 });
@@ -159,6 +163,19 @@ test('finalize: report, state, and unassessed changes keep coming back until ass
   assert.equal(again.needsReview, undefined);
 });
 
+test('finalize: notes.md survives every run; a hand-edited report.md is saved before it is rewritten', async () => {
+  writeFileSync(join(sh, 'notes.md'), '# DAWA\n\nMigration ticket SHOP-42, owner Anna.\n');
+  await new Promise((r) => setTimeout(r, 2100));
+  writeFileSync(join(sh, 'report.md'), `${readFileSync(join(sh, 'report.md'), 'utf8')}\nHand-written triage\n`);
+  assert.equal(run('finalize').status, 0);
+  const report = readFileSync(join(sh, 'report.md'), 'utf8');
+  assert.match(report, /## Notes[\s\S]*### DAWA[\s\S]*SHOP-42/, 'notes.md included, headings moved down');
+  assert.doesNotMatch(report, /Hand-written triage/);
+  const saved = join(sh, `report.edited-${new Date().toISOString().slice(0, 10)}.md`);
+  assert.match(readFileSync(saved, 'utf8'), /Hand-written triage/);
+  assert.equal(readFileSync(join(sh, 'notes.md'), 'utf8'), '# DAWA\n\nMigration ticket SHOP-42, owner Anna.\n', 'finalize never writes notes.md');
+});
+
 test('state folder: default is outside the repo under the report folder; --in-repo and --dir keep it in the solution', async () => {
   const { paths, defaultStateDir, reportsRoot } = await import('../lib.mjs');
   const reports = '/r';
@@ -174,6 +191,30 @@ test('state folder: default is outside the repo under the report folder; --in-re
   assert.equal(reportsRoot({ env: { AUDIT_OUT_DIR: '/out' }, home: '/h' }), '/out');
   assert.equal(reportsRoot({ env: {}, home: '/h', isDir: (d) => d === '/h/Downloads', readFile: () => null }), '/h/Downloads');
   assert.equal(reportsRoot({ env: {}, home: '/h', isDir: () => false, readFile: () => null }), '/h/audit-reports');
+});
+
+test('state is never kept in an audit run folder; state an earlier run left there is copied back once', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'sh-run-'));
+  const out = mkdtempSync(join(tmpdir(), 'sh-out-'));
+  try {
+    const runDir = join(out, 'audit-all', 'any-name-at-all', 'solution-health');
+    mkdirSync(join(runDir, 'run'), { recursive: true });
+    writeFileSync(join(out, 'audit-all', 'any-name-at-all', '.audit-run'), '{}');
+    writeFileSync(join(runDir, 'manifest.json'), '{"apis":[{"name":"Loby"}]}');
+    writeFileSync(join(runDir, 'state.json'), '{"version":1,"lastRun":"2026-10-30"}');
+    writeJson(join(runDir, 'run', 'discovery.json'), { root: repo });
+    const r = spawnSync(process.execPath, [join(scripts, 'check.mjs'), '--root', repo, '--offline', '--skip', 'discover,packages,runtimes,apis'], { encoding: 'utf8', env: { ...process.env, AUDIT_OUT_DIR: out } });
+    const dir = join(out, 'solution-health', basename(repo));
+    assert.match(r.stderr, /Copied the manifest and state from .*any-name-at-all/);
+    assert.match(readFileSync(join(dir, 'manifest.json'), 'utf8'), /Loby/);
+    // --dir pointing into a run folder is ignored in favour of the stable folder
+    const r2 = spawnSync(process.execPath, [join(scripts, 'check.mjs'), '--root', repo, '--dir', runDir, '--offline', '--skip', 'discover,packages,runtimes,apis'], { encoding: 'utf8', env: { ...process.env, AUDIT_OUT_DIR: out } });
+    assert.match(r2.stderr, /inside an audit run folder/);
+    assert.match(r2.stderr, new RegExp(`State folder: ${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(out, { recursive: true, force: true });
+  }
 });
 
 test('check.mjs copies an old in-repo .solution-health once and then uses the report folder', () => {

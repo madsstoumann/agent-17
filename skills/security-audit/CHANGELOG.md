@@ -2,6 +2,19 @@
 
 All notable changes to the `security-audit` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.2.0] - 2026-10-30
+
+### Added
+- A stable target folder per repo, `<reports>/security-audit/<repo folder name>/` (`target.txt`, hash suffix on a name clash, `--state DIR` to override), with `last-findings.json`, `triage.json` and `notes.md`. Default runs go to `runs/<stamp>/` inside it.
+- Every scan compares with the last one automatically: hits and advisories get a line-independent fingerprint and a `new`/`open` status, and `baseline.fixed` lists what disappeared. `--baseline FILE|DIR` picks a specific earlier scan, `--no-baseline` skips it. The first scan after upgrading finds the newest earlier `findings.json` for the same repo, including inside audit-all run folders.
+- `triage.json`: Claude's verdicts per fingerprint carry over, so a re-run only triages new hits. `accepted` needs a reason and an expiry.
+- `secrets.config-token`: BearerToken, Token, AccessToken and other `*Token` keys in JSON, YAML and other config files (also `Bearer <token>` values); `#{…}#`, `__…__` and `${…}` placeholders are skipped.
+- `secrets.credentials-file` also flags committed `appsettings.<Environment>.json` (not Development) and `local.settings.json`.
+
+### Changed
+- The default report folder moved from `<reports>/security-audit/<repo>-<stamp>/` to `<reports>/security-audit/<repo>/runs/<stamp>/`.
+- One secret on a line is reported once, by the first rule that matches it.
+
 ## [1.1.0] - 2026-10-30
 
 ### Changed

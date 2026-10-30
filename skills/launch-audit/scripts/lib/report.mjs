@@ -155,6 +155,11 @@ export function renderMarkdown(report) {
     out.push('## Since last run', '', `Baseline not usable: ${report.diff.error}`, '');
   }
 
+  if (report.notes) {
+    out.push('## Notes', '', `_From \`notes.md\` in ${report.state ? `\`${report.state}\`` : 'the target folder'}, kept between runs._`, '');
+    out.push(report.notes.trim().replace(/^(#{1,4}) /gm, (m, h) => `${'#'.repeat(Math.min(h.length + 2, 6))} `), '');
+  }
+
   out.push('<details>', '<summary>Appendix — pages crawled, raw files</summary>', '');
   if (report.pages?.length) {
     out.push('| Page | Status | Title | H1 | Images without alt | Mixed content |', '|---|---|---|---|---|---|');

@@ -202,3 +202,32 @@ test('solutionHealthReport: the report folder first, then an in-repo .solution-h
   const clash = solutionHealthReport('/other/shop-web', { reports: '/r', readFile: () => '/code/shop-web\n', exists: (f) => /shop-web-[0-9a-f]{8}\/report\.md$/.test(f) });
   assert.match(clash, /^\/r\/solution-health\/shop-web-[0-9a-f]{8}\/report\.md$/);
 });
+
+test('newRunFolder: one target folder per subject, runs under runs/, previous run found; notes.md is shown in the report', async () => {
+  const { newRunFolder } = await import('../combine.mjs');
+  const reports = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-all-target-'));
+  try {
+    // An old-layout run folder is the previous run of the first new-layout run.
+    const old = path.join(reports, 'audit-all', 'shop.example.dk-20261001-0900');
+    fs.mkdirSync(old, { recursive: true });
+    fs.writeFileSync(path.join(old, 'summary.md'), '# old');
+    const a = newRunFolder('https://shop.example.dk/', { reports, now: new Date(2026, 9, 30, 11, 12) });
+    assert.equal(a.target, path.join(reports, 'audit-all', 'shop.example.dk'));
+    assert.equal(a.dir, path.join(a.target, 'runs', '20261030-1112'));
+    assert.ok(fs.existsSync(path.join(a.dir, '.audit-run')), 'run folders are marked');
+    assert.equal(a.previous, old);
+    const b = newRunFolder('shop.example.dk', { reports, now: new Date(2026, 9, 30, 11, 12) });
+    assert.equal(b.dir, `${a.dir}-2`, 'same minute: a new folder, not the same one');
+    assert.equal(b.previous, a.dir);
+
+    fs.writeFileSync(path.join(a.target, 'notes.md'), '# Decisions\n\nCSP inline scripts accepted until the Nuxt 4 upgrade.\n');
+    fs.mkdirSync(path.join(b.dir, 'launch-audit'));
+    fs.writeFileSync(path.join(b.dir, 'launch-audit', 'report.md'), '# Launch audit — shop.example.dk\n\n## Scoreboard\n\nok\n');
+    fs.writeFileSync(path.join(b.dir, 'summary.md'), '---\ntitle: Fine\n---\n\n## Verdict\n\nShip it.\n');
+    const out = await combine({ dir: b.dir, style: 'serif', repos: [], pdf: false }, { log: () => {} });
+    const md = fs.readFileSync(out.md, 'utf8');
+    assert.match(md, /## Notes\n\n### Decisions\n\nCSP inline scripts accepted/);
+  } finally {
+    fs.rmSync(reports, { recursive: true, force: true });
+  }
+});

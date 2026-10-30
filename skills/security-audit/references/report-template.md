@@ -4,6 +4,15 @@
 
 **Verdict:** <one sentence: N blockers / no blockers found, and the single most important action>
 
+## Since last run
+
+Only with a baseline (the scanner's BASELINE section). Leave out on the first run.
+
+- **Fixed (N):** `secrets.config-token` in `appsettings.json` (Loby BearerToken), lodash 4.17.15 → 4.17.21, …
+- **New (N):** the new findings, by verdict, with a pointer to the row below.
+- **Still open (N):** confirmed and needs-a-look findings from last time, unchanged.
+- Carried-over verdicts: N false positives, N accepted until their dates (list the dates that fall within 30 days).
+
 ## Blockers
 
 Confirmed secrets and confirmed high-severity flaws. Each one: what, where, why it is real, fix.
@@ -48,6 +57,10 @@ with evidence (e.g. "Auth: all `/api/admin/*` routes use `requireAdmin` (src/rou
 
 Skipped groups, `--offline`, history not scanned, Semgrep not installed, missing-control questions not done, anything
 behind generated code, languages the rules do not cover.
+
+## Accepted
+
+Accepted risks from `triage.json`: what, reason, expiry.
 
 ## False positives
 

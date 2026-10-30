@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { parseCli, detectEnv, normaliseEnv, isStagingHost, resolveOut, reportsRoot, usage, DEFAULTS } from '../lib/cli.mjs';
+import { parseCli, detectEnv, normaliseEnv, isStagingHost, resolveOut, resolveState, reportsRoot, usage, DEFAULTS } from '../lib/cli.mjs';
 
 test('parseCli applies defaults and normalises the URL', () => {
   const r = parseCli(['example.com/a'], {});
@@ -64,10 +64,13 @@ test('isStagingHost and detectEnv', () => {
   assert.deepEqual(detectEnv('browser.style'), { env: 'production', production: true, source: 'auto', reason: 'no staging marker in hostname' });
 });
 
-test('resolveOut: default folder under Downloads, explicit folder, explicit .md file', () => {
+test('resolveOut: default run folder in the host target folder, explicit folder, explicit .md file', () => {
   const now = new Date('2026-09-24T08:05:00');
   const d = resolveOut({ out: null, host: 'localhost:44380' }, { now, home: '/Users/me', cwd: '/tmp', root: '/Users/me/Downloads' });
-  assert.equal(d.dir, '/Users/me/Downloads/launch-audit/localhost-44380-20260924-0805');
+  assert.equal(d.dir, '/Users/me/Downloads/launch-audit/localhost-44380/runs/20260924-0805');
+  assert.equal(resolveState({ host: 'shop.example.dk' }, { root: '/Users/me/Downloads' }), '/Users/me/Downloads/launch-audit/shop.example.dk');
+  assert.equal(resolveState({ state: '~/s', host: 'x' }, { home: '/Users/me' }), '/Users/me/s');
+  assert.equal(resolveOut({ out: null, host: 'x.com' }, { now, state: '/t/x.com' }).dir, '/t/x.com/runs/20260924-0805');
   assert.equal(d.reportMd, path.join(d.dir, 'report.md'));
   assert.equal(d.reportJson, path.join(d.dir, 'report.json'));
   assert.equal(d.rawDir, d.dir);
@@ -82,7 +85,7 @@ test('resolveOut: default folder under Downloads, explicit folder, explicit .md 
 
 test('usage mentions every flag', () => {
   const u = usage();
-  for (const f of ['--env', '--production-host', '--pages', '--max-pages', '--skip', '--only', '--lighthouse', '--out', '--baseline', '--insecure', '--email-domain', '--ssllabs', '--no-remote', '--strict', '--json', '--quiet']) {
+  for (const f of ['--env', '--production-host', '--pages', '--max-pages', '--skip', '--only', '--lighthouse', '--out', '--state', '--baseline', '--no-baseline', '--insecure', '--email-domain', '--ssllabs', '--no-remote', '--strict', '--json', '--quiet']) {
     assert.ok(u.includes(f), f);
   }
 });

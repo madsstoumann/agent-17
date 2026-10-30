@@ -4,7 +4,7 @@ description: Use when someone wants the problems from an audit-all run fixed —
 argument-hint: "[run folder] [--only T1,T4] [--skip T7] [--max-parallel N] [--dry-run]"
 allowed-tools: Bash(git:*), Bash(node:*), Bash(npm:*), Bash(npx:*), Bash(dotnet:*), Bash(ls:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, Agent
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Audit fix
@@ -15,8 +15,9 @@ for a person to review and merge.
 
 ## 1. Find the plan
 
-The run folder is the one the user names, else the newest folder under `<reports>/audit-all/` that
-has `fix/TODO.md` (`<reports>`: `$AUDIT_OUT_DIR`, else the Downloads folder, else `~/audit-reports/`).
+The run folder is the one the user names, else the newest run folder under `<reports>/audit-all/`
+that has `fix/TODO.md` (`<reports>/audit-all/<name>/runs/<stamp>/`, or `<reports>/audit-all/<name>-<stamp>/`
+from before audit-all 1.2.0) (`<reports>`: `$AUDIT_OUT_DIR`, else the Downloads folder, else `~/audit-reports/`).
 Read `tasks.json` (the data), `fix/TODO.md` (the rounds) and the prompts in `fix/tasks/`. If there is
 a `tasks.json` but no `fix/`, run `node <audit-all>/scripts/combine.mjs <run> --no-pdf` first;
 `<audit-all>` is `${CLAUDE_SKILL_DIR}/../audit-all`. If there is no plan at all, say so and offer to
