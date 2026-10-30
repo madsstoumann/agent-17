@@ -62,18 +62,37 @@ export function defaultStateDir(root, { reports = reportsRoot(), readFile = read
 
 export const LEGACY_DIR = '.solution-health';
 
+/** The marker audit skills leave in each run folder (see target-state.mjs in launch-audit). */
+export const RUN_MARKER = '.audit-run';
+
+/** True when `dir` is an audit run folder or inside one: a place that is gone by the next run. */
+export function insideRun(dir) {
+  let d = resolve(dir);
+  for (;;) {
+    if (existsSync(join(d, RUN_MARKER))) return true;
+    const up = resolve(d, '..');
+    if (up === d) return false;
+    d = up;
+  }
+}
+
 export function paths(args = {}, opts = {}) {
   const root = resolve(args.root || process.cwd());
-  const inRepo = typeof args.dir === 'string' || Boolean(args['in-repo']);
-  const dir = typeof args.dir === 'string' ? resolve(root, args.dir) : args['in-repo'] ? resolve(root, LEGACY_DIR) : defaultStateDir(root, opts);
+  let inRepo = typeof args.dir === 'string' || Boolean(args['in-repo']);
+  let dir = typeof args.dir === 'string' ? resolve(root, args.dir) : args['in-repo'] ? resolve(root, LEGACY_DIR) : defaultStateDir(root, opts);
+  // State kept in a timestamped run folder would be lost to the next run, so `--dir` there is ignored.
+  let ignoredDir = null;
+  if (typeof args.dir === 'string' && insideRun(dir)) { ignoredDir = dir; dir = defaultStateDir(root, opts); inRepo = false; }
   return {
     root,
     dir,
     inRepo,
+    ignoredDir,
     legacyDir: resolve(root, LEGACY_DIR),
     manifest: resolve(dir, 'manifest.json'),
     state: resolve(dir, 'state.json'),
     report: resolve(dir, 'report.md'),
+    notes: resolve(dir, 'notes.md'),
     runDir: resolve(dir, 'run'),
     cacheDir: resolve(dir, 'run', 'cache'),
     snapshotDir: resolve(dir, 'snapshots'),
@@ -231,7 +250,36 @@ export function splitSentences(text) {
 
 export function ensureDirs(p) {
   for (const d of [p.dir, p.runDir, p.cacheDir, p.snapshotDir]) mkdirSync(d, { recursive: true });
-  if (!p.inRepo && !existsSync(join(p.dir, 'root.txt'))) writeFileSync(join(p.dir, 'root.txt'), `${p.root}\n`);
+  const inSolution = !relative(p.root, p.dir).startsWith('..');
+  if (!inSolution && !existsSync(join(p.dir, 'root.txt'))) writeFileSync(join(p.dir, 'root.txt'), `${p.root}\n`);
+}
+
+/**
+ * State for this solution that an earlier run left in an audit run folder (for example `--dir` into an
+ * audit-all run). Found by content, not by folder name: a folder with manifest.json whose root.txt or
+ * run/discovery.json names this solution. Newest first.
+ */
+export function strayStateDirs(root, { reports = reportsRoot(), depth = 5 } = {}) {
+  const found = [];
+  const walk = (d, left) => {
+    let entries;
+    try { entries = readdirSync(d, { withFileTypes: true }); } catch { return; }
+    if (entries.some((e) => e.isFile() && e.name === 'manifest.json')) {
+      const owner = (readText(join(d, 'root.txt')) || '').trim() || readJson(join(d, 'run', 'discovery.json'))?.root;
+      if (owner && resolve(owner) === root) found.push(d);
+    }
+    for (const e of entries) if (e.isDirectory() && left > 0 && !['run', 'snapshots', 'node_modules'].includes(e.name)) walk(join(d, e.name), left - 1);
+  };
+  walk(join(reports, 'audit-all'), depth);
+  const t = (d) => { try { return statSync(join(d, existsSync(join(d, 'state.json')) ? 'state.json' : 'manifest.json')).mtimeMs; } catch { return 0; } };
+  return found.sort((a, b) => t(b) - t(a));
+}
+
+/** notes.md from the state folder, headings moved below the report's `##` level, or null. */
+export function readNotes(p) {
+  const t = readText(p.notes);
+  if (!t || !t.trim()) return null;
+  return t.trim().replace(/^(#{1,4}) /gm, (m, h) => `${'#'.repeat(Math.min(h.length + 2, 6))} `);
 }
 
 /** Show a path relative to the solution when it is inside it, else in full. */

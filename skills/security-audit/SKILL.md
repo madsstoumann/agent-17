@@ -1,10 +1,10 @@
 ---
 name: security-audit
 description: Use when someone wants a security review, code security audit, vulnerability scan or "is this repo safe to ship" check of a whole codebase or folder — committed secrets and API keys (also in git history), known-vulnerable dependencies from any lockfile (npm, yarn, pnpm, NuGet, Composer, PyPI, RubyGems, Go via OSV), XSS sinks, SQL/command/template injection, SSRF, open redirects, path traversal, weak crypto, disabled TLS verification, JWT and CORS mistakes, unsafe deserialisation, debug config, and GitHub Actions risks such as pull_request_target and script injection. Report only. Not for a single diff (use /security-review), live HTTP headers or TLS of a URL (use launch-audit), or routine package upkeep (use solution-health).
-argument-hint: "[path] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR]"
+argument-hint: "[path] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline]"
 allowed-tools: Bash(node:*), Bash(git log:*), Bash(git show:*), Read, Grep, Glob, WebFetch
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # Security audit (code mode)
@@ -40,8 +40,31 @@ finds; non-zero means the scanner itself failed.
 | `--only` / `--skip` | Narrow questions: "just secrets" → `--only secrets`; "only dependencies" → `--only deps`. Groups: `deps secrets xss injection request crypto config ci`. |
 | `--offline` | No network: lists lockfiles and package counts but skips OSV. Say so in the report. |
 | `--no-tests` | The user wants production code only. By default hits in test, fixture, example and docs paths are kept and tagged `[test]`. |
-| `--out DIR` | The user names where the report goes. Default `<reports>/security-audit/<folder>-<stamp>/`, where `<reports>` is `$AUDIT_OUT_DIR` if set, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. Do not write into the repo unless asked: the report may describe live secrets. |
+| `--out DIR` | The user names where the report goes (audit-all passes its run folder). Default `<target>/runs/<YYYYMMDD-HHMM>/` (below). Do not write into the repo unless asked: the report may describe live secrets. |
+| `--baseline FILE` | Compare with a specific earlier `findings.json` (or the folder holding one). Without it the scanner compares with the last scan of this repo automatically. |
+| `--no-baseline` | The user wants a scan from scratch, with no comparison. Triage verdicts in `triage.json` still apply. |
 | `--max N` | Hits printed per rule (default 6). `findings.json` always has every hit. |
+
+## What carries over between runs
+
+Each repo has one **target folder**, `<reports>/security-audit/<repo folder name>/`, where `<reports>`
+is `$AUDIT_OUT_DIR` if set, else the Downloads folder if it exists (the XDG download folder on
+Linux), else `~/audit-reports/`. `target.txt` there names the repo; a different repo with the same
+folder name gets a hash suffix. `--state DIR` overrides it. The folder name never depends on a run,
+so the next scan finds it whatever folder the last report went to.
+
+| File | Owner | Purpose |
+|---|---|---|
+| `last-findings.json` | Scanner | The last scan; the next scan's baseline |
+| `triage.json` | You | Your verdict per finding, so a re-run does not triage the same hit twice |
+| `notes.md` | People | Hand-written notes; no script writes it. Read it before triage |
+| `runs/<stamp>/` | Scanner + you | `findings.json` and `report.md` of each run, unless `--out` |
+
+Every hit and advisory in `findings.json` has a fingerprint `fp` (also printed as `#…` after each
+hit). It leaves out the line number, so code that moves keeps its fp. With a baseline, each hit has
+`status` `new` or `open`, and `baseline.fixed` lists what the last scan had and this one does not
+(false positives are left out). The first scan after upgrading compares with the newest earlier
+`findings.json` for the same repo it can find in the report folder, including audit-all run folders.
 
 ## Triage
 
@@ -61,6 +84,11 @@ severity first:
    confirmed, internet-facing path (an unauthenticated route). Lower it for dev-only code,
    tests, or internal tools.
 
+**Carried-over verdicts.** A hit tagged `[fp]` or `[accepted]` was triaged before and has not
+changed: do not triage it again, count it under "False positives" / "Accepted". A hit tagged
+`[confirmed]` or `[needs-look]` is still open: check it is unchanged and keep the verdict. Triage
+`[new]` and untagged hits in full. `[expired]` is an acceptance past its date: triage it again.
+
 Budget: triage every high and medium hit. When a rule has more than about 20 hits, read 8–10
 representative ones, then report the pattern ("38 `Html.Raw` calls, all on RTE properties
 from Umbraco; 2 on query-string values: `Views/Search.cshtml:14`, …"). Low rules can be
@@ -78,6 +106,25 @@ that ships. For regular npm/NuGet upkeep (outdated, deprecated, end-of-life), po
 history hits). The fix is rotate first, then remove, then purge history if the repo is or
 was public. Check whether a hit is a public-by-design key (Firebase/Maps browser keys,
 Supabase anon keys, Stripe publishable keys) before calling it a leak.
+
+**Save the verdicts.** After triage, update `triage.json` in the target folder (the scanner prints
+its path). Keep the entries that are there and add one per hit or advisory you judged, keyed by `fp`:
+
+```json
+{
+  "version": 1,
+  "findings": {
+    "c06bef509bc1": { "verdict": "confirmed", "severity": "high", "title": "Loby BearerToken in appsettings.json", "at": "2026-10-30" },
+    "cfbdddee24c0": { "verdict": "false-positive", "note": "test tenant token, no access to production", "at": "2026-10-30" },
+    "b010c511fb31": { "verdict": "accepted", "reason": "read-only demo key, rotated quarterly", "expires": "2027-04-30", "at": "2026-10-30" }
+  }
+}
+```
+
+`verdict` is `confirmed`, `needs-look`, `false-positive` or `accepted`. Use `accepted` only when
+the user says the team accepts the risk; it needs a `reason` and an `expires` date (6 to 12 months)
+and is ignored without them. For a rule pattern with many false positives ("38 `Html.Raw` on RTE
+properties"), add every fp of the pattern so the next run stays quiet. Never put a secret in it.
 
 ## What grep cannot see
 
@@ -102,9 +149,10 @@ installed, do not install it without asking: say so under "Not checked" with the
 ## Report
 
 Write `report.md` in the folder the scanner printed, using the layout in
-`references/report-template.md`. Then reply in chat with:
+`references/report-template.md`. With a baseline, fill in "Since last run" from the scanner's
+BASELINE section: fixed, new and still open, by verdict. Then reply in chat with:
 
-1. A one-sentence **verdict**: blockers found or not.
+1. A one-sentence **verdict**: blockers found or not, and what changed since the last run.
 2. **Blockers**: confirmed secrets and confirmed high-severity flaws, each with `file:line` and the fix.
 3. The other confirmed findings, then the "needs a look" ones, grouped by area.
 4. Dependency advisories by count, plus the worst three.
@@ -143,7 +191,7 @@ Security review of the whole codebase before the pen test next week
 Only check the GitHub Actions workflows for security problems
 ```
 
-Mapping: "including history" / "leaked keys" → `--history`; "only dependencies" → `--only deps`;
+Mapping: "compare with last time" → nothing to add (automatic); "from scratch" → `--no-baseline`; "including history" / "leaked keys" → `--history`; "only dependencies" → `--only deps`;
 "just the workflows" → `--only ci`; "ignore tests" → `--no-tests`; "save it in …" → `--out`.
 
 ## Files
@@ -152,5 +200,7 @@ Mapping: "including history" / "leaked keys" → `--history`; "only dependencies
 - `scripts/lib/patterns.mjs`: every rule, with its regex, `review` and `fix` text. A line
   containing `security-audit: ignore` is skipped, which teams can use for accepted findings.
 - `scripts/lib/deps.mjs`: lockfile parsers and the OSV lookup.
+- `scripts/lib/baseline.mjs`: fingerprints, the comparison with the last scan, carried-over triage.
+- `scripts/lib/target-state.mjs`: the target folder and run folders (a copy is kept in step in launch-audit and audit-all).
 - `references/report-template.md`: the `report.md` layout.
 - `scripts/test/`: `node --test scripts/test/*.test.mjs`.

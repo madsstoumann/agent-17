@@ -1,10 +1,10 @@
 ---
 name: launch-audit
 description: Use when a website is about to go live or has just launched and needs a pre-launch / go-live audit, a launch checklist or an "is the site ready" answer for any dev, staging or production URL — the manual round of PageSpeed Insights, securityheaders.com, the W3C and schema.org validators and MDN Observatory, plus robots/sitemap/canonical, redirects, soft 404s, TLS/DNS/SPF/DMARC, exposed files, caching, cookies and trackers, broken links, mixed content, share previews and icons. Also for re-checking a site after fixes or comparing with an earlier audit. Public and local (self-signed) URLs, any stack.
-argument-hint: "<url> [--env dev|staging|production] [--production-host HOST] [--pages N] [--skip group,...] [--out PATH] [--baseline report.json] [--insecure] [--header NAME:VALUE]"
+argument-hint: "<url> [--env dev|staging|production] [--production-host HOST] [--pages N] [--skip group,...] [--out PATH] [--baseline report.json | --no-baseline] [--insecure] [--header NAME:VALUE]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Read, WebFetch
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # Launch audit
@@ -42,8 +42,9 @@ read the last stderr lines.
 | `--production-host www.example.com` | The user names the future live domain. Canonical, og:url, hreflang and sitemap hosts are then compared against it. |
 | `--pages N` (default 3) | Extra sitemap pages for Lighthouse, mobile only. `0` for speed. |
 | `--skip perf` / `--skip perf,links` | "Quick check", "skip Lighthouse". `--only headers,tls` for a narrow question. Groups: `crawl redirects notfound tls exposed headers caching perf a11y privacy links ops` (also `dns`, `email`, `social`, `icons`). |
-| `--out PATH` | The user says where the report should go: a folder, or a `.md` path (JSON and raw files land beside it). Default `<reports>/launch-audit/<host>-<YYYYMMDD-HHMM>/`, where `<reports>` is `$AUDIT_OUT_DIR` if set, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. Always quote the two paths printed last on stdout. |
-| `--baseline <previous report.json>` | "Compare with last time" / re-check after fixes. Find the previous run under `<reports>/launch-audit/` when not named. Adds a "Since last run" section. |
+| `--out PATH` | The user says where the report should go: a folder, or a `.md` path (JSON and raw files land beside it). Default `<target>/runs/<YYYYMMDD-HHMM>/` (see "What carries over"). Always quote the report paths printed on stdout. |
+| `--baseline <previous report.json>` | Compare with a specific earlier run. Without it, every run compares with the last run for the same host automatically ("Since last run"). |
+| `--no-baseline` | The user wants a report with no comparison. |
 | `--insecure` | `localhost` or a self-signed certificate. Remote validators are skipped automatically for private hosts (W3C and schema.org get the HTML posted instead). |
 | `--email-domain example.com` | Auditing a platform or staging host but the mail domain is known. |
 | `--ssllabs` | The user wants the Qualys grade in the report (slow, opt-in). |
@@ -98,6 +99,22 @@ Wording rules that keep the report honest:
   offer the key when the user wants field data or exact pagespeed.web.dev parity.
 - Numbers come from the script; do not round the grade up or add checks you did not run.
 
+## What carries over
+
+Each site has one **target folder**, `<reports>/launch-audit/<host>/` (`<reports>` is `$AUDIT_OUT_DIR`
+if set, else the Downloads folder if it exists, the XDG download folder on Linux, else
+`~/audit-reports/`; `--state DIR` overrides it). Its name comes from the host, never from a run, so
+the next run finds it wherever the last report went (audit-all passes `--out` into its own run folder):
+
+- `last-report.json`: the last complete run, the next run's baseline. Written by the script.
+- `notes.md`: hand-written notes (accepted warnings, who owns a CDN rule). The script never writes
+  it; it is shown in the report's "Notes" section. Put lasting decisions there, not in `report.md`.
+- `runs/<stamp>/`: the default run folders.
+
+The first run after upgrading compares with the newest earlier `report.json` for the same host in
+the report folder, including old `<host>-<stamp>/` folders and audit-all run folders. The script
+prints `State:` and `Compared with:` last; mention the comparison in the summary.
+
 ## After the audit
 
 Offer, do not run by default:
@@ -106,7 +123,7 @@ Offer, do not run by default:
   and render-blocking chain on the slowest sampled page.
 - **Accessibility manual pass**: Playwright MCP keyboard/focus walk of the main flows; the report's
   section 9 lists what Lighthouse cannot see.
-- **Re-check after fixes**: same command with `--baseline <this run's report.json>`.
+- **Re-check after fixes**: the same command; it compares with this run automatically.
 - Things the script does not cover and that a longer investigation could: forms and email
   delivery, anything behind a login, cookies set by JavaScript after consent, config leaks in
   JS bundles, a redirect map from the old site (`--old-sitemap` is planned), locale-prefix
@@ -153,7 +170,7 @@ Run the launch audit on https://www.example.com with PageSpeed field data      (
 ```
 
 Mapping: "it's the dev/stage site" → `--env dev`; "production will be X" → `--production-host X`;
-"save it in …" / "next to IOI.report.md" → `--out`; "compare with last time" → `--baseline`;
+"save it in …" / "next to IOI.report.md" → `--out`; "compare with last time" → nothing to add (automatic); "from scratch" → `--no-baseline`;
 "quick" / "skip Lighthouse" → `--skip perf`; "only headers and TLS" → `--only headers,tls`;
 "self-signed" / `localhost` → `--insecure`. Nothing said → defaults, and say where the report went.
 

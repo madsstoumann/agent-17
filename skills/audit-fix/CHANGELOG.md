@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-fix` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.0.1] - 2026-10-30
+
+### Changed
+- Finds the newest plan in audit-all 1.2.0's `<name>/runs/<stamp>/` run folders as well as the old `<name>-<stamp>/` ones.
+
 ## [1.0.0] - 2026-10-30
 
 ### Added

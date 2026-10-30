@@ -64,6 +64,10 @@ export const RULES = [
   { id: 'secrets.google-api-key', group: 'secrets', severity: 'low', langs: null, secret: true,
     re: /\bAIza[0-9A-Za-z_-]{35}\b/,
     title: 'Google API key', review: 'Browser Maps/Firebase keys are public by design: check they are referrer-restricted.', fix: 'Restrict by HTTP referrer and API in Google Cloud console.' },
+  { id: 'secrets.config-token', group: 'secrets', severity: 'medium', langs: CONFIG, secret: true, placeholderCheck: true,
+    re: /(?:^|["'\s{,])[\w.-]*(?:token|bearer)["']?\s*[:=]\s*["']?(?:bearer\s+)?([A-Za-z0-9._~+/=-]{12,})/i,
+    unless: /#\{|__\w+__|\$\(/,
+    title: 'Token in a config file', review: 'Keys like BearerToken, Token or AccessToken in appsettings*.json, .json or .yml config. Real when the value is long and random and the file is committed; a dev-only or expired token still belongs in a secret store.', fix: 'Move to user secrets / Key Vault / env vars (appsettings key → environment variable Section__BearerToken); rotate the token.' },
   { id: 'secrets.generic', group: 'secrets', severity: 'medium', langs: null, secret: true, placeholderCheck: true,
     re: /(?:api[_-]?key|apikey|secret[_-]?key|client[_-]?secret|auth[_-]?token|access[_-]?token|private[_-]?key|password|passwd)["']?\s*[:=]\s*["']([^"'\s]{12,})["']/i,
     title: 'Secret-looking assignment', review: 'Most noise lives here: placeholders, i18n labels, test fixtures. Real when the value looks random.', fix: 'Move to env / secret store; rotate if real.' },
@@ -187,8 +191,8 @@ export const FILE_RULES = [
     test: (rel) => /(^|\/)(id_rsa|id_ed25519|id_ecdsa)$|\.(pem|key|p12|pfx|jks|keystore|ppk)$/i.test(rel) && !/(^|\/)(test|tests|fixtures?|__tests__|spec)\//i.test(rel),
     title: 'Key or certificate file', review: 'A public .pem certificate is fine; a private key is not.', fix: 'Remove from the repo, rotate, purge history.' },
   { id: 'secrets.credentials-file', group: 'secrets', severity: 'medium',
-    test: (rel) => /(^|\/)(\.npmrc|\.pypirc|\.netrc|\.git-credentials|credentials\.json|service-account[\w-]*\.json|firebase-adminsdk[\w-]*\.json|secrets?\.(json|ya?ml)|appsettings\.Production\.json|\.htpasswd)$/i.test(rel),
-    title: 'Credentials-type file', review: 'Open it: a token reference (${NPM_TOKEN}) is fine.', fix: 'Remove and rotate; inject at deploy.' },
+    test: (rel) => /(^|\/)(\.npmrc|\.pypirc|\.netrc|\.git-credentials|credentials\.json|service-account[\w-]*\.json|firebase-adminsdk[\w-]*\.json|secrets?\.(json|ya?ml)|appsettings\.(?!Development\.)[\w-]+\.json|local\.settings\.json|\.htpasswd)$/i.test(rel),
+    title: 'Credentials-type file', review: 'Open it: a token reference (${NPM_TOKEN}) is fine. appsettings.<Environment>.json and local.settings.json often hold the real tokens and connection strings for that environment.', fix: 'Remove and rotate; inject at deploy.' },
 ];
 
 export const CI_FILE = /(^|\/)(\.github\/workflows\/[^/]+\.ya?ml|\.gitlab-ci\.ya?ml|azure-pipelines\.ya?ml|bitbucket-pipelines\.ya?ml|\.circleci\/config\.ya?ml)$/;
@@ -217,7 +221,7 @@ const MAX_LINE = 400;
 
 /**
  * Run the line rules over one file's text. Returns hits:
- *   { id, line, col, text }   (text = trimmed line, secret part redacted)
+ *   { id, line, col, text, match? }   (text = trimmed line, secret part redacted; match = the redacted secret)
  */
 export function scanText(rel, text, rules = rulesFor(rel)) {
   const hits = [];
@@ -227,6 +231,7 @@ export function scanText(rel, text, rules = rulesFor(rel)) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.length > 4000) continue; // minified / generated
+    const seen = new Set(); // secret values already reported on this line, so one token is one hit
     for (const r of rules) {
       const m = r.re.exec(line);
       if (!m) continue;
@@ -234,10 +239,11 @@ export function scanText(rel, text, rules = rulesFor(rel)) {
       if (r.placeholderCheck && PLACEHOLDER.test(m[1] ?? m[0])) continue;
       if (/EXAMPLE|AKIAIOSFODNN7/.test(m[0]) && r.id === 'secrets.aws-key') continue;
       if (/security-audit:\s*ignore/.test(line)) continue;
+      if (r.secret) { const v = m[1] ?? m[0]; if ([...seen].some((x) => x.includes(v) || v.includes(x))) continue; seen.add(v); }
       let shown = line.trim();
       if (r.secret) shown = shown.replace(m[1] ?? m[0], redact(m[1] ?? m[0]));
       if (shown.length > MAX_LINE) shown = `${shown.slice(0, MAX_LINE)}…`;
-      hits.push({ id: r.id, line: i + 1, col: m.index + 1, text: shown });
+      hits.push({ id: r.id, line: i + 1, col: m.index + 1, text: shown, ...(r.secret ? { match: redact(m[1] ?? m[0]) } : {}) });
     }
   }
   return hits;

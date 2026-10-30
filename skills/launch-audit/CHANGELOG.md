@@ -2,6 +2,17 @@
 
 All notable changes to the `launch-audit` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.3.0] - 2026-10-30
+
+### Added
+- A stable target folder per host, `<reports>/launch-audit/<host>/` (`target.txt`, `--state DIR` to override), with `last-report.json` and `notes.md`.
+- Every run compares with the last complete run for the same host automatically; `--baseline FILE` still picks a specific one and `--no-baseline` turns it off. The first run after upgrading finds the newest earlier `report.json` for the host, including in old timestamped folders and audit-all run folders.
+- `notes.md` in the target folder is shown in a "Notes" section of the report. The script never writes it.
+- stdout ends with the target folder and what the run was compared with.
+
+### Changed
+- The default report folder moved from `<reports>/launch-audit/<host>-<stamp>/` to `<reports>/launch-audit/<host>/runs/<stamp>/`. A second run in the same minute gets `-2` instead of overwriting the first.
+
 ## [1.2.0] - 2026-10-30
 
 ### Added

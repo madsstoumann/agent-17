@@ -225,7 +225,8 @@ const majorOf = (v) => Number(String(v || '').replace(/^[^\d]*/, '').split('.')[
 
 function verdict(pkg) {
   const reasons = []; let level = 'green';
-  const bump = (l) => { const order = { green: 0, info: 1, amber: 2, red: 3 }; if (order[l] > order[level]) level = l; };
+  const redWhy = []; // what made it red: 'stale' (no release and no commits) or 'other'
+  const bump = (l, why = 'other') => { const order = { green: 0, info: 1, amber: 2, red: 3 }; if (l === 'red') redWhy.push(why); if (order[l] > order[level]) level = l; };
   const f = pkg.facts || {}; const h = pkg.health || {};
   let privateFeed = false;
   if (f.missing && pkg.privateFeeds?.length) { privateFeed = true; reasons.push(`not on nuget.org; restored from ${pkg.privateFeeds.join(', ')}, which registry and health checks do not cover`); }
@@ -238,7 +239,7 @@ function verdict(pkg) {
   const lastRelease = f.latestPublished || h.latestRelease || null;
   const relDays = daysSince(lastRelease); const pushDays = daysSince(h.pushedAt);
   if (relDays !== null && relDays > thresholds.staleMonths * 30 && (pushDays === null || pushDays > thresholds.staleMonths * 30)) {
-    bump('red'); reasons.push(`no release in ${Math.round(relDays / 30)} months${pushDays !== null ? `, no commits in ${Math.round(pushDays / 30)} months` : ''}`);
+    bump('red', 'stale'); reasons.push(`no release in ${Math.round(relDays / 30)} months${pushDays !== null ? `, no commits in ${Math.round(pushDays / 30)} months` : ''}`);
   } else if (relDays !== null && relDays > thresholds.quietMonths * 30) {
     bump('amber'); reasons.push(`no release in ${Math.round(relDays / 30)} months${pushDays !== null ? ` (last commit ${Math.round(pushDays / 30)} months ago)` : ''}`);
   }
@@ -255,8 +256,13 @@ function verdict(pkg) {
   if (privateFeed && level === 'green') level = 'unknown';
   if (!f.registryReachable && !h.ecosystemsReachable) { if (level === 'green') level = 'unknown'; reasons.push('registry and health APIs unreachable from this machine'); }
   const ig = ignoreFor(pkg.ecosystem, pkg.name);
+  // A finished, small package is red only because nobody releases it. An ignore entry with a reason
+  // and an expiry may hide that; it never hides deprecation, archiving, vulnerabilities or a missing package.
+  const staleOnly = level === 'red' && redWhy.length > 0 && redWhy.every((w) => w === 'stale');
+  if (ig && !ig.expired && staleOnly && ig.reason && ig.expires) return { level: 'ignored', reasons: [`ignored: ${ig.reason} (until ${ig.expires}); red only for staleness`, ...reasons] };
+  if (ig && !ig.expired && staleOnly) reasons.unshift(`on ignore list, but hiding a stale red needs both a reason and an expiry date`);
   if (ig && !ig.expired && level !== 'red') return { level: 'ignored', reasons: [`ignored: ${ig.reason}${ig.expires ? ` (until ${ig.expires})` : ''}`, ...reasons] };
-  if (ig && !ig.expired && level === 'red') reasons.unshift(`on ignore list (${ig.reason}), but ignores never hide red findings — re-evaluate`);
+  if (ig && !ig.expired && level === 'red' && !staleOnly) reasons.unshift(`on ignore list (${ig.reason}), but ignores never hide deprecated, archived, missing or vulnerable packages — re-evaluate`);
   if (ig?.expired) reasons.unshift(`ignore entry expired ${ig.expires} — re-evaluate`);
   return { level, reasons };
 }

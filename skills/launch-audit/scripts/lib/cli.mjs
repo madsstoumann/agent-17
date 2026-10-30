@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { normaliseUrl, isPrivateHost, hostOf, stripWww, parseHeaderLines, VERSION } from './http.mjs';
+import { targetDir } from './target-state.mjs';
 
 export const DEFAULTS = {
   pages: 3, maxPages: 100, maxExternal: 200, timeout: 15000, lhTimeout: 240000, concurrency: 6,
@@ -66,6 +67,8 @@ const OPTIONS = {
   lighthouse: { type: 'string' },
   out: { type: 'string' },
   baseline: { type: 'string' },
+  'no-baseline': { type: 'boolean' },
+  state: { type: 'string' },
   insecure: { type: 'boolean' },
   'email-domain': { type: 'string' },
   'old-sitemap': { type: 'string' },
@@ -144,6 +147,8 @@ export function parseCli(argv, env = process.env) {
       lighthouse: lighthouseChoice,
       out: values.out || null,
       baseline: values.baseline || null,
+      noBaseline: Boolean(values['no-baseline']),
+      state: values.state || null,
       insecure: Boolean(values.insecure),
       emailDomain: (values['email-domain'] || stripWww(host.replace(/:\d+$/, ''))).toLowerCase(),
       oldSitemap: values['old-sitemap'] || null,
@@ -207,21 +212,31 @@ function readText(p) {
 }
 
 /**
- * Where the files go. resolveOut({ out, host }, { now, home, cwd, root })
+ * The site's target folder: --state, else <reportsRoot>/launch-audit/<host>/. It keeps last-report.json
+ * (the next run's baseline) and notes.md, and holds the default run folders.
+ */
+export function resolveState({ state, host }, { home = os.homedir(), cwd = process.cwd(), root } = {}) {
+  if (state) return path.resolve(cwd, expandHome(state, home));
+  return targetDir({ reports: root || reportsRoot({ home }), skill: 'launch-audit', name: host || 'site', owner: host || 'site' });
+}
+
+/**
+ * Where the files go. resolveOut({ out, host }, { now, home, cwd, root, state })
  *   -> { dir, reportMd, reportJson, rawDir, mode: 'dir' | 'file' }
- * A folder (default <reportsRoot>/launch-audit/<host>-<stamp>/) holds report.md, report.json and the raw JSON;
+ * A folder (default <target>/runs/<stamp>/, target = resolveState) holds report.md, report.json and the raw JSON;
  * a path ending in .md is the report itself, with <name>.json and <name>-raw/ beside it.
  */
-export function resolveOut({ out, host }, { now = new Date(), home = os.homedir(), cwd = process.cwd(), root } = {}) {
+export function resolveOut({ out, host }, { now = new Date(), home = os.homedir(), cwd = process.cwd(), root, state, exists = () => false } = {}) {
   if (out && /\.md$/i.test(out)) {
     const reportMd = path.resolve(cwd, expandHome(out, home));
     const base = reportMd.replace(/\.md$/i, '');
     return { mode: 'file', dir: path.dirname(reportMd), reportMd, reportJson: `${base}.json`, rawDir: `${base}-raw` };
   }
-  const safeHost = String(host || 'site').replace(/[:/\\]/g, '-');
-  const dir = out
+  let dir = out
     ? path.resolve(cwd, expandHome(out, home))
-    : path.join(root || reportsRoot({ home }), 'launch-audit', `${safeHost}-${stamp(now)}`);
+    : path.join(state || resolveState({ host }, { home, cwd, root }), 'runs', stamp(now));
+  // A second run in the same minute gets its own folder (-2, -3, …) rather than overwriting the first.
+  if (!out) for (let i = 2, base = dir; exists(dir); i++) dir = `${base}-${i}`;
   return { mode: 'dir', dir, reportMd: path.join(dir, 'report.md'), reportJson: path.join(dir, 'report.json'), rawDir: dir };
 }
 
@@ -238,10 +253,12 @@ Usage: node audit.mjs <url> [flags]
   --max-pages N                  Crawl bound (default ${DEFAULTS.maxPages}).   --max-external N   External links checked (default ${DEFAULTS.maxExternal}).
   --skip a,b / --only a,b        Group or check ids: crawl redirects notfound tls dns email exposed headers caching perf a11y privacy links social icons ops.
   --lighthouse local|psi|off     Default: psi when PSI_API_KEY is set, else local (npx lighthouse + Chrome).
-  --out PATH                     Folder for report.md + report.json + raw JSON (default <reports>/launch-audit/<host>-<stamp>/,
-                                 where <reports> is $AUDIT_OUT_DIR, else Downloads, else ~/audit-reports),
+  --out PATH                     Folder for report.md + report.json + raw JSON (default <target>/runs/<stamp>/),
                                  or a path ending in .md (JSON and raw files land beside it).
-  --baseline FILE                A previous report.json; adds a "Since last run" section.
+  --state DIR                    Target folder (default <reports>/launch-audit/<host>/, where <reports> is $AUDIT_OUT_DIR,
+                                 else Downloads, else ~/audit-reports). Keeps last-report.json and notes.md between runs.
+  --baseline FILE                A previous report.json for "Since last run". Default: the last run for this host.
+  --no-baseline                  No "Since last run" section (the run still becomes the next baseline).
   --insecure                     Accept a self-signed certificate (local sites).
   --email-domain D               Where SPF/DMARC live (default: host without www.).
   --old-sitemap URL|FILE         Old site's URLs must redirect (not implemented yet).

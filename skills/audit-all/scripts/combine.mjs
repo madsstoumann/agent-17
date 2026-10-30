@@ -14,8 +14,9 @@ import { fileURLToPath } from 'node:url';
 import { discoverReports, headline, parseSummary, combinedMarkdown, combinedHtml } from './lib/report.mjs';
 import { printPdf } from './lib/pdf.mjs';
 import { writeFixPlan } from './lib/tasks.mjs';
+import { targetDir, claimTarget, newRun, previousRuns, readNotes, targetName } from './lib/target-state.mjs';
 
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, '..', 'assets');
 const SIBLINGS = path.join(HERE, '..', '..');
@@ -25,7 +26,8 @@ const USAGE = `audit-all ${VERSION}: combine launch-audit, security-audit and so
 Usage:
   node combine.mjs <run-dir> [flags]   Combine <run-dir>/<kind>[-<target>]/report.md into <run-dir>/report.{md,html,pdf},
                                        and <run-dir>/tasks.json (if any) into fix/TODO.md and fix/tasks/*.md
-  node combine.mjs --new <name>        Create and print a run folder: <reports>/audit-all/<name>-<stamp>/
+  node combine.mjs --new <name>        Create and print a run folder: <reports>/audit-all/<name>/runs/<stamp>/
+                                       (and, on stderr, the previous run of <name>, to compare with)
 
 Flags:
   --style serif|sans   Typeface for the HTML and PDF (default serif).
@@ -90,12 +92,29 @@ function readText(p) {
   try { return fs.readFileSync(p, 'utf8'); } catch { return null; }
 }
 
-function stamp(now = new Date()) {
-  const p = (n) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}`;
+export const safeName = (s) => String(s || 'audit').replace(/^https?:\/\//, '').replace(/[/?#].*$/, '').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '') || 'audit';
+
+/**
+ * A new run folder for `name` in its target folder <reports>/audit-all/<name>/runs/<stamp>/, plus the
+ * previous run to compare with: the newest earlier run there, else (first run after upgrading) the
+ * newest old-layout run folder <reports>/audit-all/<name>-<stamp>/ that has a summary.md.
+ */
+export function newRunFolder(name, { reports = reportsRoot(), now = new Date() } = {}) {
+  const target = claimTarget(targetDir({ reports, skill: 'audit-all', name, owner: targetName(name) }), targetName(name));
+  const dir = newRun(target, { now, info: { skill: 'audit-all', target: name } });
+  let previous = previousRuns(target, { exclude: dir })[0] || null;
+  if (!previous) {
+    const base = path.join(reports, 'audit-all');
+    const prefix = `${targetName(name)}-`;
+    let old = [];
+    try { old = fs.readdirSync(base).filter((n) => n.startsWith(prefix) && /-\d{8}-\d{4}$/.test(n) && fs.existsSync(path.join(base, n, 'summary.md'))); } catch { /* none */ }
+    previous = old.sort().reverse().map((n) => path.join(base, n))[0] || null;
+  }
+  return { dir, target, previous };
 }
 
-export const safeName = (s) => String(s || 'audit').replace(/^https?:\/\//, '').replace(/[/?#].*$/, '').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '') || 'audit';
+/** The target folder of a run folder laid out as <target>/runs/<stamp>/, else null. */
+export const targetOfRun = (runDir) => (path.basename(path.dirname(runDir)) === 'runs' ? path.dirname(path.dirname(runDir)) : null);
 
 // ---- Fonts and CSS ------------------------------------------------------------------------
 
@@ -172,8 +191,12 @@ export async function combine(args, { now = new Date(), log = (m) => process.std
   const reports = discoverReports(runDir);
   if (!reports.length) throw new Error(`No reports in ${runDir}. Expected sub-folders like launch-audit/, security-audit-<repo>/, solution-health-<repo>/ with a report.md each.`);
   const summaryFile = path.join(runDir, 'summary.md');
-  const summaryMd = fs.existsSync(summaryFile) ? fs.readFileSync(summaryFile, 'utf8') : '';
+  let summaryMd = fs.existsSync(summaryFile) ? fs.readFileSync(summaryFile, 'utf8') : '';
   if (!summaryMd) log('summary.md not found: the report will have no verdict or "Fix first" list.');
+  // notes.md in the target folder: hand-written, never rewritten, shown after the summary in every run.
+  const target = targetOfRun(runDir);
+  const notes = target && readNotes(target);
+  if (notes) summaryMd = `${summaryMd.trimEnd()}\n\n## Notes\n\n${notes.trim().replace(/^(#{1,4}) /gm, (m, h) => `${'#'.repeat(Math.min(h.length + 2, 6))} `)}\n`;
   const summary = parseSummary(summaryMd);
   summary.raw = summaryMd.replace(/^---\n[\s\S]*?\n---\n?/, '');
   const heads = reports.map(headline);
@@ -203,9 +226,9 @@ async function main() {
   try { args = parseArgs(process.argv.slice(2)); } catch (e) { process.stderr.write(`${e.message}\n\n${USAGE}`); process.exit(2); }
   if (args.help) { process.stdout.write(USAGE); return; }
   if (args.newName) {
-    const dir = path.join(reportsRoot(), 'audit-all', `${safeName(args.newName)}-${stamp()}`);
-    fs.mkdirSync(dir, { recursive: true });
+    const { dir, target, previous } = newRunFolder(args.newName);
     process.stdout.write(`${dir}\n`);
+    process.stderr.write(`target folder: ${target}${readNotes(target) ? ' (has notes.md)' : ''}\nprevious run:  ${previous || 'none'}\n`);
     return;
   }
   if (!args.dir) { process.stderr.write(USAGE); process.exit(2); }

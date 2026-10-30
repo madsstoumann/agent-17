@@ -36,4 +36,22 @@ Skills that write report files (audit-all, launch-audit, security-audit, solutio
 3. the Downloads folder if it exists and is writable (on Linux the XDG download folder from `XDG_DOWNLOAD_DIR` or `~/.config/user-dirs.dirs` first, then `~/Downloads`),
 4. `~/audit-reports/`.
 
-Each skill writes under `<folder>/<skill>/<site-or-repo>-<YYYYMMDD-HHMM>/`. Skills install separately, so each carries its own copy of the `reportsRoot()` resolver (see `security-audit/scripts/scan.mjs`); keep them in step when changing it. solution-health keeps one stable folder per solution instead of a timestamped one, `<folder>/solution-health/<solution>/`, because each run compares with the state the last run left there (`--in-repo` keeps it in the solution for teams that commit it).
+### Target folders and run folders
+
+Nothing that should carry over between runs lives in a timestamped folder. Each skill keeps one **target folder** per site or repo, named after the site host or the repo folder (never after a run), and puts each run in a `runs/` folder inside it:
+
+```
+<folder>/<skill>/<target>/            what carries over
+  target.txt                          which repo path or host the folder belongs to (root.txt in solution-health)
+  notes.md                            hand-written notes; no script writes it, reports show it
+  last-report.json, triage.json, …    the last result to compare with, verdicts, manifests
+  runs/<YYYYMMDD-HHMM>/               one folder per run, marked with an .audit-run file
+```
+
+- A second target with the same name (two repos called `web`) gets a short hash suffix, decided by `target.txt`.
+- Each skill finds its own target folder by target, even when the run output goes somewhere else (audit-all passes `--out` into its own run folder), and compares with its last run automatically. `--baseline FILE` picks a specific run; `--no-baseline` skips the comparison.
+- A folder with an `.audit-run` marker, or one inside it, is never used for state: solution-health ignores a `--dir` there.
+- When a target folder is new, a skill looks once for its earlier results in the old layouts (timestamped folders, audit-all run folders) by their content, not by folder name.
+- solution-health's state folder is `<folder>/solution-health/<solution>/` itself (manifest.json, state.json, snapshots/, notes.md), because each run updates the state in place; `--in-repo` keeps it in the solution for teams that commit it.
+
+Skills install separately, so launch-audit, security-audit and audit-all each carry a copy of `scripts/lib/target-state.mjs` (security-audit's tests check the copies are identical), and each carries its own `reportsRoot()` (see `security-audit/scripts/scan.mjs`); keep them in step. A new skill that writes reports should use the same layout.

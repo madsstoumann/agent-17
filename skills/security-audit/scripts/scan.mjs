@@ -14,8 +14,10 @@ import path from 'node:path';
 import { RULES, FILE_RULES, rulesFor, scanText, redact } from './lib/patterns.mjs';
 import { listFiles, readScannable, historyAddedLines, TEST_PATH } from './lib/files.mjs';
 import { collectPackages, queryOsv } from './lib/deps.mjs';
+import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
+import { annotate, baselineLines, tag } from './lib/baseline.mjs';
 
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 const GROUPS = ['deps', 'secrets', 'xss', 'injection', 'request', 'crypto', 'config', 'ci'];
 const SEV = { high: 3, medium: 2, low: 1 };
 
@@ -28,13 +30,18 @@ Usage: node scan.mjs [path] [options]
   --offline         No OSV lookup (dependency inventory only).
   --no-tests        Leave out hits in test/fixture/example/docs paths (default: kept, tagged).
   --max N           Hits printed per rule (default 6; findings.json has all).
-  --out DIR         Where findings.json goes (default <reports>/security-audit/<name>-<stamp>/, where
-                    <reports> is $AUDIT_OUT_DIR, else Downloads, else ~/audit-reports).
+  --out DIR         Where findings.json goes (default <target>/runs/<stamp>/).
+  --baseline FILE   Compare with this findings.json (or a folder holding one). Default: the last scan
+                    of this repo (<target>/last-findings.json). Prints new, still open and fixed.
+  --no-baseline     Do not compare with the last scan (the scan is still recorded as the new baseline).
+  --state DIR       Target folder (default <reports>/security-audit/<repo folder name>/, where <reports> is
+                    $AUDIT_OUT_DIR, else Downloads, else ~/audit-reports). It keeps triage.json, notes.md
+                    and last-findings.json between runs.
   --json            Print findings.json to stdout instead of the summary.
 `;
 
 export function parseArgs(argv) {
-  const a = { root: '.', only: null, skip: [], history: 0, offline: false, tests: true, max: 6, out: null, json: false };
+  const a = { root: '.', only: null, skip: [], history: 0, offline: false, tests: true, max: 6, out: null, json: false, baseline: null, noBaseline: false, state: null };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i];
     const next = () => argv[++i];
@@ -46,6 +53,9 @@ export function parseArgs(argv) {
     else if (v === '--no-tests') a.tests = false;
     else if (v === '--max') a.max = Number(next());
     else if (v === '--out') a.out = next();
+    else if (v === '--baseline') a.baseline = next();
+    else if (v === '--no-baseline') a.noBaseline = true;
+    else if (v === '--state') a.state = next();
     else if (v === '--json') a.json = true;
     else if (v.startsWith('--')) throw new Error(`Unknown option ${v}`);
     else a.root = v;
@@ -82,13 +92,34 @@ function readText(p) {
 
 const expandHome = (p, home) => p.replace(/^~(?=$|[\\/])/, home);
 
-/** Where findings.json and report.md go: `--out` (a leading ~ is expanded) or <reportsRoot>/security-audit/<name>-<stamp>/. */
-export function resolveOutDir(out, root, { home = os.homedir(), now = stamp(), base } = {}) {
-  if (!out) return path.join(base || reportsRoot({ home }), 'security-audit', `${path.basename(root)}-${now}`);
-  return path.resolve(expandHome(out, home));
+/** The repo's target folder: `--state`, else <reportsRoot>/security-audit/<repo folder name>/ (hash suffix if the name is taken). */
+export function resolveStateDir(state, root, { home = os.homedir(), base } = {}) {
+  if (state) return path.resolve(expandHome(state, home));
+  return targetDir({ reports: base || reportsRoot({ home }), skill: 'security-audit', name: path.basename(root), owner: root });
 }
 
-const stamp = () => new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
+/** Where findings.json and report.md go: `--out` (a leading ~ is expanded), else null (a new <target>/runs/<stamp>/). */
+export function resolveOutDir(out, { home = os.homedir() } = {}) {
+  return out ? path.resolve(expandHome(out, home)) : null;
+}
+
+/**
+ * The findings.json to compare with: --baseline (a file or a folder with findings.json), else the
+ * target's last-findings.json, else (first run after upgrading) the newest earlier findings.json for
+ * this repo under <reports>/security-audit/ or <reports>/audit-all/, found by its `root`.
+ */
+export function resolveBaseline(args, root, stateDir, { base, exclude } = {}) {
+  if (args.noBaseline) return null;
+  if (args.baseline) {
+    const f = path.resolve(expandHome(args.baseline, os.homedir()));
+    return fs.existsSync(f) && fs.statSync(f).isDirectory() ? path.join(f, 'findings.json') : f;
+  }
+  const last = path.join(stateDir, 'last-findings.json');
+  if (fs.existsSync(last)) return last;
+  const reports = base || reportsRoot();
+  const roots = [path.join(reports, 'security-audit'), path.join(reports, 'audit-all')];
+  return findEarlier(roots, 'findings.json', (j) => j?.tool === 'security-audit' && j.root === root, { exclude })[0] || null;
+}
 const log = (m) => process.stderr.write(`${m}\n`);
 
 export async function run(args) {
@@ -136,7 +167,7 @@ export async function run(args) {
           for (const h of scanText(a.file, a.text, secretRules.filter((r) => r.langs === null || rulesFor(a.file).includes(r)))) {
             const key = `${h.id}|${h.text}`;
             if (current.has(key) || found.has(key)) continue;
-            found.set(key, { id: h.id, file: a.file, commit: a.commit.slice(0, 10), date: a.date, line: a.line, text: h.text });
+            found.set(key, { id: h.id, file: a.file, commit: a.commit.slice(0, 10), date: a.date, line: a.line, text: h.text, match: h.match });
           }
         }
         history = { commits: args.history, lines: added.length, hits: [...found.values()] };
@@ -192,7 +223,7 @@ export function summarise(r, max = 6) {
       L.push(`  ${d.vulnerable.length} vulnerable package version(s); advisories: ${Object.entries(counts).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(', ') || 'none'}`);
       for (const p of d.vulnerable.slice(0, 15)) {
         const v = p.vulns[0];
-        L.push(`  ${v.severity.padEnd(8)} ${p.ecosystem} ${p.name}@${p.version}${p.dev ? ' (dev)' : ''}  ${v.id}${p.vulns.length > 1 ? ` +${p.vulns.length - 1}` : ''}  ${v.summary.slice(0, 70)}${v.fixed.length ? `  → fixed ${v.fixed.join(', ')}` : ''}`);
+        L.push(`  ${v.severity.padEnd(8)} ${p.ecosystem} ${p.name}@${p.version}${p.dev ? ' (dev)' : ''}  ${v.id}${p.vulns.length > 1 ? ` +${p.vulns.length - 1}` : ''}  ${v.summary.slice(0, 70)}${v.fixed.length ? `  → fixed ${v.fixed.join(', ')}` : ''}${tag(v)}  #${v.fp || ''}`);
       }
       if (d.vulnerable.length > 15) L.push(`  … ${d.vulnerable.length - 15} more in findings.json`);
     }
@@ -202,15 +233,16 @@ export function summarise(r, max = 6) {
   L.push(`CODE HITS TO TRIAGE  ${total} hit(s) across ${r.rules.length} rule(s) — candidates, not findings`);
   for (const rule of r.rules) {
     L.push(`  [${rule.severity}] ${rule.id} — ${rule.title} (${rule.count}${rule.inTest ? `, ${rule.inTest} in test/docs paths` : ''})`);
-    for (const h of rule.hits.slice(0, max)) L.push(`      ${h.file}${h.line ? `:${h.line}` : ''}${h.inTest ? ' [test]' : ''}  ${h.text.slice(0, 140)}`);
+    for (const h of rule.hits.slice(0, max)) L.push(`      ${h.file}${h.line ? `:${h.line}` : ''}${h.inTest ? ' [test]' : ''}${tag(h)}  ${h.text.slice(0, 140)}  #${h.fp || ''}`);
     if (rule.count > max) L.push(`      … ${rule.count - max} more`);
   }
+  if (r.baseline) { L.push(''); L.push(...baselineLines(r.baseline)); }
   if (r.history) {
     L.push('');
     if (r.history.skipped) L.push(`HISTORY  SKIP: ${r.history.skipped}`);
     else {
       L.push(`HISTORY  last ${r.history.commits} commits: ${r.history.hits.length} secret hit(s) no longer in the working tree (still in git history)`);
-      for (const h of r.history.hits.slice(0, 15)) L.push(`  ${h.id}  ${h.file}  ${h.commit} ${h.date}  ${h.text.slice(0, 100)}`);
+      for (const h of r.history.hits.slice(0, 15)) L.push(`  ${h.id}  ${h.file}  ${h.commit} ${h.date}${tag(h)}  ${h.text.slice(0, 100)}  #${h.fp || ''}`);
     }
   }
   return L.join('\n');
@@ -221,12 +253,24 @@ async function main() {
   try { args = parseArgs(process.argv.slice(2)); } catch (e) { log(e.message); log(USAGE); process.exit(2); }
   if (args.help) { process.stdout.write(USAGE); return; }
   const report = await run(args);
-  const outDir = resolveOutDir(args.out, report.root);
+  const stateDir = claimTarget(resolveStateDir(args.state, report.root), report.root);
+  const outDir = resolveOutDir(args.out) || newRun(stateDir, { info: { skill: 'security-audit', target: report.root } });
+  markRun(outDir, { skill: 'security-audit', target: report.root });
+  const baseFile = resolveBaseline(args, report.root, stateDir, { exclude: outDir });
+  let baseline = null;
+  if (baseFile) {
+    try { baseline = JSON.parse(fs.readFileSync(baseFile, 'utf8')); } catch (e) { log(`baseline not usable (${baseFile}): ${e.message}`); }
+  }
+  let triage = null;
+  try { triage = JSON.parse(fs.readFileSync(path.join(stateDir, 'triage.json'), 'utf8')); } catch { /* none yet */ }
+  annotate(report, { baseline, triage, from: baseline ? baseFile : null });
+  report.state = { dir: stateDir, triage: path.join(stateDir, 'triage.json'), notes: readNotes(stateDir) ? path.join(stateDir, 'notes.md') : null };
   fs.mkdirSync(outDir, { recursive: true });
   const file = path.join(outDir, 'findings.json');
   fs.writeFileSync(file, JSON.stringify(report, null, 2));
+  fs.writeFileSync(path.join(stateDir, 'last-findings.json'), JSON.stringify(report, null, 2));
   if (args.json) process.stdout.write(JSON.stringify(report, null, 2));
-  else process.stdout.write(`${summarise(report, args.max)}\n\nfindings: ${file}\nreport:   ${path.join(outDir, 'report.md')} (you write this)\n`);
+  else process.stdout.write(`${summarise(report, args.max)}\n\nfindings: ${file}\nreport:   ${path.join(outDir, 'report.md')} (you write this)\nstate:    ${stateDir}\ntriage:   ${report.state.triage} (you update this after triage)${report.state.notes ? `\nnotes:    ${report.state.notes} (read it before triage)` : ''}\n`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

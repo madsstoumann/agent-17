@@ -4,7 +4,7 @@ description: Use when someone wants the full audit of a site and its code in one
 argument-hint: "[url] [repo path ...] [--style serif|sans] [--out DIR] [--skip launch,security,health]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # Audit all
@@ -40,7 +40,10 @@ other way, invoke them by name instead (`skills:launch-audit` in the plugin, `la
 node "${CLAUDE_SKILL_DIR}/scripts/combine.mjs" --new <site host or repo name>
 ```
 
-It prints the folder and creates it: `<reports>/audit-all/<name>-<YYYYMMDD-HHMM>/`. `<reports>` is
+It creates the run folder and prints it: `<reports>/audit-all/<name>/runs/<YYYYMMDD-HHMM>/`. The
+`<name>/` part is the **target folder** for this site or solution; it never depends on a run, so every
+run of the same target lands next to the last one. On stderr it also prints the target folder (and
+whether it has a `notes.md`) and the **previous run**, if any; use them in step 4. `<reports>` is
 the same for every audit skill, first match wins:
 
 1. `--out DIR` when the user names a folder (then use that instead of `--new`),
@@ -49,6 +52,12 @@ the same for every audit skill, first match wins:
 4. `~/audit-reports/`.
 
 Do not put the run folder inside a repo unless asked: security reports can describe live secrets.
+
+**What carries over is never in a run folder.** Each skill keeps it in its own target folder, named
+after the site host or repo folder: `<reports>/launch-audit/<host>/`, `<reports>/security-audit/<repo>/`,
+`<reports>/solution-health/<repo>/` and `<reports>/audit-all/<name>/`. That is where the manifests,
+triage verdicts, baselines and `notes.md` live, and each skill finds its own there whatever run
+folder the output goes to. Run folders are marked with an `.audit-run` file and are disposable.
 
 ## 3. Run the audits
 
@@ -61,7 +70,11 @@ folder name.
 |---|---|---|
 | launch-audit | Follow launch-audit's SKILL.md with `--out "<run>/launch-audit"` (one folder per URL: `launch-audit-<host>`) | `report.md`, `report.json` |
 | security-audit | Follow security-audit's SKILL.md with `--out "<run>/security-audit-<repo>"`, including the triage and `report.md` it asks you to write. Semgrep runs automatically when installed | `findings.json`, `report.md` |
-| solution-health | Follow solution-health's SKILL.md in the repo. It keeps its state and report in its own stable folder (`<reports>/solution-health/<repo>/`, or `.solution-health/` with `--in-repo`) so the next run can compare; pass the repo to `combine.mjs --repo` and it copies the report in | `report.md` in its state folder |
+| solution-health | Follow solution-health's SKILL.md in the repo, **without** `--dir` or `--out`: it keeps its manifest, state and report in its own folder (`<reports>/solution-health/<repo>/`, or `.solution-health/` with `--in-repo`), never in the run folder. Pass the repo to `combine.mjs --repo` and it copies the report in | `report.md` in its state folder |
+
+launch-audit and security-audit compare with their last run of the same host or repo automatically,
+from their own target folders, and security-audit reuses its earlier triage verdicts: only new hits
+need triage. Do not pass `--baseline` unless the user wants a specific run compared.
 
 Each skill's own rules still apply (report only, no fixes, launch-audit only on sites the user owns
 or works on). Keep each skill's chat summary to a few lines: the combined report is the deliverable.
@@ -104,6 +117,12 @@ In order. Duplicates across the audits are merged.
   committed `.env` (security-audit), a weak CSP in headers and in `nuxt.config`, a vulnerable package
   in both security-audit and solution-health. One item, both sources.
 - Use only facts from the reports. More `##` sections (for example "Can wait") are rendered too.
+- **Since last run.** When `--new` printed a previous run, read its `summary.md` and `tasks.json` and
+  add a `## Since last run` section: what was fixed, what is new, what is still open, using the
+  sub-reports' own "Since last run" sections as evidence. Leave it out on the first run.
+- Decisions that should hold for future runs (an accepted risk, an owner, a planned migration) go in
+  `notes.md` in the target folder, not in `summary.md`. `combine.mjs` shows it as a "Notes" section
+  in every report; nothing rewrites it. Ask the user before writing to it.
 
 ## 5. Write tasks.json
 
@@ -137,7 +156,7 @@ In order. Duplicates across the audits are merged.
 
 | Field | Notes |
 |---|---|
-| `id` | `T1`, `T2`, … Stable within the run; `dependsOn` refers to these. |
+| `id` | `T1`, `T2`, … Stable within the run; `dependsOn` refers to these. When the previous run's `tasks.json` has the same problem, reuse its id and title so the two plans can be compared. |
 | `severity` | `blocker`, `high`, `medium` or `low`, the same call as in the reports. |
 | `owner` | `agent`, or `human` for anything an agent must not or cannot do: rotating secrets, DNS, CDN or hosting settings outside the repo, purging git history, product or legal calls. |
 | `model` | For agent tasks, the cheapest tier that will do it well: `haiku` for mechanical, local edits (a header in a config file, a meta tag, alt text, a patch bump with no code changes); `sonnet` for ordinary code changes, multi-file edits and minor upgrades; `opus` for security fixes that need data-flow reasoning (injection, XSS, auth, SSRF), and for big jobs (a framework major or EOL runtime upgrade, replacing a closing API). `fable` only when the user asks for it. Left out, security and blocker tasks get `opus`, the rest `sonnet`. |
@@ -181,8 +200,10 @@ To change only the look, run `combine.mjs` again with the other `--style`; nothi
 
 ## Re-running
 
-"Run it again after the fixes": create a new run folder and repeat. launch-audit can compare with the
-previous run's `report.json` (`--baseline`), and solution-health always compares with its last state.
+"Run it again after the fixes": create a new run folder with the same name and repeat. Every audit
+compares with its last run by itself (launch-audit and security-audit from their target folders,
+solution-health from its state), and `--new` names the previous audit-all run for the "Since last
+run" section.
 
 ## Files
 
@@ -191,5 +212,6 @@ previous run's `report.json` (`--baseline`), and solution-health always compares
 - `scripts/lib/report.mjs`: finds reports, pulls headline numbers, builds the Markdown and HTML.
 - `scripts/lib/pdf.mjs`: finds a browser and prints to PDF.
 - `scripts/lib/tasks.mjs`: checks `tasks.json`, orders agent tasks into rounds, writes `fix/`.
+- `scripts/lib/target-state.mjs`: target folders and run folders (kept in step with the copies in launch-audit and security-audit).
 - `assets/report.css`: the A4 layout for both styles. `assets/fonts/`: Newsreader and IBM Plex
   (SIL Open Font License, see the `OFL-*.txt` files).

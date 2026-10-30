@@ -11,7 +11,7 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-export const VERSION = '1.2.0';
+export const VERSION = '1.3.0';
 export const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 export const AUDIT_HEADER = `launch-audit/${VERSION}`;
 
