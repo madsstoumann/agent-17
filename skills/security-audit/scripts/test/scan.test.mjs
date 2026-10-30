@@ -11,7 +11,7 @@ import {
   parsePackageLock, parseYarnLock, parsePnpmLock, parseComposerLock, parseNugetLock, parseMsbuild,
   parseRequirements, parseTomlLock, parseGemfileLock, parseGoMod, osvSeverity, osvFixed,
 } from '../lib/deps.mjs';
-import { run, parseArgs } from '../scan.mjs';
+import { run, parseArgs, resolveOutDir } from '../scan.mjs';
 
 // Fake secrets are assembled at runtime so GitHub push protection does not flag this file.
 const STRIPE = ['sk', 'live', 'abcdefghijklmnopqrstuvwx'].join('_');
@@ -157,4 +157,11 @@ test('parseArgs rejects unknown groups and options', () => {
   assert.throws(() => parseArgs(['--only', 'nope']), /Unknown group/);
   assert.throws(() => parseArgs(['--frobnicate']), /Unknown option/);
   assert.equal(parseArgs(['--history']).history, 1000);
+});
+
+test('resolveOutDir: default under Downloads, ~ expanded, relative paths resolved', () => {
+  assert.equal(resolveOutDir(null, '/src/my-repo', { home: '/Users/me', now: '20261030-0800' }), '/Users/me/Downloads/security-audit/my-repo-20261030-0800');
+  assert.equal(resolveOutDir('~/Downloads/audit-all/x/security-audit', '/src/r', { home: '/Users/me' }), '/Users/me/Downloads/audit-all/x/security-audit');
+  assert.equal(resolveOutDir('~', '/src/r', { home: '/Users/me' }), '/Users/me');
+  assert.equal(resolveOutDir('/abs/out', '/src/r', { home: '/Users/me' }), '/abs/out');
 });

@@ -15,7 +15,7 @@ import { RULES, FILE_RULES, rulesFor, scanText, redact } from './lib/patterns.mj
 import { listFiles, readScannable, historyAddedLines, TEST_PATH } from './lib/files.mjs';
 import { collectPackages, queryOsv } from './lib/deps.mjs';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.0.1';
 const GROUPS = ['deps', 'secrets', 'xss', 'injection', 'request', 'crypto', 'config', 'ci'];
 const SEV = { high: 3, medium: 2, low: 1 };
 
@@ -51,6 +51,12 @@ export function parseArgs(argv) {
   }
   for (const g of [...(a.only || []), ...a.skip]) if (!GROUPS.includes(g)) throw new Error(`Unknown group "${g}". Groups: ${GROUPS.join(' ')}`);
   return a;
+}
+
+/** Where findings.json and report.md go: `--out` (a leading ~ is expanded) or ~/Downloads/security-audit/<name>-<stamp>/. */
+export function resolveOutDir(out, root, { home = os.homedir(), now = stamp() } = {}) {
+  if (!out) return path.join(home, 'Downloads', 'security-audit', `${path.basename(root)}-${now}`);
+  return path.resolve(out.replace(/^~(?=$|[\\/])/, home));
 }
 
 const stamp = () => new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
@@ -186,7 +192,7 @@ async function main() {
   try { args = parseArgs(process.argv.slice(2)); } catch (e) { log(e.message); log(USAGE); process.exit(2); }
   if (args.help) { process.stdout.write(USAGE); return; }
   const report = await run(args);
-  const outDir = args.out ? path.resolve(args.out) : path.join(os.homedir(), 'Downloads', 'security-audit', `${path.basename(report.root)}-${stamp()}`);
+  const outDir = resolveOutDir(args.out, report.root);
   fs.mkdirSync(outDir, { recursive: true });
   const file = path.join(outDir, 'findings.json');
   fs.writeFileSync(file, JSON.stringify(report, null, 2));

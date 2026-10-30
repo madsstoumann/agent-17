@@ -4,7 +4,7 @@ description: Use when someone wants a security review, code security audit, vuln
 argument-hint: "[path] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR]"
 allowed-tools: Bash(node:*), Bash(git log:*), Bash(git show:*), Read, Grep, Glob, WebFetch
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Security audit (code mode)

@@ -2,6 +2,11 @@
 
 All notable changes to the `security-audit` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.0.1] - 2026-10-30
+
+### Fixed
+- `--out ~/…` now expands `~` to the home folder instead of creating a folder literally named `~` under the current directory.
+
 ## [1.0.0] - 2026-10-29
 
 ### Added
