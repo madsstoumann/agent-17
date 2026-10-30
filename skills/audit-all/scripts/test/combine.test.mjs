@@ -191,3 +191,14 @@ test('combine: a run folder with no reports is an error', async () => {
     fs.rmSync(run, { recursive: true, force: true });
   }
 });
+
+test('solutionHealthReport: the report folder first, then an in-repo .solution-health', async () => {
+  const { solutionHealthReport } = await import('../combine.mjs');
+  const files = new Set(['/r/solution-health/shop-web/report.md', '/code/api/.solution-health/report.md']);
+  const opts = { reports: '/r', readFile: () => null, exists: (f) => files.has(f) };
+  assert.equal(solutionHealthReport('/code/shop-web', opts), '/r/solution-health/shop-web/report.md');
+  assert.equal(solutionHealthReport('/code/api', opts), '/code/api/.solution-health/report.md');
+  assert.equal(solutionHealthReport('/code/none', opts), null);
+  const clash = solutionHealthReport('/other/shop-web', { reports: '/r', readFile: () => '/code/shop-web\n', exists: (f) => /shop-web-[0-9a-f]{8}\/report\.md$/.test(f) });
+  assert.match(clash, /^\/r\/solution-health\/shop-web-[0-9a-f]{8}\/report\.md$/);
+});

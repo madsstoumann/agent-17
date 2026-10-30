@@ -4,8 +4,8 @@
 // Reads .solution-health/run/discovery.json (run discover.mjs first). Writes run/packages.json.
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { dirname, join, relative } from 'node:path';
-import { parseArgs, paths, readJson, writeJson, cachedJson, mapLimit, daysSince, loadManifest, ensureDirs, log, nowIso } from './lib.mjs';
+import { dirname, join } from 'node:path';
+import { parseArgs, paths, readJson, writeJson, cachedJson, mapLimit, daysSince, loadManifest, ensureDirs, log, nowIso, showPath } from './lib.mjs';
 import { resolveProject, checkNuget, candidateSources, isNugetOrg } from './nuget.mjs';
 
 const args = parseArgs();
@@ -332,4 +332,4 @@ for (const x of list.filter((x) => x.verdict.level === 'red' || x.verdict.level 
 if (nugetFindings.length) log(`NuGet sources and folders: ${['red', 'amber', 'unknown', 'info', 'green'].map((l) => `${nugetFindings.filter((x) => x.level === l).length} ${l}`).join(', ')}`);
 for (const x of nugetFindings.filter((x) => x.level === 'red' || x.level === 'amber')) log(`  [${x.level}] ${x.title} — ${x.reasons.join('; ')}`);
 for (const pr of [...npmProjects, ...nugetProjects]) for (const n of pr.notes) log(`  note (${pr.path}): ${n}`);
-log(`→ ${relative(p.root, p.runDir)}/packages.json`);
+log(`→ ${showPath(p, p.runDir)}/packages.json`);

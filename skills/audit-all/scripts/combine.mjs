@@ -8,6 +8,7 @@
  */
 import fs from 'node:fs';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discoverReports, headline, parseSummary, combinedMarkdown, combinedHtml } from './lib/report.mjs';
@@ -28,7 +29,8 @@ Usage:
 
 Flags:
   --style serif|sans   Typeface for the HTML and PDF (default serif).
-  --repo PATH          Copy PATH/.solution-health/report.md into <run-dir>/solution-health-<repo name>/ first.
+  --repo PATH          Copy PATH's solution-health report (<reports>/solution-health/<repo name>/report.md,
+                       or PATH/.solution-health/report.md for --in-repo setups) into <run-dir>/solution-health-<repo name>/ first.
                        Repeat for several repos.
   --no-pdf             Write report.md and report.html only.
   --chrome PATH        Browser to print with (default: CHROME_PATH, installed Chrome/Chromium/Edge, Playwright's Chromium).
@@ -135,13 +137,25 @@ function skillVersion(name) {
   } catch { return null; }
 }
 
-/** Copy each repo's committed solution-health report into the run folder. */
-export function collectSolutionHealth(runDir, repos) {
+/**
+ * Where solution-health keeps a repo's report: its state folder under the report root (the same
+ * name rule as solution-health's defaultStateDir), else an in-repo `.solution-health/` (--in-repo).
+ */
+export function solutionHealthReport(root, { reports = reportsRoot(), readFile = readText, exists = fs.existsSync } = {}) {
+  const base = path.join(reports, 'solution-health');
+  const name = path.basename(root).replace(/[^\w.-]+/g, '-') || 'solution';
+  const owner = readFile(path.join(base, name, 'root.txt'));
+  const dir = owner === null || owner.trim() === root ? path.join(base, name) : path.join(base, `${name}-${crypto.createHash('sha256').update(root).digest('hex').slice(0, 8)}`);
+  return [path.join(dir, 'report.md'), path.join(root, '.solution-health', 'report.md')].find((f) => exists(f)) || null;
+}
+
+/** Copy each repo's solution-health report into the run folder. */
+export function collectSolutionHealth(runDir, repos, opts = {}) {
   const copied = [];
   for (const repo of repos) {
     const root = path.resolve(expandHome(repo, os.homedir()));
-    const src = path.join(root, '.solution-health', 'report.md');
-    if (!fs.existsSync(src)) { copied.push({ repo: root, ok: false }); continue; }
+    const src = solutionHealthReport(root, opts);
+    if (!src) { copied.push({ repo: root, ok: false }); continue; }
     const dest = path.join(runDir, `solution-health-${safeName(path.basename(root))}`);
     fs.mkdirSync(dest, { recursive: true });
     fs.copyFileSync(src, path.join(dest, 'report.md'));
@@ -153,7 +167,7 @@ export function collectSolutionHealth(runDir, repos) {
 export async function combine(args, { now = new Date(), log = (m) => process.stderr.write(`${m}\n`) } = {}) {
   const runDir = path.resolve(expandHome(args.dir, os.homedir()));
   if (!fs.existsSync(runDir)) throw new Error(`Run folder not found: ${runDir}`);
-  for (const c of collectSolutionHealth(runDir, args.repos)) log(c.ok ? `solution-health: copied ${c.repo} -> ${c.dest}` : `solution-health: no .solution-health/report.md in ${c.repo} (run solution-health there first)`);
+  for (const c of collectSolutionHealth(runDir, args.repos)) log(c.ok ? `solution-health: copied ${c.repo} -> ${c.dest}` : `solution-health: no report for ${c.repo} (run solution-health there first)`);
 
   const reports = discoverReports(runDir);
   if (!reports.length) throw new Error(`No reports in ${runDir}. Expected sub-folders like launch-audit/, security-audit-<repo>/, solution-health-<repo>/ with a report.md each.`);

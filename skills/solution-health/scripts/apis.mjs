@@ -6,9 +6,9 @@
 // Usage: node apis.mjs [--root <dir>] [--only "<api name>"]
 // Writes run/apis.json, run/changes/*.md and run/pending-snapshots/*.txt (accepted by finalize.mjs).
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import { parseArgs, paths, readJson, writeJson, safeFetch, mapLimit, sha256, slug, daysUntil, loadManifest, loadState, ensureDirs, log, nowIso,
-  DEFAULT_KEYWORDS, keywordRegex, splitSentences } from './lib.mjs';
+  DEFAULT_KEYWORDS, keywordRegex, splitSentences, showPath } from './lib.mjs';
 
 const args = parseArgs();
 const p = paths(args);
@@ -127,7 +127,7 @@ async function watch(api, url, kwRe, isFeed) {
         ...(oldText ? [`## Added text (${added.length} sentences)`, ...added.slice(0, 120).map((s) => `+ ${s}`), '', `## Removed text (${removed.length} sentences)`, ...removed.slice(0, 60).map((s) => `- ${s}`)] : ['## Page text (first 6000 chars)', text.slice(0, 6000)]),
       ].filter((l) => l !== null).join('\n');
       writeFileSync(join(changesDir, `${name}.md`), md);
-      page.changeFile = relative(p.root, join(changesDir, `${name}.md`));
+      page.changeFile = showPath(p, join(changesDir, `${name}.md`));
       page.needsReview = true;
     }
   }
@@ -192,4 +192,4 @@ log(`External APIs: ${results.length} tracked, ${untracked.length} untracked hos
 for (const r of results) log(`  [${r.verdict.level}] ${r.name}${r.verdict.needsReview ? '  ← READ CHANGE FILE' : ''} — ${r.verdict.reasons.join('; ') || 'ok'}`);
 const toRead = results.flatMap((r) => r.pages.filter((pg) => pg.needsReview).map((pg) => pg.changeFile));
 if (toRead.length) { log('Change files for Claude to read and assess:'); for (const f of toRead) log(`  ${f}`); }
-log(`→ ${relative(p.root, p.runDir)}/apis.json`);
+log(`→ ${showPath(p, p.runDir)}/apis.json`);

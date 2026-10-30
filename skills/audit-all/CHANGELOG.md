@@ -9,6 +9,7 @@ All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](
 - Model tiers per agent task: `haiku` for mechanical edits, `sonnet` for ordinary code changes, `opus` for security and large upgrades (`fable` on request). Defaults to `opus` for security and blocker tasks, else `sonnet`.
 - `owner: "human"` for work an agent must not do (rotating secrets, DNS and hosting settings, history purges, product calls). These are listed first in `TODO.md` and get no agent rules.
 - Agent tasks are grouped into rounds that can run in parallel: a task waits for its dependencies and for any task in the same repo that touches the same files (or lists none).
+- `--repo` finds solution-health 2.0's report in its state folder under the report root (`<reports>/solution-health/<repo>/report.md`), and still falls back to an in-repo `.solution-health/report.md`.
 - `scripts/lib/tasks.mjs` with tests. A broken `tasks.json` is reported field by field and no plan is written; the combined report is still written.
 
 ## [1.0.0] - 2026-10-30

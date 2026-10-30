@@ -61,11 +61,11 @@ folder name.
 |---|---|---|
 | launch-audit | Follow launch-audit's SKILL.md with `--out "<run>/launch-audit"` (one folder per URL: `launch-audit-<host>`) | `report.md`, `report.json` |
 | security-audit | Follow security-audit's SKILL.md with `--out "<run>/security-audit-<repo>"`, including the triage and `report.md` it asks you to write. Semgrep runs automatically when installed | `findings.json`, `report.md` |
-| solution-health | Follow solution-health's SKILL.md in the repo. It keeps its report in the repo (`.solution-health/report.md`) on purpose; pass the repo to `combine.mjs --repo` and it copies the report in | `.solution-health/` in the repo |
+| solution-health | Follow solution-health's SKILL.md in the repo. It keeps its state and report in its own stable folder (`<reports>/solution-health/<repo>/`, or `.solution-health/` with `--in-repo`) so the next run can compare; pass the repo to `combine.mjs --repo` and it copies the report in | `report.md` in its state folder |
 
 Each skill's own rules still apply (report only, no fixes, launch-audit only on sites the user owns
 or works on). Keep each skill's chat summary to a few lines: the combined report is the deliverable.
-If an audit cannot run (no Node 22 for Lighthouse, no network, no `.solution-health/manifest.json`
+If an audit cannot run (no Node 22 for Lighthouse, no network, no solution-health manifest
 yet and the user does not want to set one up), say so in the summary and carry on with the rest.
 
 ## 4. Write summary.md

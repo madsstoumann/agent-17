@@ -3,8 +3,8 @@
 // Usage: node runtimes.mjs [--root <dir>]
 // Reads run/discovery.json and run/packages.json. Writes run/runtimes.json.
 import { readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
-import { parseArgs, paths, readJson, writeJson, cachedJson, daysUntil, loadManifest, ensureDirs, log, nowIso } from './lib.mjs';
+import { join } from 'node:path';
+import { parseArgs, paths, readJson, writeJson, cachedJson, daysUntil, loadManifest, ensureDirs, log, nowIso, showPath } from './lib.mjs';
 
 const args = parseArgs();
 const p = paths(args);
@@ -89,4 +89,4 @@ results.sort((a, b) => order[a.verdict.level] - order[b.verdict.level]);
 writeJson(join(p.runDir, 'runtimes.json'), { generatedAt: nowIso(), reachable, runtimes: results });
 log(`Runtimes/frameworks found: ${results.length}${reachable ? '' : ' (endoflife.date UNREACHABLE — verdicts unknown)'}`);
 for (const r of results) log(`  [${r.verdict.level}] ${r.product} ${r.cycle ?? r.version} — ${r.verdict.reasons.join('; ')}  (${r.sources[0]})`);
-log(`→ ${relative(p.root, p.runDir)}/runtimes.json`);
+log(`→ ${showPath(p, p.runDir)}/runtimes.json`);
