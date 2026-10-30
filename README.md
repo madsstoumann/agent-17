@@ -29,6 +29,73 @@ A plugin added on claude.ai is saved to your account, so it also loads in Cowork
 
 Copy its folder into `~/.claude/skills/` (Claude Code), or zip the folder and upload it under Customize > Skills (claude.ai).
 
+## Setup for the audit skills
+
+None of this is required; each item makes launch-audit (and audit-all) more complete.
+
+### Environment variables
+
+Set them in your shell profile (`~/.zshrc` on a Mac, then open a new terminal), or for Claude Code only in
+`~/.claude/settings.json` under `"env": { … }`. Never put keys in a repo.
+
+| Variable | What it does |
+|---|---|
+| `PSI_API_KEY` | Runs Lighthouse through the PageSpeed Insights API: real-user field data (CrUX), the same numbers as pagespeed.web.dev, and a fallback when a firewall blocks local Lighthouse. Without it Lighthouse runs locally with Chrome (lab data only). |
+| `AUDIT_HEADERS` | Extra headers sent to the audited site and by Lighthouse, one `Name: value` per line. Used for the firewall bypass below. |
+| `AUDIT_OUT_DIR` | Where reports go. Default: your Downloads folder, else `~/audit-reports/`. |
+
+```bash
+export PSI_API_KEY=AIza...                              # no quotes needed
+export AUDIT_HEADERS="x-audit-bypass: <your value>"     # quotes needed: the value has a space
+```
+
+### Get a PageSpeed Insights key
+
+1. Open the [Google Cloud console](https://console.cloud.google.com/) and pick or create a project.
+2. **APIs & Services > Library**, search for **PageSpeed Insights API**, and choose **Enable**.
+3. **APIs & Services > Credentials > Create credentials > API key**.
+4. Edit the key: under **API restrictions**, restrict it to the PageSpeed Insights API.
+5. Set it as `PSI_API_KEY`. It is free; without a key the shared quota usually answers 429.
+
+### Let launch-audit past a Vercel firewall
+
+Vercel's Bot Protection can show headless Chrome a "Vercel Security Checkpoint" that a person's browser
+passes without noticing. Lighthouse then fails, and the report says "blocked by Vercel bot challenge".
+For a site you run, add a rule that lets requests with a secret header through:
+
+1. Make a value: `openssl rand -hex 24`.
+2. In the Vercel project: **Firewall > ⋯ > Configure > Add New… > Rule**. Name it "launch-audit bypass".
+3. **If** `Request Header` `x-audit-bypass` **Equals** your value, **Then** **Bypass**.
+4. **Save Rule**, then **Review Changes > Publish**. It applies at once, no redeploy.
+5. Locally: `export AUDIT_HEADERS="x-audit-bypass: <your value>"` (or pass `--header` for one run).
+
+Notes:
+
+- A custom Bypass rule skips custom rules and managed rules such as Bot Protection. It does **not**
+  skip **Attack Mode** or Vercel's own DDoS mitigations. If the Firewall overview shows Attack Mode
+  doing the challenging, turn it off under **Bot Management** (it is meant for an ongoing attack), use
+  a System Bypass rule for your IP (Pro and Enterprise), or rely on `PSI_API_KEY`.
+- The script sends the header only to the audited host. Lighthouse loads a real page, so it sends the
+  header with every request the page makes, third-party scripts included. Use a value made only for
+  this rule and replace it if it leaks. It is redacted in the saved Lighthouse JSON.
+- Cloudflare works the same way: a WAF custom rule (header equals your value) with the **Skip** action.
+
+## Fixing what an audit finds
+
+audit-all writes a fix plan next to its report: `fix/TODO.md` and one prompt per task in `fix/tasks/`,
+each with a suggested model. To have agents do the work, ask for it after the audit, in the same session
+or a later one:
+
+```text
+/skills:audit-fix                     # the newest audit-all run
+/skills:audit-fix ~/Downloads/audit-all/shop.example.dk-20261030-0927
+```
+
+It shows the plan, asks once, then runs one subagent per task in its own git worktree and branch.
+Fixes that pass end up on a local `audit-fix/<run>` branch per repo for you to review and merge;
+nothing is pushed. Tasks marked for people (rotating secrets, DNS, hosting settings) stay on the
+checklist. You can also paste any single prompt from `fix/tasks/` into a Claude Code session in that repo.
+
 ## Adding a skill
 
 Put it in its own folder under `skills/` with a `SKILL.md` and a `CHANGELOG.md`. The plugin picks it up with no other change. Refer to bundled scripts as `${CLAUDE_SKILL_DIR}/...`, not a fixed `~/.claude/skills/...` path, because a plugin installs the skill somewhere else.
