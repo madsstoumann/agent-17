@@ -41,7 +41,7 @@ Set them in your shell profile (`~/.zshrc` on a Mac, then open a new terminal), 
 | Variable | What it does |
 |---|---|
 | `PSI_API_KEY` | Runs Lighthouse through the PageSpeed Insights API: real-user field data (CrUX), the same numbers as pagespeed.web.dev, and a fallback when a firewall blocks local Lighthouse. Without it Lighthouse runs locally with Chrome (lab data only). |
-| `AUDIT_HEADERS` | Extra headers sent to the audited site and by Lighthouse, one `Name: value` per line. Used for the firewall bypass below. |
+| `AUDIT_HEADERS` | Extra headers sent to the audited site by launch-audit, Lighthouse and a11y-audit, one `Name: value` per line. Used for the firewall bypass below. |
 | `AUDIT_OUT_DIR` | Where reports go. Default: your Downloads folder, else `~/audit-reports/`. |
 
 ```bash
