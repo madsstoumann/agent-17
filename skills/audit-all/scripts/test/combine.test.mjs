@@ -107,6 +107,15 @@ test('headline: seo-audit and eco-audit figures', () => {
   assert.match(eco.what, /^Start page [\d.]+ g CO2e per view, rating A\+\.$/);
 });
 
+test('headline: privacy-audit and infra-audit use the Result line', () => {
+  for (const kind of ['privacy-audit', 'infra-audit']) {
+    const md = `# X audit — shop.dk\n\n**Site:** https://shop.dk/  ·  **Date:** 2026-10-30\n\n**Result:** 9 pass · 3 warn · 1 fail · 3 info · 0 skipped\n\n## 1. Section\n`;
+    const h = headline({ kind, target: null, md });
+    assert.deepEqual(h.counts, { pass: 9, warn: 3, fail: 1, info: 3, skipped: 0 });
+    assert.equal(h.target, 'shop.dk');
+  }
+});
+
 test('parseSummary and parseAction', () => {
   const s = parseSummary(SUMMARY);
   assert.equal(s.meta.subject, 'shop.example.dk');

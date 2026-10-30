@@ -21,6 +21,14 @@ export const KINDS = {
     title: 'Eco audit',
     standfirst: 'Real page loads weighed byte by byte and turned into CO2e per page view with the Sustainable Web Design model, plus a green hosting check.',
   },
+  'privacy-audit': {
+    title: 'Privacy audit',
+    standfirst: 'Three new visitors in a real browser: one makes no choice, one rejects, one accepts. Every cookie, tracker and third country they reach, the consent banner itself, and the privacy policy.',
+  },
+  'infra-audit': {
+    title: 'Infrastructure audit',
+    standfirst: 'Everything below the page: domain registration, DNS and DNSSEC, mail authentication, the certificate on every address, the edge, and every subdomain in Certificate Transparency logs.',
+  },
   'security-audit': {
     title: 'Security audit',
     standfirst: 'The repository and its git history, scanned for secrets, injection, unsafe request handling and vulnerable dependencies, then triaged by hand.',
@@ -78,7 +86,7 @@ export function headline(report) {
   const titleTarget = title && plain(title).split(/\s+[—–:-]\s+|:\s+/).slice(1).join(' ').trim();
   const h = { kind, target: report.target || titleTarget || null };
 
-  if (kind === 'launch-audit') {
+  if (kind === 'launch-audit' || kind === 'privacy-audit' || kind === 'infra-audit') {
     const line = md.match(/\*\*Result:\*\*\s*(.+)/);
     h.counts = line ? countsIn(line[1], ['pass', 'warn', 'fail', 'info', 'skipped']) : {};
     h.figures = [[h.counts.fail, 'fail'], [h.counts.warn, 'warn']];

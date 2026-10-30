@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.5.0] - 2026-10-30
+
+### Added
+- privacy-audit (cookies, trackers, consent banner, transfers, privacy policy) and infra-audit (domain, DNS, mail authentication, TLS per endpoint, CT subdomains) as sub-audits on the site URL, into `<run>/privacy-audit` and `<run>/infra-audit`. Both get a section in the combined report and fail/warn counts on the cover; `privacy` and `infra` are valid `tasks.json` sources, and `--skip privacy,infra` drops them.
+- When they run, launch-audit runs with `--skip privacy` and `--skip tls`, so each finding is reported once.
+
 ## [1.4.0] - 2026-10-30
 
 ### Added
