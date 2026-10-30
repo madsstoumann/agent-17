@@ -252,7 +252,7 @@ test('resolveBaseline: explicit file or folder, then last-findings.json, then an
 test('target-state.mjs is identical in every skill that carries a copy', () => {
   const here = path.dirname(new URL(import.meta.url).pathname);
   const mine = fs.readFileSync(path.join(here, '..', 'lib', 'target-state.mjs'), 'utf8');
-  for (const s of ['launch-audit', 'audit-all']) {
+  for (const s of ['launch-audit', 'audit-all', 'a11y-audit']) {
     const f = path.join(here, '..', '..', '..', s, 'scripts', 'lib', 'target-state.mjs');
     if (fs.existsSync(f)) assert.equal(fs.readFileSync(f, 'utf8'), mine, s);
   }
