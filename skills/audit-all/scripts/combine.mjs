@@ -3,6 +3,7 @@
  * audit-all: merge the per-audit reports in a run folder into one report.md, report.html and report.pdf.
  *
  *   node combine.mjs <run-dir> [--style serif|sans] [--repo PATH]... [--no-pdf] [--chrome PATH]
+ *   (also writes fix/TODO.md and fix/tasks/*.md when <run-dir>/tasks.json exists)
  *   node combine.mjs --new <name>      print a fresh run folder path (and create it)
  */
 import fs from 'node:fs';
@@ -11,8 +12,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discoverReports, headline, parseSummary, combinedMarkdown, combinedHtml } from './lib/report.mjs';
 import { printPdf } from './lib/pdf.mjs';
+import { writeFixPlan } from './lib/tasks.mjs';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, '..', 'assets');
 const SIBLINGS = path.join(HERE, '..', '..');
@@ -20,7 +22,8 @@ const SIBLINGS = path.join(HERE, '..', '..');
 const USAGE = `audit-all ${VERSION}: combine launch-audit, security-audit and solution-health reports
 
 Usage:
-  node combine.mjs <run-dir> [flags]   Combine <run-dir>/<kind>[-<target>]/report.md into <run-dir>/report.{md,html,pdf}
+  node combine.mjs <run-dir> [flags]   Combine <run-dir>/<kind>[-<target>]/report.md into <run-dir>/report.{md,html,pdf},
+                                       and <run-dir>/tasks.json (if any) into fix/TODO.md and fix/tasks/*.md
   node combine.mjs --new <name>        Create and print a run folder: <reports>/audit-all/<name>-<stamp>/
 
 Flags:
@@ -164,9 +167,14 @@ export async function combine(args, { now = new Date(), log = (m) => process.std
 
   const md = combinedMarkdown({ summary, reports, heads, date: now, version: VERSION });
   const html = combinedHtml({ summary, reports, heads, date: now, version: VERSION, css: stylesheet(args.style), style: args.style, toolVersions });
-  const out = { md: path.join(runDir, 'report.md'), html: path.join(runDir, 'report.html'), pdf: null, reports: reports.map((r) => r.folder) };
+  const out = { md: path.join(runDir, 'report.md'), html: path.join(runDir, 'report.html'), pdf: null, todo: null, reports: reports.map((r) => r.folder) };
   fs.writeFileSync(out.md, md);
   fs.writeFileSync(out.html, html);
+  const fix = writeFixPlan(runDir, { date: now, subject: summary.meta.subject || null });
+  for (const w of fix.warnings || []) log(`tasks.json: ${w}`);
+  if (fix.written) out.todo = fix.todo;
+  else if (fix.errors?.length) log(`Fix plan not written, tasks.json has problems:\n  ${fix.errors.join('\n  ')}`);
+  else log('tasks.json not found: no fix plan written.');
   if (args.pdf) {
     const pdfFile = path.join(runDir, 'report.pdf');
     const r = await printPdf(out.html, pdfFile, { chromePath: args.chrome });
@@ -189,7 +197,7 @@ async function main() {
   if (!args.dir) { process.stderr.write(USAGE); process.exit(2); }
   try {
     const out = await combine(args);
-    process.stdout.write(`combined: ${out.reports.join(', ')}\n\nreport.md:   ${out.md}\nreport.html: ${out.html}\nreport.pdf:  ${out.pdf || '(not written)'}\n`);
+    process.stdout.write(`combined: ${out.reports.join(', ')}\n\nreport.md:   ${out.md}\nreport.html: ${out.html}\nreport.pdf:  ${out.pdf || '(not written)'}\nfix plan:    ${out.todo || '(not written)'}\n`);
   } catch (e) {
     process.stderr.write(`${e.message}\n`);
     process.exit(1);

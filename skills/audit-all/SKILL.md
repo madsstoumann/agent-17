@@ -1,10 +1,10 @@
 ---
 name: audit-all
-description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, code security and dependency health. Runs launch-audit on the live URL, security-audit and solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list. Also when asked to combine existing launch-audit, security-audit or solution-health reports into one.
+description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, code security and dependency health. Runs launch-audit on the live URL, security-audit and solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing launch-audit, security-audit or solution-health reports into one.
 argument-hint: "[url] [repo path ...] [--style serif|sans] [--out DIR] [--skip launch,security,health]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Audit all
@@ -12,7 +12,9 @@ metadata:
 One run folder, three audits, one report. This skill does not check anything itself: it runs the
 sibling skills (launch-audit, security-audit, solution-health), each writing its own `report.md`
 as usual, then you write a short `summary.md` and `scripts/combine.mjs` merges everything into a
-combined `report.md`, a self-contained `report.html` and a typeset `report.pdf`.
+combined `report.md`, a self-contained `report.html` and a typeset `report.pdf`. You also write
+`tasks.json`, and `combine.mjs` turns it into a fix plan: `fix/TODO.md` and one prompt per task in
+`fix/tasks/`, ready for the audit-fix skill or for pasting into any session.
 
 `${CLAUDE_SKILL_DIR}` is this skill's folder. The sibling skills sit next to it when installed as
 the `skills` plugin (`${CLAUDE_SKILL_DIR}/../launch-audit/` and so on). If they are installed some
@@ -103,7 +105,53 @@ In order. Duplicates across the audits are merged.
   in both security-audit and solution-health. One item, both sources.
 - Use only facts from the reports. More `##` sections (for example "Can wait") are rendered too.
 
-## 5. Combine
+## 5. Write tasks.json
+
+`<run>/tasks.json` is the fix plan as data: **every** confirmed problem worth fixing, not only the
+"Fix first" items. Merge duplicates the same way, one task per fix. Leave out false positives,
+"needs a look" items you could not confirm (list them in summary.md instead) and pure info.
+
+```json
+{
+  "subject": "shop.example.dk",
+  "repos": { "shop-web": "/Users/mads/code/shop-web" },
+  "tasks": [
+    {
+      "id": "T1", "title": "Rotate the Stripe secret key", "severity": "blocker", "owner": "human",
+      "sources": ["security"], "area": "secrets",
+      "evidence": "sk_live_… committed in config/payments.js (a1b2c3d, 2026-03-02), still in history.",
+      "fix": "Roll the key in the Stripe dashboard and update the hosting secret."
+    },
+    {
+      "id": "T2", "title": "Read the Stripe key from the environment", "severity": "blocker",
+      "owner": "agent", "model": "sonnet", "sources": ["security"], "repo": "shop-web",
+      "files": ["config/payments.js"], "dependsOn": ["T1"],
+      "evidence": "config/payments.js:4 assigns the live key as a string literal.",
+      "fix": "Use process.env.STRIPE_SECRET_KEY and fail fast when it is missing; add it to .env.example.",
+      "verify": "No sk_live_ string in the working tree; the app starts with the variable set.",
+      "refs": ["security-audit-shop-web/report.md"]
+    }
+  ]
+}
+```
+
+| Field | Notes |
+|---|---|
+| `id` | `T1`, `T2`, … Stable within the run; `dependsOn` refers to these. |
+| `severity` | `blocker`, `high`, `medium` or `low`, the same call as in the reports. |
+| `owner` | `agent`, or `human` for anything an agent must not or cannot do: rotating secrets, DNS, CDN or hosting settings outside the repo, purging git history, product or legal calls. |
+| `model` | For agent tasks, the cheapest tier that will do it well: `haiku` for mechanical, local edits (a header in a config file, a meta tag, alt text, a patch bump with no code changes); `sonnet` for ordinary code changes, multi-file edits and minor upgrades; `opus` for security fixes that need data-flow reasoning (injection, XSS, auth, SSRF), and for big jobs (a framework major or EOL runtime upgrade, replacing a closing API). `fable` only when the user asks for it. Left out, security and blocker tasks get `opus`, the rest `sonnet`. |
+| `repo` | A key of `repos` (absolute path). Required for agent tasks. |
+| `files` | Paths relative to the repo. Tasks in one repo that share a file, or that list no files, never run at the same time, so list them when you know them. |
+| `evidence`, `fix` | From the reports: what is wrong where, and the fix. Quote code as code; never paste a secret, redact it. |
+| `verify` | How to prove it is fixed: a command, a test to add, or the launch-audit check that should pass on the next run. |
+| `sources` | `launch`, `security`, `health`. `refs` (optional) points at the sub-report. |
+
+Launch-audit findings are often fixed outside the code (CDN headers, DNS, redirects at the host).
+Make them agent tasks only when the repo holds the setting (`nuxt.config`, `web.config`,
+`next.config`, `vercel.json`, `staticwebapp.config.json`, middleware); otherwise `owner: "human"`.
+
+## 6. Combine
 
 ```bash
 node "${CLAUDE_SKILL_DIR}/scripts/combine.mjs" "<run>" [--style serif|sans] [--repo <repo>]...
@@ -111,7 +159,19 @@ node "${CLAUDE_SKILL_DIR}/scripts/combine.mjs" "<run>" [--style serif|sans] [--r
 
 It writes `<run>/report.md` (summary, an at-a-glance table, then every report with headings moved
 down a level), `<run>/report.html` (fonts embedded, opens anywhere) and `<run>/report.pdf`. It prints
-the three paths: quote them to the user, with the verdict and the "Fix first" list in a few lines.
+the three paths and the fix plan: quote them to the user, with the verdict and the "Fix first" list
+in a few lines, then one line on the plan ("12 tasks: 9 for agents, 3 for you; run audit-fix to
+start them").
+
+`fix/TODO.md` lists the tasks for people first, then the agent tasks in rounds: tasks in one round
+touch different files or repos and can run in parallel. Each `fix/tasks/NN-slug.md` is a
+self-contained prompt with the problem, files, fix, "done when" check and the rules (one task only,
+run the repo's checks, commit without pushing, never touch secrets or production, stop and report
+when blocked). If `tasks.json` has errors, `combine.mjs` lists them and writes no plan; fix the file
+and run it again (`--no-pdf` to skip the PDF while iterating).
+
+Do not start fixing from here: this skill reports. When the user wants the fixes done, use the
+audit-fix skill on the run folder.
 
 The PDF is printed by headless Chrome, Chromium or Edge (installed apps, `CHROME_PATH`, `--chrome
 PATH`, or Playwright's Chromium). With no browser it still writes `report.html` and says so; tell
@@ -130,5 +190,6 @@ previous run's `report.json` (`--baseline`), and solution-health always compares
 - `scripts/lib/markdown.mjs`: the small Markdown renderer (raw HTML in reports is escaped).
 - `scripts/lib/report.mjs`: finds reports, pulls headline numbers, builds the Markdown and HTML.
 - `scripts/lib/pdf.mjs`: finds a browser and prints to PDF.
+- `scripts/lib/tasks.mjs`: checks `tasks.json`, orders agent tasks into rounds, writes `fix/`.
 - `assets/report.css`: the A4 layout for both styles. `assets/fonts/`: Newsreader and IBM Plex
   (SIL Open Font License, see the `OFL-*.txt` files).

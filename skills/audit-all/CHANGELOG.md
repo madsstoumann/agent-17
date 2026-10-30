@@ -2,6 +2,15 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.1.0] - 2026-10-30
+
+### Added
+- Fix plan. Claude writes `tasks.json` next to `summary.md` (every confirmed fix, duplicates merged, each with severity, owner, suggested model, repo, files, evidence, fix and a "done when" check), and `combine.mjs` turns it into `fix/TODO.md` and one self-contained prompt per task in `fix/tasks/`.
+- Model tiers per agent task: `haiku` for mechanical edits, `sonnet` for ordinary code changes, `opus` for security and large upgrades (`fable` on request). Defaults to `opus` for security and blocker tasks, else `sonnet`.
+- `owner: "human"` for work an agent must not do (rotating secrets, DNS and hosting settings, history purges, product calls). These are listed first in `TODO.md` and get no agent rules.
+- Agent tasks are grouped into rounds that can run in parallel: a task waits for its dependencies and for any task in the same repo that touches the same files (or lists none).
+- `scripts/lib/tasks.mjs` with tests. A broken `tasks.json` is reported field by field and no plan is written; the combined report is still written.
+
 ## [1.0.0] - 2026-10-30
 
 ### Added
