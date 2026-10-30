@@ -1,29 +1,39 @@
 ---
 name: solution-health
-description: Periodic health check of this solution's dependencies and external integrations. Checks npm and NuGet packages (outdated, vulnerable via npm audit / dotnet, deprecated, unmaintained or archived upstream), the NuGet sources and package folders the solution's own NuGet.config resolves to, runtime and framework end-of-life (Node, .NET, Umbraco, Next.js…), and external APIs the code calls (deprecation/sunset headers, shutdown notices on the provider's docs, changelog or status pages, including Danish notices like DAWA's). Keeps a committed manifest and state in .solution-health/ so each run reports what changed since last time. Use whenever someone asks to run the solution or dependency health check, audit dependencies or packages, check for deprecated or abandoned packages, check if an API we use is being shut down or deprecated, do a quarterly maintenance check, or asks "is anything in this project end-of-life?", even if they do not name the skill.
-argument-hint: "[--root PATH] [--transitive] [--offline] [--skip packages,runtimes,apis]"
+description: Periodic health check of this solution's dependencies and external integrations. Checks npm and NuGet packages (outdated, vulnerable via npm audit / dotnet, deprecated, unmaintained or archived upstream), the NuGet sources and package folders the solution's own NuGet.config resolves to, runtime and framework end-of-life (Node, .NET, Umbraco, Next.js…), and external APIs the code calls (deprecation/sunset headers, shutdown notices on the provider's docs, changelog or status pages, including Danish notices like DAWA's). Keeps a manifest and state per solution in the shared report folder (Downloads by default) so each run reports what changed since last time. Use whenever someone asks to run the solution or dependency health check, audit dependencies or packages, check for deprecated or abandoned packages, check if an API we use is being shut down or deprecated, do a quarterly maintenance check, or asks "is anything in this project end-of-life?", even if they do not name the skill.
+argument-hint: "[--root PATH] [--in-repo | --dir PATH] [--transitive] [--offline] [--skip packages,runtimes,apis]"
 allowed-tools: Bash(node:*), Bash(npm:*), Bash(dotnet:*), Read, Write, Edit, WebFetch, WebSearch
 metadata:
-  version: "1.1.1"
+  version: "2.0.0"
 ---
 
 # Solution health check
 
 This skill exists because a site kept calling DAWA (the Danish address API) long after its shutdown was announced on DAWA's own docs page. Nobody read that page. `npm audit` and `dotnet list package --vulnerable` only catch known CVEs. They do not tell you that a package's repo was archived, that a runtime is out of support, or that a government API is closing. This skill covers all of these and remembers what it saw last time, so a dev running it every month or quarter sees what changed.
 
-It is **report only**. Do not change code, upgrade packages or edit lockfiles as part of a run. The only exception is `npm audit fix`, and only when the developer explicitly asks for it (never `--force`). The deliverable is `.solution-health/report.md` plus a short summary in chat.
+It is **report only**. Do not change code, upgrade packages or edit lockfiles as part of a run. The only exception is `npm audit fix`, and only when the developer explicitly asks for it (never `--force`). The deliverable is `report.md` in the state folder (below) plus a short summary in chat.
 
 ## Files
 
-Everything lives in `.solution-health/` at the solution root and is committed, except `run/`:
+Everything lives in the **state folder**, outside the repo by default, so a run never adds files to the solution:
+`<reports>/solution-health/<solution folder name>/`, where `<reports>` is `$AUDIT_OUT_DIR` if set, else the
+Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`, the same as the other
+audit skills. The name is stable, so each run compares with the previous one; a `root.txt` records which solution
+the folder belongs to (two solutions with the same folder name get a hash suffix). `check.mjs` prints the folder.
+
+A team that wants the state committed, so every developer and the PR history see it, runs with `--in-repo`
+(`.solution-health/` in the solution) or `--dir PATH`. Pass the same flag to every script. An old in-repo
+`.solution-health/` from before 2.0.0 is copied to the state folder on the first run (not `run/`), and left in
+place: tell the user it is no longer used and can be deleted, unless they want `--in-repo`.
 
 | File | Owner | Purpose |
 |---|---|---|
+
 | `manifest.json` | Team (you propose, a dev approves) | External APIs to watch, ignore lists, thresholds. Template: `templates/manifest.example.json` |
-| `state.json` | Scripts | Last verdict per item, page hashes, assessments. Diffing this file in a PR shows what changed |
+| `state.json` | Scripts | Last verdict per item, page hashes, assessments |
 | `snapshots/*.txt` | Scripts | Normalized text of each watched page, used to diff the next run |
-| `report.md` | Scripts + you | Latest report. Commit it, so the git history shows when a warning first appeared |
-| `run/` | Scripts | Scratch: raw results, HTTP cache, change files. Add `.solution-health/run/` to `.gitignore` |
+| `report.md` | Scripts + you | Latest report |
+| `run/` | Scripts | Scratch: raw results, HTTP cache, change files (with `--in-repo`, add `.solution-health/run/` to `.gitignore`) |
 
 Scripts are in `scripts/` next to this file. They are zero-dependency Node (18+), so they run on any dev machine with Node, including .NET-only devs. Run them from the solution root, or pass `--root <path>`. The commands below use `${CLAUDE_SKILL_DIR}`, this skill's folder wherever it is installed (`.claude/skills/solution-health/` in the solution, `~/.claude/skills/`, or a plugin); if it is not filled in, use the folder this `SKILL.md` is in. `references/sample-report.md` shows what a finished report looks like.
 
@@ -37,7 +47,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/check.mjs"
 
 This runs discover → packages → runtimes → apis in order and prints a summary of each. Options: `--transitive` (include transitive packages; noisy, use for audits), `--offline` (no network), `--skip apis` and similar.
 
-If `.solution-health/manifest.json` does not exist, this is the **first run**. Do step 2 before anything else, then run `check.mjs` again.
+If the state folder has no `manifest.json`, this is the **first run**. Do step 2 before anything else, then run `check.mjs` again.
 
 ### 2. First run, or new hosts found: build the API manifest
 
@@ -54,7 +64,7 @@ On later runs, only new untracked hosts need this treatment. The report lists th
 
 ### 3. Read and judge every change file
 
-`apis.mjs` prints a list of change files (`.solution-health/run/changes/*.md`). A change file is written when a watched page changed since the accepted snapshot, or when a page mentions deprecation keywords on first sight. Each file contains the added and removed sentences, plus the sentences that match deprecation keywords in English and Danish.
+`apis.mjs` prints a list of change files (`run/changes/*.md` in the state folder). A change file is written when a watched page changed since the accepted snapshot, or when a page mentions deprecation keywords on first sight. Each file contains the added and removed sentences, plus the sentences that match deprecation keywords in English and Danish.
 
 Read every one. Keyword matching is only a filter: "lukker" also matches a cookie banner, and a real shutdown notice can avoid every keyword ("vi overgår til en ny platform"). For each page, decide:
 
@@ -63,7 +73,7 @@ Read every one. Keyword matching is only a filter: "lukker" also matches a cooki
 - `info`: a relevant change that needs no action.
 - `benign`: noise (layout, unrelated news, cookie text, dates).
 
-Write the results to `.solution-health/run/assessments.json`, keyed by the watched URL:
+Write the results to `run/assessments.json` in the state folder, keyed by the watched URL:
 
 ```json
 {
@@ -100,7 +110,7 @@ Then reply in chat with:
 - the untracked hosts that still need a decision,
 - gaps (unreachable sources, missing tools), so a clean report is not mistaken for a clean bill of health.
 
-Keep it short; the report has the detail. Remind them to commit `.solution-health/` (except `run/`).
+Keep it short; the report has the detail, and give its full path. With `--in-repo`, remind them to commit `.solution-health/` (except `run/`).
 
 ## How the verdicts work
 

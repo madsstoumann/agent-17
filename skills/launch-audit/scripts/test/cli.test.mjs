@@ -96,3 +96,13 @@ test('reportsRoot: AUDIT_OUT_DIR, then XDG download dir, then ~/Downloads, then 
   assert.equal(reportsRoot({ env: { XDG_DOWNLOAD_DIR: '/data/dl' }, home, isDir: has('/data/dl'), readFile: () => null }), '/data/dl');
   assert.equal(reportsRoot({ env: {}, home, isDir: has(), readFile: () => null }), '/home/me/audit-reports');
 });
+
+test('parseCli reads --header (repeatable) and AUDIT_HEADERS, and rejects a malformed one', () => {
+  const r = parseCli(['shop.example.dk', '--header', 'X-Bypass: a', '--header', 'X-Two: b'], { AUDIT_HEADERS: 'X-Env: c\n' });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.opts.headers, { 'x-bypass': 'a', 'x-two': 'b', 'x-env': 'c' });
+  assert.deepEqual(parseCli(['shop.example.dk'], {}).opts.headers, {});
+  const bad = parseCli(['shop.example.dk', '--header', 'nope'], {});
+  assert.equal(bad.ok, false);
+  assert.match(bad.error, /Name: value/);
+});

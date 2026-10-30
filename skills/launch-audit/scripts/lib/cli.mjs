@@ -6,7 +6,7 @@ import { parseArgs } from 'node:util';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { normaliseUrl, isPrivateHost, hostOf, stripWww, VERSION } from './http.mjs';
+import { normaliseUrl, isPrivateHost, hostOf, stripWww, parseHeaderLines, VERSION } from './http.mjs';
 
 export const DEFAULTS = {
   pages: 3, maxPages: 100, maxExternal: 200, timeout: 15000, lhTimeout: 240000, concurrency: 6,
@@ -75,6 +75,7 @@ const OPTIONS = {
   'lh-timeout': { type: 'string' },
   concurrency: { type: 'string' },
   ua: { type: 'string' },
+  header: { type: 'string', multiple: true },
   from: { type: 'string' },
   strict: { type: 'boolean' },
   json: { type: 'boolean' },
@@ -152,6 +153,7 @@ export function parseCli(argv, env = process.env) {
       lhTimeout: num(values['lh-timeout'], DEFAULTS.lhTimeout, 'lh-timeout'),
       concurrency: Math.max(1, num(values.concurrency, DEFAULTS.concurrency, 'concurrency')),
       ua: values.ua || null,
+      headers: parseHeaderLines([...(values.header || []), ...String(env.AUDIT_HEADERS || '').split('\n').filter((l) => l.trim())]),
       from: values.from || env.AUDIT_FROM || '',
       strict: Boolean(values.strict),
       json: Boolean(values.json),
@@ -248,10 +250,12 @@ Usage: node audit.mjs <url> [flags]
   --timeout MS                   Per request (default ${DEFAULTS.timeout}).   --lh-timeout MS   Per Lighthouse run (default ${DEFAULTS.lhTimeout}).
   --concurrency N                Parallel requests (default ${DEFAULTS.concurrency}).
   --ua STRING / --from EMAIL     Override the User-Agent / add a From: header (also AUDIT_FROM).
+  --header "Name: value"         Send this header to the audited site and from Lighthouse (repeatable; also AUDIT_HEADERS,
+                                 one per line). For a WAF bypass rule; never sent to third-party services by the script.
   --strict                       Exit 3 when anything fails (CI). Default exit code is 0 whatever the findings.
   --json                         Print report.json to stdout instead of the summary.   --quiet   No progress on stderr.
   -h, --help / -v, --version
 
-Environment: PSI_API_KEY (PageSpeed Insights, adds CrUX field data), SECURITYHEADERS_API_KEY (paid API), CHROME_PATH, AUDIT_FROM.
+Environment: PSI_API_KEY (PageSpeed Insights, adds CrUX field data), SECURITYHEADERS_API_KEY (paid API), CHROME_PATH, AUDIT_FROM, AUDIT_HEADERS.
 Exit codes: 0 done, 1 usage, 2 start URL unreachable, 3 --strict with failures.`;
 }

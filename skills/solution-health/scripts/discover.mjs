@@ -4,7 +4,7 @@
 // Writes .solution-health/run/discovery.json and prints a short summary.
 import { readFileSync } from 'node:fs';
 import { basename, dirname, relative } from 'node:path';
-import { parseArgs, paths, walk, ext, fileSize, writeJson, loadManifest, ensureDirs, log, nowIso } from './lib.mjs';
+import { parseArgs, paths, walk, ext, fileSize, writeJson, loadManifest, ensureDirs, log, nowIso, showPath } from './lib.mjs';
 
 const args = parseArgs();
 const p = paths(args);
@@ -112,5 +112,5 @@ log(`Runtime pins: ${out.runtimePins.join(', ') || 'none'}`);
 log(`Hosts: ${hosts.length} total, ${hosts.filter((h) => h.status === 'tracked').length} tracked, ${untracked.length} untracked (${untracked.filter((h) => h.priority === 'high').length} look like APIs/config)`);
 for (const h of untracked.slice(0, 25)) log(`  [${h.priority}] ${h.host}  (${h.fileCount} files, e.g. ${h.files[0]})`);
 if (out.trackedApisNotSeen.length) log(`Tracked APIs no longer referenced in code: ${out.trackedApisNotSeen.join(', ')}`);
-log(`→ ${relative(p.root, p.runDir)}/discovery.json`);
+log(`→ ${showPath(p, p.runDir)}/discovery.json`);
 void dirname;

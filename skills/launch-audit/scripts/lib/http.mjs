@@ -11,7 +11,7 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 export const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 export const AUDIT_HEADER = `launch-audit/${VERSION}`;
 
@@ -158,13 +158,44 @@ async function readCapped(res, maxBytes, as) {
 }
 
 /**
- * createHttp({ timeout, ua, from, concurrency, log }) -> { request, get, head, limit }
+ * parseHeaderLines(["Name: value", ...]) -> { name: value } (lowercase names). Throws on a line without "Name: value".
+ */
+export function parseHeaderLines(lines) {
+  const out = {};
+  for (const line of lines || []) {
+    const m = String(line).match(/^\s*([!#$%&'*+.^_`|~0-9A-Za-z-]+)\s*:\s*(.*?)\s*$/);
+    if (!m || !m[2]) throw new Error(`--header must look like "Name: value" (got "${line}")`);
+    out[m[1].toLowerCase()] = m[2];
+  }
+  return out;
+}
+
+/**
+ * Is this response a WAF bot challenge? -> 'Vercel' | 'Cloudflare' | 'WAF' | null.
+ * Vercel and Cloudflare mark challenges in a header; other WAFs only in the page.
+ */
+export function challengeVendor(status, body, headers = {}) {
+  if (/challenge|deny/i.test(headers['x-vercel-mitigated'] || '')) return 'Vercel';
+  if (/challenge/i.test(headers['cf-mitigated'] || '')) return 'Cloudflare';
+  if (![403, 429, 503].includes(status)) return null;
+  const b = body || '';
+  if (/vercel security checkpoint/i.test(b)) return 'Vercel';
+  if (/just a moment|cf-chl|challenge-platform|attention required/i.test(b)) return 'Cloudflare';
+  if (/access denied|incapsula|akamai/i.test(b)) return 'WAF';
+  return null;
+}
+
+/**
+ * createHttp({ timeout, ua, from, concurrency, log, siteHeaders, siteHosts }) -> { request, get, head, limit }
+ *
+ * `siteHeaders` (e.g. a WAF bypass header from --header) go only to `siteHosts`, never to
+ * third-party services such as PSI or the validators.
  *
  * request(url, { method, headers, redirect ('follow' | 'manual'), maxBytes, timeout, as ('text' | 'buffer'), retry, body })
  *   -> { url, finalUrl, status, ok, headers, setCookie, body, bytes, truncated, contentType, ms, redirected, error? }
  * A network failure never throws: status 0 and `error` is set. HTTP errors are ordinary responses.
  */
-export function createHttp({ timeout = 15000, ua = UA, from = '', concurrency = 6, log = () => {} } = {}) {
+export function createHttp({ timeout = 15000, ua = UA, from = '', concurrency = 6, log = () => {}, siteHeaders = {}, siteHosts = [] } = {}) {
   const limit = pLimit(concurrency);
   const baseHeaders = {
     'user-agent': ua,
@@ -179,7 +210,8 @@ export function createHttp({ timeout = 15000, ua = UA, from = '', concurrency = 
     const timer = setTimeout(() => ctrl.abort(new Error('timeout')), t);
     const started = Date.now();
     try {
-      const res = await fetch(url, { method, redirect, headers: { ...baseHeaders, ...headers }, signal: ctrl.signal, ...(reqBody != null ? { body: reqBody } : {}) });
+      const own = siteHosts.length && siteHosts.includes(hostOf(url)) ? siteHeaders : {};
+      const res = await fetch(url, { method, redirect, headers: { ...baseHeaders, ...own, ...headers }, signal: ctrl.signal, ...(reqBody != null ? { body: reqBody } : {}) });
       const { headers: hobj, setCookie } = headersToObject(res.headers);
       let body = null; let bytes = 0; let truncated = false;
       if (method !== 'HEAD' && maxBytes > 0) {
@@ -241,10 +273,11 @@ export function createHttp({ timeout = 15000, ua = UA, from = '', concurrency = 
  * What fetch cannot tell us: negotiated HTTP version, DNS/TLS/TTFB timings, remote IP.
  * Uses curl's -w '%{json}'. Never asks for brotli (this curl cannot decode it).
  */
-export async function curlProbe(url, { insecure = false, timeout = 20000, ua = UA, follow = false } = {}) {
+export async function curlProbe(url, { insecure = false, timeout = 20000, ua = UA, follow = false, headers = {} } = {}) {
   const args = [
     '-s', '-o', '/dev/null', '-w', '%{json}', '--max-time', String(Math.ceil(timeout / 1000)),
     '-A', ua, '-H', `X-Audit: ${AUDIT_HEADER}`, '-H', 'Accept-Encoding: gzip',
+    ...Object.entries(headers).flatMap(([k, v]) => ['-H', `${k}: ${v}`]),
     ...(insecure ? ['-k'] : []), ...(follow ? ['-L'] : []), url,
   ];
   try {

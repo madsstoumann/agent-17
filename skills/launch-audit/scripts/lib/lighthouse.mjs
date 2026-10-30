@@ -112,20 +112,22 @@ export function checkLocalLighthouse({ nodeVersion = process.versions.node, chro
 
 /**
  * The argv after `npx -y lighthouse@^13.4.1`: string[]. All five categories run (never
- * --only-categories); `desktop` adds --preset=desktop, `insecure` ignores certificate errors.
+ * --only-categories); `desktop` adds --preset=desktop, `insecure` ignores certificate errors,
+ * `headers` are sent with every request (Lighthouse cannot limit them to one host), `root` adds
+ * --no-sandbox (Chrome refuses to start sandboxed as root, as in containers and cloud sessions).
  * Throws TypeError without url or file.
  */
-export function buildLighthouseArgs({ url, file, desktop = false, insecure = false } = {}) {
+export function buildLighthouseArgs({ url, file, desktop = false, insecure = false, headers = {}, root = process.getuid?.() === 0 } = {}) {
   if (!url || !file) throw new TypeError('buildLighthouseArgs: url and file are required');
   return [
     url,
     '--output=json',
     `--output-path=${file}`,
-    `--chrome-flags=--headless=new${insecure ? ' --ignore-certificate-errors' : ''}`,
+    `--chrome-flags=--headless=new${insecure ? ' --ignore-certificate-errors' : ''}${root ? ' --no-sandbox' : ''}`,
     '--quiet',
     '--disable-full-page-screenshot',
     '--max-wait-for-load=45000',
-    '--extra-headers={"X-Audit":"launch-audit/1.0"}',
+    `--extra-headers=${JSON.stringify({ 'X-Audit': 'launch-audit/1.0', ...headers })}`,
     ...(desktop ? ['--preset=desktop'] : []),
   ];
 }
@@ -137,10 +139,10 @@ export function buildLighthouseArgs({ url, file, desktop = false, insecure = fal
  * runtimeError inside it; `error` then ends with the last ~15 stderr lines. The report, when
  * it parsed, is returned even when ok is false. `file` is the caller's to delete.
  */
-export async function runLighthouseLocal({ url, file, desktop = false, insecure = false, timeout = 240000, chromePath, log = () => {} } = {}) {
+export async function runLighthouseLocal({ url, file, desktop = false, insecure = false, headers = {}, timeout = 240000, chromePath, log = () => {} } = {}) {
   const result = { ok: false, file: file ?? null, lhr: null, ms: 0, version: null, stderrTail: '' };
   if (!url || !file) return { ...result, error: 'url and file are required' };
-  const args = buildLighthouseArgs({ url, file, desktop, insecure });
+  const args = buildLighthouseArgs({ url, file, desktop, insecure, headers });
   log(`lighthouse ${desktop ? 'desktop' : 'mobile'} ${url} via npx ${LIGHTHOUSE_SPEC}`);
   const run = await runCommand('npx', ['-y', LIGHTHOUSE_SPEC, ...args], { timeout, env: chromePath ? { CHROME_PATH: chromePath } : undefined });
   result.ms = run.ms;
@@ -148,7 +150,15 @@ export async function runLighthouseLocal({ url, file, desktop = false, insecure 
   let readError = null;
   try {
     const lhr = JSON.parse(await fsp.readFile(file, 'utf8'));
-    if (lhr && typeof lhr === 'object') { result.lhr = lhr; result.version = lhr.lighthouseVersion ?? null; }
+    if (lhr && typeof lhr === 'object') {
+      // Lighthouse echoes --extra-headers in configSettings; keep a --header secret out of the saved report.
+      const extra = lhr.configSettings?.extraHeaders;
+      if (extra && Object.keys(headers).length) {
+        for (const k of Object.keys(extra)) if (Object.keys(headers).some((h) => h.toLowerCase() === k.toLowerCase())) extra[k] = '(redacted)';
+        await fsp.writeFile(file, JSON.stringify(lhr));
+      }
+      result.lhr = lhr; result.version = lhr.lighthouseVersion ?? null;
+    }
   } catch (e) { readError = e.message; }
   const problems = [];
   if (run.timedOut) problems.push(`timed out after ${timeout} ms`);
@@ -165,6 +175,20 @@ export async function runLighthouseLocal({ url, file, desktop = false, insecure 
   result.ok = true;
   log(`lighthouse ${result.version} done in ${run.ms} ms`);
   return result;
+}
+
+/**
+ * blockedStatus(run) -> 403 | 429 | 503 | null: the page Lighthouse loaded answered with a
+ * status a WAF uses for a bot challenge. Read from the runtime error ("(Status code: 429)") or
+ * from the main document in network-requests when Lighthouse scored the challenge page itself.
+ */
+export function blockedStatus({ lhr, error } = {}) {
+  const BLOCKED = [403, 429, 503];
+  const text = `${error || ''} ${lhr?.runtimeError?.message || ''}`;
+  const m = text.match(/status code:?\s*(\d{3})/i);
+  if (m && BLOCKED.includes(Number(m[1]))) return Number(m[1]);
+  const doc = lhr?.audits?.['network-requests']?.details?.items?.find((i) => i.resourceType === 'Document') || lhr?.audits?.['network-requests']?.details?.items?.[0];
+  return doc && BLOCKED.includes(doc.statusCode) ? doc.statusCode : null;
 }
 
 // ---------------------------------------------------------------- PageSpeed Insights

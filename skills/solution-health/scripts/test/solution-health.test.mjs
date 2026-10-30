@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sha256, writeJson } from '../lib.mjs';
 
@@ -21,7 +21,7 @@ const PORT = 8700 + Math.floor(Math.random() * 200);
 const root = mkdtempSync(join(tmpdir(), 'solution-health-test-'));
 const sh = join(root, '.solution-health');
 const run = (name, ...args) => {
-  const r = spawnSync(process.execPath, [join(scripts, `${name}.mjs`), '--root', root, ...args], { encoding: 'utf8', timeout: 300_000 });
+  const r = spawnSync(process.execPath, [join(scripts, `${name}.mjs`), '--root', root, '--in-repo', ...args], { encoding: 'utf8', timeout: 300_000 });
   if (process.env.VERBOSE) process.stderr.write(r.stderr);
   return r;
 };
@@ -157,4 +157,42 @@ test('finalize: report, state, and unassessed changes keep coming back until ass
   const again = json('apis.json').apis.find((x) => x.name.startsWith('DAWA')).pages[0];
   assert.equal(again.change, 'unchanged');
   assert.equal(again.needsReview, undefined);
+});
+
+test('state folder: default is outside the repo under the report folder; --in-repo and --dir keep it in the solution', async () => {
+  const { paths, defaultStateDir, reportsRoot } = await import('../lib.mjs');
+  const reports = '/r';
+  const p = paths({ root: '/code/shop-web' }, { reports, readFile: () => null });
+  assert.equal(p.dir, '/r/solution-health/shop-web');
+  assert.equal(p.manifest, '/r/solution-health/shop-web/manifest.json');
+  assert.equal(p.inRepo, false);
+  assert.equal(paths({ root: '/code/shop-web', 'in-repo': true }).dir, '/code/shop-web/.solution-health');
+  assert.equal(paths({ root: '/code/shop-web', dir: 'health' }).dir, '/code/shop-web/health');
+  // A folder of the same name owned by another solution gets a hash suffix.
+  assert.equal(defaultStateDir('/code/shop-web', { reports, readFile: () => '/code/shop-web\n' }), '/r/solution-health/shop-web');
+  assert.match(defaultStateDir('/other/shop-web', { reports, readFile: () => '/code/shop-web\n' }), /^\/r\/solution-health\/shop-web-[0-9a-f]{8}$/);
+  assert.equal(reportsRoot({ env: { AUDIT_OUT_DIR: '/out' }, home: '/h' }), '/out');
+  assert.equal(reportsRoot({ env: {}, home: '/h', isDir: (d) => d === '/h/Downloads', readFile: () => null }), '/h/Downloads');
+  assert.equal(reportsRoot({ env: {}, home: '/h', isDir: () => false, readFile: () => null }), '/h/audit-reports');
+});
+
+test('check.mjs copies an old in-repo .solution-health once and then uses the report folder', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'sh-legacy-'));
+  const out = mkdtempSync(join(tmpdir(), 'sh-out-'));
+  try {
+    mkdirSync(join(repo, '.solution-health', 'run'), { recursive: true });
+    writeFileSync(join(repo, '.solution-health', 'manifest.json'), '{"apis":[]}');
+    writeFileSync(join(repo, '.solution-health', 'state.json'), '{"version":1}');
+    writeFileSync(join(repo, '.solution-health', 'run', 'junk.json'), '{}');
+    const r = spawnSync(process.execPath, [join(scripts, 'check.mjs'), '--root', repo, '--offline', '--skip', 'discover,packages,runtimes,apis'], { encoding: 'utf8', env: { ...process.env, AUDIT_OUT_DIR: out } });
+    const dir = join(out, 'solution-health', basename(repo));
+    assert.match(r.stderr, /Copied the manifest and state/);
+    assert.equal(readFileSync(join(dir, 'state.json'), 'utf8'), '{"version":1}');
+    assert.equal(existsSync(join(dir, 'run', 'junk.json')), false, 'run/ is not copied');
+    assert.equal(readFileSync(join(dir, 'root.txt'), 'utf8').trim(), repo);
+    assert.equal(existsSync(join(repo, '.solution-health', 'manifest.json')), true, 'the old folder is left alone');
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(out, { recursive: true, force: true });
+  }
 });

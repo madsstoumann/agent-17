@@ -1,10 +1,10 @@
 ---
 name: launch-audit
 description: Use when a website is about to go live or has just launched and needs a pre-launch / go-live audit, a launch checklist or an "is the site ready" answer for any dev, staging or production URL — the manual round of PageSpeed Insights, securityheaders.com, the W3C and schema.org validators and MDN Observatory, plus robots/sitemap/canonical, redirects, soft 404s, TLS/DNS/SPF/DMARC, exposed files, caching, cookies and trackers, broken links, mixed content, share previews and icons. Also for re-checking a site after fixes or comparing with an earlier audit. Public and local (self-signed) URLs, any stack.
-argument-hint: "<url> [--env dev|staging|production] [--production-host HOST] [--pages N] [--skip group,...] [--out PATH] [--baseline report.json] [--insecure]"
+argument-hint: "<url> [--env dev|staging|production] [--production-host HOST] [--pages N] [--skip group,...] [--out PATH] [--baseline report.json] [--insecure] [--header NAME:VALUE]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Read, WebFetch
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # Launch audit
@@ -48,11 +48,20 @@ read the last stderr lines.
 | `--email-domain example.com` | Auditing a platform or staging host but the mail domain is known. |
 | `--ssllabs` | The user wants the Qualys grade in the report (slow, opt-in). |
 | `--no-remote` | Offline / CI: skip every third-party service. |
+| `--header "Name: value"` | The site sits behind a WAF (Vercel Firewall, Cloudflare) that challenges scripts or headless Chrome, and the owner has added a rule that bypasses the challenge for a secret header. Sent to the audited host and its www/apex sibling, and by Lighthouse; never by the script to third-party services. Repeatable; also `AUDIT_HEADERS` (one per line). The value is redacted in saved Lighthouse JSON. Lighthouse sends it with every request the page makes, third-party scripts included, so use a dedicated value just for this rule. |
 
 Environment variables: `PSI_API_KEY` (free Google Cloud key for the PageSpeed Insights API —
 adds CrUX field data and matches pagespeed.web.dev exactly; without it Lighthouse runs
 locally through `npx lighthouse` + Chrome, same five categories, lab data only),
-`SECURITYHEADERS_API_KEY` (paid; otherwise the grade is estimated), `CHROME_PATH`.
+`SECURITYHEADERS_API_KEY` (paid; otherwise the grade is estimated), `CHROME_PATH`, `AUDIT_HEADERS`.
+Getting a PSI key: Google Cloud console → enable "PageSpeed Insights API" → Credentials → Create
+API key (restrict it to that API). Without a key the API's shared quota answers 429, so the
+script does not try.
+
+Lighthouse runs right after the start page, before the crawl and the exposed-file probes, so a
+WAF that reacts to that burst has not been triggered yet. If it still meets a bot challenge (the
+page answers 403/429/503, e.g. the Vercel Security Checkpoint), the report says so instead of
+scoring the challenge page, and switches to PageSpeed Insights when `PSI_API_KEY` is set.
 
 ## Present the results
 
@@ -109,6 +118,7 @@ Offer, do not run by default:
 |---|---|
 | Exit 2 "answered 403/503 with a bot challenge" | WAF blocks scripts: allowlist this IP or disable Bot Fight Mode on staging; try `--ua` with a different User-Agent only if the user agrees. |
 | Exit 2 with a certificate error | Self-signed or private CA: `--insecure`. |
+| `perf.lighthouse-*` skipped, "blocked by Vercel bot challenge (HTTP 429)" (or Cloudflare) | The firewall challenges headless Chrome from this IP; a person's browser passes it silently. Set `PSI_API_KEY` (Google fetches the page instead), or ask the owner for a bypass rule (Vercel: Firewall → custom rule: header `x-audit-bypass` equals a long random value → Bypass; Cloudflare: WAF skip rule) and re-run with `--header "x-audit-bypass: <value>"`. Do not try to get around a challenge in other ways. |
 | `perf.lighthouse-mobile` skipped, "Node ≥ 22.19 / Chrome" | Set `PSI_API_KEY`, or install Chrome / `CHROME_PATH`. First `npx lighthouse` on a new machine downloads once (~20 s extra). |
 | Everything remote is `SKIP` | Private host or `--no-remote`; expected. |
 | Lighthouse timed out | Heavy page or slow machine: `--lh-timeout 400000`, or `--pages 0`. |

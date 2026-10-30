@@ -2,6 +2,16 @@
 
 All notable changes to the `solution-health` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.0.0] - 2026-10-30
+
+### Changed
+- The manifest, state, snapshots and report no longer go in the solution. They live in `<reports>/solution-health/<solution folder name>/`, where `<reports>` is `$AUDIT_OUT_DIR`, else the Downloads folder if it exists, else `~/audit-reports/` (the same root as the other audit skills). The folder name is stable so runs still compare with the last one; `root.txt` records the solution path, and a name clash with another solution gets a hash suffix.
+- Script output and the report footer show full paths when the state folder is outside the solution.
+
+### Added
+- `--in-repo` keeps the old behaviour (`.solution-health/` in the solution, for teams that commit it); `--dir PATH` picks any folder.
+- First run after upgrading: an existing in-repo `.solution-health/` (without `run/`) is copied to the new folder so the comparison carries over. The old folder is left in place.
+
 ## [1.1.1] - 2026-10-29
 
 ### Fixed

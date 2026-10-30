@@ -2,6 +2,17 @@
 
 All notable changes to the `launch-audit` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.2.0] - 2026-10-30
+
+### Added
+- `--header "Name: value"` (repeatable, or `AUDIT_HEADERS`) for a WAF bypass rule. Sent to the audited host and its www/apex sibling and by Lighthouse, never by the script to third-party services; redacted in the saved Lighthouse JSON.
+- Bot-challenge detection for Lighthouse: a run whose page answered 403/429/503 is reported as "blocked by Vercel/Cloudflare bot challenge" instead of scoring the challenge page, the remaining runs are skipped, and PageSpeed Insights takes over when `PSI_API_KEY` is set.
+- The start-page check also recognises Vercel challenges (`x-vercel-mitigated`, "Vercel Security Checkpoint") and Cloudflare's `cf-mitigated` header, and its message points at `--header`.
+
+### Changed
+- Lighthouse runs before the crawl and the exposed-file probes, so a firewall that reacts to that burst does not challenge it.
+- Chrome gets `--no-sandbox` when the audit runs as root (containers, cloud sessions), where it would otherwise not start.
+
 ## [1.1.0] - 2026-10-30
 
 ### Changed

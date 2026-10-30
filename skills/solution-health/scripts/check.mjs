@@ -1,17 +1,26 @@
 #!/usr/bin/env node
 // Runs phases 0–3 in order: discover → packages → runtimes → apis. Then Claude assesses change files and runs finalize.mjs.
-// Usage: node check.mjs [--root <dir>] [--transitive] [--no-enrich] [--offline] [--skip packages,runtimes,apis]
+// Usage: node check.mjs [--root <dir>] [--in-repo | --dir <path>] [--transitive] [--no-enrich] [--offline] [--skip packages,runtimes,apis]
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rmSync } from 'node:fs';
-import { parseArgs, paths } from './lib.mjs';
+import { cpSync, existsSync, rmSync } from 'node:fs';
+import { parseArgs, paths, ensureDirs } from './lib.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = parseArgs();
 const p = paths(args);
 const skip = new Set(String(args.skip || '').split(',').filter(Boolean));
 const pass = process.argv.slice(2).filter((a, i, all) => a !== '--skip' && all[i - 1] !== '--skip');
+
+// State used to live in the solution (.solution-health/). Copy it to the new place once, so the
+// first run there still compares with the last one; the old folder is left for the team to delete.
+if (!p.inRepo && existsSync(join(p.legacyDir, 'manifest.json')) && !existsSync(p.manifest)) {
+  cpSync(p.legacyDir, p.dir, { recursive: true, filter: (src) => !src.startsWith(join(p.legacyDir, 'run')) });
+  console.error(`Copied the manifest and state from ${p.legacyDir} to ${p.dir}. The old folder is no longer used; delete it (or run with --in-repo to keep using it).`);
+}
+ensureDirs(p);
+console.error(`State folder: ${p.dir}`);
 
 // Fresh run folder each time (cache survives: it lives in run/cache and is reused within its TTL).
 for (const d of ['changes', 'pending-snapshots']) rmSync(join(p.runDir, d), { recursive: true, force: true });

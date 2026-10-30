@@ -1,6 +1,7 @@
 // Shared helpers for the solution-health scripts. Zero dependencies, Node 18+.
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
-import { join, resolve, extname, relative } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, accessSync, constants as fsConstants } from 'node:fs';
+import { join, resolve, extname, relative, basename } from 'node:path';
+import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 
 export const USER_AGENT = 'solution-health-skill/1.1 (dependency and API health check; run by developers)';
@@ -19,12 +20,57 @@ export function parseArgs(argv = process.argv.slice(2)) {
   return args;
 }
 
-export function paths(args = {}) {
+// ---- Where the state lives -----------------------------------------------------------------
+// Default: outside the repo, in the shared report folder, under a stable name per solution so each
+// run compares with the last one. `--in-repo` (or `--dir PATH`) keeps it in the solution instead.
+
+const expandHome = (p, home) => p.replace(/^~(?=$|[\\/])/, home);
+
+/**
+ * The folder reports go under (same order as the other audit skills). First match wins:
+ * 1. AUDIT_OUT_DIR, 2. the Downloads folder if it exists and is writable (on Linux the XDG
+ * download folder from XDG_DOWNLOAD_DIR or ~/.config/user-dirs.dirs, then ~/Downloads),
+ * 3. ~/audit-reports.
+ */
+export function reportsRoot({ env = process.env, home = homedir(), isDir = writableDir, readFile = readText } = {}) {
+  if (env.AUDIT_OUT_DIR) return resolve(expandHome(env.AUDIT_OUT_DIR, home));
+  const m = String((env.XDG_DOWNLOAD_DIR ? '' : readFile(join(env.XDG_CONFIG_HOME || join(home, '.config'), 'user-dirs.dirs'))) || '').match(/^\s*XDG_DOWNLOAD_DIR\s*=\s*"?([^"\n]+)"?/m);
+  const xdg = env.XDG_DOWNLOAD_DIR || (m && m[1].trim());
+  const candidates = [xdg && resolve(expandHome(xdg.replace(/^\$HOME(?=$|\/)/, home), home)), join(home, 'Downloads')].filter(Boolean);
+  return candidates.find((p) => isDir(p)) || join(home, 'audit-reports');
+}
+
+function writableDir(p) {
+  try { accessSync(p, fsConstants.W_OK); return statSync(p).isDirectory(); } catch { return false; }
+}
+
+function readText(p) {
+  try { return readFileSync(p, 'utf8'); } catch { return null; }
+}
+
+/**
+ * <reports>/solution-health/<solution folder name>/. A folder of that name that belongs to another
+ * solution (its root.txt names a different path) gets a short hash of this root appended.
+ */
+export function defaultStateDir(root, { reports = reportsRoot(), readFile = readText } = {}) {
+  const base = join(reports, 'solution-health');
+  const name = basename(root).replace(/[^\w.-]+/g, '-') || 'solution';
+  const plain = join(base, name);
+  const owner = readFile(join(plain, 'root.txt'));
+  return owner === null || owner.trim() === root ? plain : join(base, `${name}-${sha256(root).slice(0, 8)}`);
+}
+
+export const LEGACY_DIR = '.solution-health';
+
+export function paths(args = {}, opts = {}) {
   const root = resolve(args.root || process.cwd());
-  const dir = resolve(root, args.dir || '.solution-health');
+  const inRepo = typeof args.dir === 'string' || Boolean(args['in-repo']);
+  const dir = typeof args.dir === 'string' ? resolve(root, args.dir) : args['in-repo'] ? resolve(root, LEGACY_DIR) : defaultStateDir(root, opts);
   return {
     root,
     dir,
+    inRepo,
+    legacyDir: resolve(root, LEGACY_DIR),
     manifest: resolve(dir, 'manifest.json'),
     state: resolve(dir, 'state.json'),
     report: resolve(dir, 'report.md'),
@@ -185,6 +231,13 @@ export function splitSentences(text) {
 
 export function ensureDirs(p) {
   for (const d of [p.dir, p.runDir, p.cacheDir, p.snapshotDir]) mkdirSync(d, { recursive: true });
+  if (!p.inRepo && !existsSync(join(p.dir, 'root.txt'))) writeFileSync(join(p.dir, 'root.txt'), `${p.root}\n`);
+}
+
+/** Show a path relative to the solution when it is inside it, else in full. */
+export function showPath(p, file) {
+  const rel = relative(p.root, file);
+  return rel && !rel.startsWith('..') && !/^[a-z]:/i.test(rel) ? rel : file;
 }
 
 export function nowIso() { return new Date().toISOString(); }
