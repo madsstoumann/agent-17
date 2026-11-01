@@ -3,8 +3,11 @@
  * audit-seo — site-wide SEO and content audit.
  *
  *   node seo.mjs <url> [--pages N] [--sitemap-sample N] [--external-links N] [--schema-pages N] [--out DIR] ...
+ *   node seo.mjs <url> --schema-only      structured data on one page
+ *   node seo.mjs <file.html>              structured data in a local file
  *
  * Start page and redirects → robots.txt and sitemaps → crawl (links, then a sitemap sample) →
+ * Chrome render of the start page and pages without JSON-LD (JSON-LD added by JavaScript) →
  * og:image and external link checks → validator.schema.org on one page per template →
  * llms.txt, llms-full.txt and ai.txt → checks → report.md, report.json, findings.json, pages.csv.
  */
@@ -20,7 +23,10 @@ import { createHttp, isPrivateHost, isPrivateAddress, siblingHost, challengeVend
 import { parseRobotsTxt, loadSitemaps } from './lib/robots.mjs';
 import { followChain } from './lib/redirects.mjs';
 import { crawlSite, checkExternal, normalise } from './lib/crawl.mjs';
-import { runChecks, pickSchemaPages, htmlPages } from './lib/checks.mjs';
+import { runChecks, schemaChecks, pickSchemaPages, pickRenderPages, htmlPages } from './lib/checks.mjs';
+import { extractMeta } from './lib/html.mjs';
+import { richOf } from './lib/rich.mjs';
+import { findChrome, launch, render } from './lib/render.mjs';
 import { schemaValidate } from './lib/schema.mjs';
 import { fetchGeo, geoChecks } from './lib/geo.mjs';
 import { renderMarkdown, renderStdout, findings, pagesCsv, consoleItems } from './lib/report.mjs';
@@ -53,7 +59,12 @@ async function main() {
   const siteHosts = [opts.host, siblingHost(opts.host)].filter(Boolean);
   const http = createHttp({ timeout: opts.timeout, concurrency: opts.concurrency, siteHeaders: opts.headers, siteHosts, log: (m) => { if (process.env.AUDIT_SEO_DEBUG) log(m); } });
 
-  log(`audit-seo ${VERSION} — ${opts.url}`);
+  log(`audit-seo ${VERSION} — ${opts.file || opts.url}`);
+  const { report, inlinks } = opts.schemaOnly ? await schemaOnly(opts, http, siteHosts, log) : await fullAudit(opts, http, siteHosts, log);
+  await writeOut(opts, report, inlinks);
+}
+
+async function fullAudit(opts, http, siteHosts, log) {
   const chain = await followChain(http, opts.url, { maxHops: 10 });
   if (chain.error && !chain.final) fail(2, `Cannot reach ${opts.url}: ${chain.error}${/CERT|certificate|SELF_SIGNED/i.test(chain.error) ? '\nSelf-signed certificate? Re-run with --insecure.' : ''}`);
   const finalUrl = normalise(chain.final || opts.url);
@@ -78,8 +89,11 @@ async function main() {
     startUrl: finalUrl, hosts: siteHosts, sitemapUrls: sitemap.urls, robots: robots.parsed,
     maxPages: opts.pages, sitemapSample: opts.sitemapSample, ignoreRobots: opts.ignoreRobots, concurrency: opts.concurrency, log,
   });
+  log(`crawl done: ${crawl.pages.length} URLs, ${htmlPages(crawl.pages).length} HTML pages`);
+
+  // JSON-LD that only exists after JavaScript runs: render a few pages in Chrome and adopt what they add.
+  const renderInfo = await renderPass(pickRenderPages(crawl.pages, finalUrl, opts.renderPages), crawl.pages, { opts, siteHosts, log });
   const html = htmlPages(crawl.pages);
-  log(`crawl done: ${crawl.pages.length} URLs, ${html.length} HTML pages`);
 
   // og:image: one check per distinct absolute image.
   const ogUrls = [...new Set(html.map((p) => p.og?.image).filter((x) => x && /^https?:\/\//i.test(x)))].slice(0, 40);
@@ -104,11 +118,14 @@ async function main() {
     schema = [];
     for (const url of picks) {
       let res;
-      if (isPrivate) {
+      const rendered = renderInfo.html.get(url);
+      if (rendered) res = { ...(await schemaValidate(http, { html: rendered })), rendered: true };
+      else if (isPrivate) {
         const page = await http.get(url, { redirect: 'follow', maxBytes: 4 * 1024 * 1024 });
         res = await schemaValidate(http, { html: page.body || '' });
       } else res = await schemaValidate(http, { url });
-      schema.push({ url, ...res });
+      const { raw: _raw, ...kept } = res;
+      schema.push({ url, ...kept });
       if (!res.ok && /network|timeout|HTTP 5|rate/i.test(res.error || '')) break;
     }
   }
@@ -118,12 +135,12 @@ async function main() {
 
   const rows = runChecks({
     finalUrl, hosts: siteHosts, productionHost: opts.productionHost, pages: crawl.pages, inlinks: crawl.inlinks, blocked: crawl.blocked,
-    truncated: crawl.truncated, robots, sitemap, external, externalFrom: crawl.external, ogImages: ogUrls.length ? ogImages : null, schema,
+    truncated: crawl.truncated, robots, sitemap, external, externalFrom: crawl.external, ogImages: ogUrls.length ? ogImages : null, schema, render: renderInfo.summary,
   });
   rows.push(...geoChecks({ robots, robotsText, geo, start: crawl.pages.find((p) => p.url === finalUrl) }));
 
   const date = new Date().toISOString().slice(0, 10);
-  const report = {
+  return { inlinks: crawl.inlinks, report: {
     tool: 'audit-seo',
     version: VERSION, date,
     site: { url: opts.url, finalUrl, host: u.host.toLowerCase() },
@@ -136,8 +153,90 @@ async function main() {
     },
     rows,
     pages: crawl.pages,
-  };
+  } };
+}
 
+/**
+ * Render `urls` in Chrome; where the rendered DOM has more JSON-LD blocks than the served HTML,
+ * the page's jsonLd is replaced by the rendered one and its DOM kept for the validator.
+ * -> { summary: { ran, error, pages: [{ url, ok, added, error }] }, html: Map<url, renderedHtml> }
+ */
+async function renderPass(urls, pages, { opts, siteHosts, log }) {
+  const html = new Map();
+  if (!urls.length) return { summary: { ran: false, error: opts.renderPages ? 'no HTML page to render' : null, pages: [] }, html };
+  if (!findChrome()) return { summary: { ran: false, error: 'no Chrome, Chromium or Edge found (install one or set CHROME_PATH)', pages: [] }, html };
+  log(`Chrome: rendering ${urls.length} page${urls.length === 1 ? '' : 's'} for JSON-LD added by JavaScript`);
+  let browser;
+  try { browser = await launch({ insecure: opts.insecure }); } catch (e) { return { summary: { ran: false, error: e.message, pages: [] }, html }; }
+  const out = [];
+  try {
+    for (const url of urls) {
+      const r = await render(browser, url, { headers: opts.headers, hosts: siteHosts, timeout: Math.max(opts.timeout * 2, 20000) });
+      if (!r.ok) { out.push({ url, ok: false, added: 0, error: r.error }); continue; }
+      const blocks = extractMeta(r.html, url).jsonLd;
+      const page = pages.find((p) => p.url === url);
+      const before = page?.jsonLd?.length || 0;
+      const added = Math.max(0, blocks.length - before);
+      if (added && page) {
+        page.jsonLd = blocks.map((j) => ({ types: j.types, error: j.error }));
+        Object.assign(page, richOf(blocks));
+        page.jsonLdClientSide = added;
+        html.set(url, r.html);
+      }
+      out.push({ url, ok: true, added });
+    }
+  } finally { await browser.close(); }
+  return { summary: { ran: true, error: null, pages: out }, html };
+}
+
+/** --schema-only and local files: one page, structured-data checks only, every validator issue listed. */
+async function schemaOnly(opts, http, siteHosts, log) {
+  let url = opts.url; let body; let isPrivate = true;
+  if (opts.file) {
+    body = await fs.readFile(opts.file, 'utf8');
+  } else {
+    const chain = await followChain(http, opts.url, { maxHops: 10 });
+    if (chain.error && !chain.final) fail(2, `Cannot reach ${opts.url}: ${chain.error}${/CERT|certificate|SELF_SIGNED/i.test(chain.error) ? '\nSelf-signed certificate? Re-run with --insecure.' : ''}`);
+    url = normalise(chain.final || opts.url);
+    const res = await http.get(url, { redirect: 'follow', maxBytes: 4 * 1024 * 1024 });
+    const challenge = challengeVendor(res.status, res.body, res.headers);
+    if (challenge) fail(2, `${url} answered ${res.status} with a ${challenge} bot challenge. Pass a firewall bypass header with --header "Name: value".`);
+    if (!res.ok) fail(2, `${url} answered ${res.status || res.error}`);
+    body = res.body || '';
+    const u = new URL(url);
+    for (const h of [u.host.toLowerCase(), siblingHost(u.host.toLowerCase())]) if (h && !siteHosts.includes(h)) siteHosts.push(h);
+    isPrivate = isPrivateHost(u.hostname) || await resolvedPrivately(u.hostname);
+  }
+  const meta = extractMeta(body, url);
+  const page = { url, status: 200, title: meta.title ?? '', noindex: false, canonical: null, jsonLd: meta.jsonLd.map((j) => ({ types: j.types, error: j.error })), ...richOf(meta.jsonLd) };
+  const pages = [page];
+  const renderInfo = await renderPass(opts.renderPages ? [url] : [], pages, { opts, siteHosts, log });
+  let schema = null;
+  if (!opts.noRemote) {
+    const rendered = renderInfo.html.get(url);
+    log(`validator.schema.org: ${rendered ? 'posting the rendered DOM' : isPrivate ? 'posting the HTML' : 'by URL'}`);
+    let res = rendered ? { ...(await schemaValidate(http, { html: rendered })), rendered: true }
+      : isPrivate ? await schemaValidate(http, { html: body }) : await schemaValidate(http, { url });
+    if (!rendered && !isPrivate && (!res.ok || res.raw?.fetchError)) res = await schemaValidate(http, { html: body });
+    const { raw: _raw, ...kept } = res;
+    schema = [{ url, ...kept }];
+  }
+  const rows = schemaChecks({ pages, schema, render: renderInfo.summary, detailed: true });
+  const where = opts.file ? opts.file : url;
+  return { inlinks: new Map(), report: {
+    tool: 'audit-seo', mode: 'schema',
+    version: VERSION, date: new Date().toISOString().slice(0, 10),
+    site: { url: opts.file || opts.url, finalUrl: where, host: opts.host },
+    env: { note: null },
+    stats: { html: 1, other: 0, redirects: 0, errors: 0, indexable: 1, truncated: false, maxPages: 1, sitemapUrls: 0, sitemapSampled: 0, sitemapMissing: 0, seconds: Math.round((Date.now() - startedAt) / 1000) },
+    rows,
+    pages,
+  } };
+}
+
+async function writeOut(opts, report, inlinks) {
+  // A --schema-only run keeps its own baseline, so it never replaces the full audit's.
+  const lastName = report.mode === 'schema' ? 'last-schema-report.json' : 'last-report.json';
   const stateDir = claimTarget(resolveState({ state: opts.state, host: opts.host }), opts.host);
   // --console alone: the run's files go to a scratch folder that is removed at the end.
   const scratch = opts.console && !opts.report ? scratchDir('audit-seo') : null;
@@ -146,7 +245,7 @@ async function main() {
   report.state = stateDir;
   const notes = readNotes(stateDir);
   if (notes) report.notes = notes;
-  const baselineFile = findBaseline(opts, stateDir, dir);
+  const baselineFile = findBaseline(opts, stateDir, dir, report.mode, lastName);
   if (baselineFile) {
     try {
       const prev = JSON.parse(await fs.readFile(baselineFile, 'utf8'));
@@ -159,8 +258,8 @@ async function main() {
   await fs.writeFile(paths.md, renderMarkdown(report, { levels: opts.levels }));
   await fs.writeFile(paths.json, `${JSON.stringify(report, null, 2)}\n`);
   await fs.writeFile(paths.findings, `${JSON.stringify(findings(report), null, 2)}\n`);
-  await fs.writeFile(paths.csv, pagesCsv(crawl.pages, crawl.inlinks));
-  await fs.writeFile(path.join(stateDir, 'last-report.json'), JSON.stringify(report));
+  await fs.writeFile(paths.csv, pagesCsv(report.pages, inlinks));
+  await fs.writeFile(path.join(stateDir, lastName), JSON.stringify(report));
   const head = opts.console
     ? `${consoleList({ title: `audit-seo ${report.site.host}`, items: consoleItems(report), levels: opts.levels })}${opts.report ? `\nReport: ${paths.md}` : ''}`
     : renderStdout(report, paths, { levels: opts.levels });
@@ -169,17 +268,18 @@ async function main() {
 }
 
 /**
- * --baseline, else the last run for this host (last-report.json in the target folder), else the
+ * --baseline, else the last run for this host (last-report.json in the target folder;
+ * last-schema-report.json for --schema-only), else the
  * newest earlier report.json for this host under <reports>/audit-seo/ or <reports>/audit-all/,
  * found by its content rather than its folder name.
  */
-function findBaseline(opts, stateDir, outDir) {
+function findBaseline(opts, stateDir, outDir, mode, lastName) {
   if (opts.noBaseline) return null;
   if (opts.baseline) return path.resolve(opts.baseline);
-  const last = path.join(stateDir, 'last-report.json');
+  const last = path.join(stateDir, lastName);
   if (fsSync.existsSync(last)) return last;
   const reports = reportsRoot();
-  return findEarlier([path.join(reports, 'audit-seo'), path.join(reports, 'audit-all')], 'report.json', (j) => j?.tool === 'audit-seo' && j.site?.host === opts.host, { exclude: outDir })[0] || null;
+  return findEarlier([path.join(reports, 'audit-seo'), path.join(reports, 'audit-all')], 'report.json', (j) => j?.tool === 'audit-seo' && j.site?.host === opts.host && j.mode === mode, { exclude: outDir })[0] || null;
 }
 
 main().catch((e) => fail(1, `audit-seo failed: ${e?.stack || e}`));

@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-launch` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.1.1] - 2026-11-01
+
+### Changed
+- The start page's schema.org check uses `lib/schema.mjs`, an identical copy of audit-seo's (a test in each skill checks they match), instead of its own code in services.mjs. Same results.
+
 ## [2.1.0] - 2026-11-01
 
 ### Removed

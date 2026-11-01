@@ -1,5 +1,6 @@
 /**
- * Third-party validators and scanners: the Nu HTML checker, the schema.org validator,
+ * Third-party validators and scanners: the Nu HTML checker (the schema.org validator is in
+ * schema.mjs, shared with audit-seo),
  * Mozilla Observatory, hstspreload.org, SSL Labs and securityheaders.com.
  *
  * Zero dependencies. Node >= 22. Async functions never throw: a failure is
@@ -137,59 +138,6 @@ export async function w3cValidate(http, { url, html, timeout = 60000 } = {}) {
   const { json, error } = parseJson(res.body);
   if (error || !Array.isArray(json?.messages)) return failed(res.status, `not a JSON answer from the checker${error ? ` (${error})` : ''}`);
   return { ok: true, status: res.status, mode, messages: json.messages, summary: groupW3cMessages(json.messages) };
-}
-
-// ---------------------------------------------------------------- schema.org validator
-
-/** One validator node -> { types, errors, warnings }; property errors carry their property, nested ones a dotted path. */
-function summariseSchemaNode(node, prefix = '') {
-  const types = (node.types || []).map((t) => t?.value).filter(Boolean);
-  const errors = []; const warnings = [];
-  const add = (e, property) => {
-    const item = { type: e?.errorType || 'ERROR', args: Array.isArray(e?.args) ? e.args : [], property, severe: e?.isSevere !== false };
-    (item.severe ? errors : warnings).push(item);
-  };
-  for (const e of node.errors || []) add(e, prefix || null);
-  for (const p of node.properties || []) for (const e of p.errors || []) add(e, `${prefix}${p.pred ?? ''}`);
-  for (const p of node.nodeProperties || []) {
-    const name = `${prefix}${p.pred ?? ''}`;
-    for (const e of p.errors || []) add(e, name);
-    if (p.target) {
-      const inner = summariseSchemaNode(p.target, `${name}.`);
-      errors.push(...inner.errors); warnings.push(...inner.warnings);
-    }
-  }
-  return { types, errors, warnings };
-}
-
-/**
- * schemaValidate(http, { url, html, timeout = 60000 })
- *   -> { ok, status, mode, objects, errors, warnings, types: string[],
- *        nodes: [{ types: string[], errors: [{ type, args, property, severe }], warnings: [same] }],
- *        raw (the parsed JSON minus its `html`), error? }
- *
- * POSTs validator.schema.org/validate as a form (url= or html=). The answer starts with )]}'.
- */
-export async function schemaValidate(http, { url, html, timeout = 60000 } = {}) {
-  const mode = html != null ? 'html' : 'url';
-  const failed = (status, error) => ({ ok: false, status, mode, objects: 0, errors: 0, warnings: 0, types: [], nodes: [], raw: null, error });
-  if (mode === 'url' && !url) return failed(0, 'url or html required');
-  const body = mode === 'html' ? `html=${encodeURIComponent(String(html))}` : `url=${encodeURIComponent(url)}`;
-  const res = await send(http, 'https://validator.schema.org/validate', { headers: { 'content-type': 'application/x-www-form-urlencoded' }, body, timeout, maxBytes: 16 * MB });
-  const problem = httpProblem(res);
-  if (problem) return failed(res.status, problem);
-  const { json, error } = parseJson(stripJsonGuard(res.body));
-  if (error || !json || typeof json !== 'object') return failed(res.status, `not a JSON answer from the validator${error ? ` (${error})` : ''}`);
-  const { html: _rendered, ...raw } = json;
-  const nodes = []; const types = [];
-  for (const group of raw.tripleGroups || []) {
-    for (const n of group.nodes || []) {
-      const node = summariseSchemaNode(n);
-      nodes.push(node);
-      for (const t of node.types) if (!types.includes(t)) types.push(t);
-    }
-  }
-  return { ok: true, status: res.status, mode, objects: raw.numObjects ?? nodes.length, errors: raw.totalNumErrors ?? 0, warnings: raw.totalNumWarnings ?? 0, types, nodes, raw };
 }
 
 // ---------------------------------------------------------------- Mozilla Observatory

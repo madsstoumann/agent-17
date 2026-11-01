@@ -2,6 +2,17 @@
 
 All notable changes to the `audit-seo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.2.0] - 2026-11-01
+
+### Added
+- Pages rendered in headless Chrome (`--render-pages N`, default 8: the start page plus pages with no JSON-LD in the served HTML, one per section). JSON-LD that only JavaScript adds is used by every structured-data check, posted to validator.schema.org as the rendered DOM, and reported as the new warning "JSON-LD added by JavaScript" (`seo.jsonld-client-side`). Skipped with a note when no Chrome is found. Zero dependencies (DevTools protocol over Node 22's WebSocket, as in audit-eco); `--header` values go only to the site's own hosts.
+- Google rich-result rules (`lib/rich.mjs`, `seo.rich-required` warn, `seo.rich-recommended` info, `seo.rich-notes` info): Google's required and recommended properties for Product (and offer prices), Review, AggregateRating, Article, BreadcrumbList, Event, FAQPage, JobPosting, LocalBusiness, Organization, Recipe, SoftwareApplication, VideoObject and Course, with a Rich Results Test link. FAQPage and HowTo get a note on Google's limits.
+- `--schema-only` and local HTML files (`seo.mjs ./index.html`): structured data on that one page only, every validator error and warning on its own line. Replaces the validate-schema skill. These runs keep their own baseline (`last-schema-report.json`).
+
+### Changed
+- `lib/schema.mjs` is now shared with audit-launch as an identical copy (tested in both skills).
+- Validator error notes include the property path and arguments (`Product offers.price: MISSING_REQUIRED (price)`).
+
 ## [2.1.0] - 2026-11-01
 
 ### Removed

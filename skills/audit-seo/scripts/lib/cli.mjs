@@ -9,12 +9,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { normaliseUrl, parseHeaderLines, VERSION } from './http.mjs';
 import { targetDir, stamp } from './target-state.mjs';
 
-export const DEFAULTS = { pages: 150, sitemapSample: 50, externalLinks: 150, schemaPages: 8, concurrency: 6, timeout: 15000 };
+export const DEFAULTS = { pages: 150, sitemapSample: 50, externalLinks: 150, schemaPages: 8, renderPages: 8, concurrency: 6, timeout: 15000 };
 
-export function parseCli(argv, env = process.env) {
+export function parseCli(argv, env = process.env, { cwd = process.cwd() } = {}) {
   let values, positionals;
   try {
     ({ values, positionals } = parseArgs({
@@ -25,6 +26,8 @@ export function parseCli(argv, env = process.env) {
         'sitemap-sample': { type: 'string' },
         'external-links': { type: 'string' },
         'schema-pages': { type: 'string' },
+        'render-pages': { type: 'string' },
+        'schema-only': { type: 'boolean' },
         'production-host': { type: 'string' },
         out: { type: 'string' },
         state: { type: 'string' },
@@ -49,9 +52,12 @@ export function parseCli(argv, env = process.env) {
   }
   if (values.help) return { ok: true, help: true };
   if (values.version) return { ok: true, version: true };
-  if (positionals.length !== 1) return { ok: false, error: positionals.length ? `One URL only (got ${positionals.join(' ')})` : 'Give the site URL.' };
+  if (positionals.length !== 1) return { ok: false, error: positionals.length ? `One URL or file only (got ${positionals.join(' ')})` : 'Give the site URL (or a local HTML file).' };
+  // A local HTML file (a path that exists, or file://): structured data only, nothing crawled.
+  const file = localFile(positionals[0], cwd);
   let url;
-  try { url = normaliseUrl(positionals[0]); } catch { return { ok: false, error: `Not a URL: ${positionals[0]}` }; }
+  if (file) url = pathToFileURL(file).href;
+  else try { url = normaliseUrl(positionals[0]); } catch { return { ok: false, error: `Not a URL or an existing file: ${positionals[0]}` }; }
   const int = (v, d, name) => {
     if (v === undefined) return d;
     const n = Number(v);
@@ -61,11 +67,14 @@ export function parseCli(argv, env = process.env) {
   try {
     const opts = {
       url,
-      host: new URL(url).host.toLowerCase(),
+      file,
+      host: file ? `file-${path.basename(file).toLowerCase().replace(/[^a-z0-9._-]+/g, '-')}` : new URL(url).host.toLowerCase(),
+      schemaOnly: Boolean(file || values['schema-only']),
       pages: Math.max(1, int(values.pages, DEFAULTS.pages, 'pages')),
       sitemapSample: int(values['sitemap-sample'], DEFAULTS.sitemapSample, 'sitemap-sample'),
       externalLinks: int(values['external-links'], DEFAULTS.externalLinks, 'external-links'),
       schemaPages: int(values['schema-pages'], DEFAULTS.schemaPages, 'schema-pages'),
+      renderPages: int(values['render-pages'], DEFAULTS.renderPages, 'render-pages'),
       concurrency: Math.max(1, int(values.concurrency, DEFAULTS.concurrency, 'concurrency')),
       timeout: int(values.timeout, DEFAULTS.timeout, 'timeout'),
       productionHost: values['production-host'] ? values['production-host'].toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '') : null,
@@ -86,6 +95,15 @@ export function parseCli(argv, env = process.env) {
   } catch (e) {
     return { ok: false, error: e.message };
   }
+}
+
+/** The absolute path when `arg` names an existing file (or is a file:// URL), else null. */
+export function localFile(arg, cwd = process.cwd()) {
+  let p = String(arg || '');
+  if (/^file:/i.test(p)) { try { p = fileURLToPath(p); } catch { return null; } }
+  else if (/^https?:\/\//i.test(p)) return null;
+  p = path.resolve(cwd, p.replace(/^~(?=$|[/\\])/, os.homedir()));
+  try { return fs.statSync(p).isFile() ? p : null; } catch { return null; }
 }
 
 /**
@@ -137,11 +155,17 @@ export function usage() {
   return `audit-seo ${VERSION}: site-wide SEO and content audit
 
 Usage: node seo.mjs <url> [flags]
+       node seo.mjs <url> --schema-only     structured data on that one page (no crawl)
+       node seo.mjs <file.html>             structured data in a local file (no crawl)
 
   --pages N              Pages to crawl by following links (default ${DEFAULTS.pages}).
   --sitemap-sample N     Extra sitemap URLs to fetch that the crawl did not reach (default ${DEFAULTS.sitemapSample}).
   --external-links N     External links to check (default ${DEFAULTS.externalLinks}, 0 to skip).
   --schema-pages N       Pages (one per template) sent to validator.schema.org (default ${DEFAULTS.schemaPages}, 0 to skip).
+  --render-pages N       Pages rendered in headless Chrome to find JSON-LD that JavaScript adds: the start page plus
+                         pages without JSON-LD in the served HTML, one per section (default ${DEFAULTS.renderPages}, 0 to skip).
+  --schema-only          Only the structured-data checks, on the given page alone, every validator error listed.
+                         Implied for a local HTML file.
   --production-host H    The future live host; canonical, og:url and hreflang on it are not "another host".
   --out DIR              Run folder (default <target>/runs/<stamp>/).
   --state DIR            Target folder (default <reports>/audit-seo/<host>/; <reports> is AUDIT_OUT_DIR, else
@@ -151,6 +175,7 @@ Usage: node seo.mjs <url> [flags]
   --header "Name: value" Sent to the audited host only, for a WAF bypass rule (repeatable; also AUDIT_HEADERS).
   --insecure             Accept a self-signed certificate (localhost, dev).
   --no-remote            Skip validator.schema.org.
+                         Chrome: found automatically, or set CHROME_PATH.
   --ignore-robots        Crawl paths robots.txt disallows (they are still reported).
   --concurrency N        Parallel requests (default ${DEFAULTS.concurrency}).
   --timeout MS           Per request (default ${DEFAULTS.timeout}).
