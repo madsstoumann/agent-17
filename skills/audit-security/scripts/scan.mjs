@@ -16,11 +16,11 @@ import { execFileSync } from 'node:child_process';
 import { RULES, FILE_RULES, PLATFORM_FILES, platformFor, rulesFor, scanText, redact } from './lib/patterns.mjs';
 import { listFiles, readScannable, historyAddedLines, TEST_PATH } from './lib/files.mjs';
 import { collectPackages, queryOsv } from './lib/deps.mjs';
-import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes, isTool } from './lib/target-state.mjs';
+import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
 import { annotate, baselineLines, tag } from './lib/baseline.mjs';
 import { parseLevel, levelOfWord, scratchDir } from './lib/levels.mjs';
 
-export const VERSION = '2.0.0';
+export const VERSION = '2.1.0';
 const GROUPS = ['deps', 'secrets', 'xss', 'injection', 'request', 'crypto', 'config', 'ci'];
 const SEV = { high: 3, medium: 2, low: 1 };
 
@@ -133,7 +133,7 @@ export function resolveBaseline(args, root, stateDir, { base, exclude } = {}) {
   if (fs.existsSync(last)) return last;
   const reports = base || reportsRoot();
   const roots = [path.join(reports, 'audit-security'), path.join(reports, 'audit-all')];
-  return findEarlier(roots, 'findings.json', (j) => isTool(j?.tool, 'audit-security') && j.root === root, { exclude })[0] || null;
+  return findEarlier(roots, 'findings.json', (j) => j?.tool === 'audit-security' && j.root === root, { exclude })[0] || null;
 }
 const log = (m) => process.stderr.write(`${m}\n`);
 

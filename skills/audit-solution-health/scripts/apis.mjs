@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Phase 3: external APIs listed in .solution-health/manifest.json.
+// Phase 3: external APIs listed in .audit-solution-health/manifest.json.
 //  - probe: status code, redirects, RFC 9745 Deprecation / RFC 8594 Sunset / Link headers
 //  - watch pages + feeds: normalized text, hashed and diffed against the last accepted snapshot,
 //    keyword scan (EN + DA). Changed pages get a diff file for Claude to read and judge.

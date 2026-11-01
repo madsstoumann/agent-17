@@ -11,7 +11,7 @@ import { SECTIONS, domainChecks, emailChecks, tlsChecks, edgeChecks, ctChecks } 
 import { DKIM_SELECTORS } from './lib/email.mjs';
 import { result, countStatuses, prepareRun, finishRun, consoleItems, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, settle, GLYPH } from './lib/common.mjs';
 
-export const VERSION = '2.0.0';
+export const VERSION = '2.1.0';
 const UA = `Mozilla/5.0 (compatible; audit-infra/${VERSION})`;
 
 const USAGE = `audit-infra ${VERSION}: domain, DNS, email, TLS and subdomain audit

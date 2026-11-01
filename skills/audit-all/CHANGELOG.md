@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.12.0] - 2026-11-01
+
+### Removed
+- Reading run sub-folders with the old skill names, and the old names as task sources. Looks for an in-repo `.audit-solution-health/` report.
+
 ## [1.11.0] - 2026-11-01
 
 ### Changed

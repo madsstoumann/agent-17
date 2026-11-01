@@ -12,7 +12,7 @@ import { openContext, choose } from './lib/visit.mjs';
 import { analyse, SECTIONS } from './lib/analyse.mjs';
 import { countStatuses, prepareRun, finishRun, consoleItems, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, GLYPH, result } from './lib/common.mjs';
 
-export const VERSION = '2.0.0';
+export const VERSION = '2.1.0';
 
 const USAGE = `audit-privacy ${VERSION}: GDPR / ePrivacy check of cookies, trackers and the consent banner
 

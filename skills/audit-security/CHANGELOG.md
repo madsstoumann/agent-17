@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-security` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.1.0] - 2026-11-01
+
+### Removed
+- Fallbacks for the old skill names: results saved with the old `tool` value no longer count as a baseline, and the old env var names (`*_AUDIT_DEBUG`, `A11Y_AUDIT_CACHE`) are gone. An old reports folder is still moved once, silently.
+- Skips `.audit-solution-health/` instead of the old folder names.
+
 ## [2.0.0] - 2026-11-01
 
 ### Changed

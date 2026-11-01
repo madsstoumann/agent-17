@@ -19,7 +19,7 @@ import { writeFixPlan } from './lib/tasks.mjs';
 import { parseLevel, levelOfWord, consoleList } from './lib/levels.mjs';
 import { targetDir, claimTarget, newRun, previousRuns, readNotes, targetName } from './lib/target-state.mjs';
 
-export const VERSION = '1.11.0';
+export const VERSION = '1.12.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, '..', 'assets');
 const SIBLINGS = path.join(HERE, '..', '..');
@@ -35,7 +35,7 @@ Usage:
 Flags:
   --style serif|sans   Typeface for the HTML and PDF (default serif). Also editorial (= serif), modern (= sans).
   --repo PATH          Copy PATH's audit-solution-health report (<reports>/audit-solution-health/<repo name>/report.md,
-                       or PATH/.solution-health/report.md for --in-repo setups) into <run-dir>/audit-solution-health-<repo name>/ first.
+                       or PATH/.audit-solution-health/report.md for --in-repo setups) into <run-dir>/audit-solution-health-<repo name>/ first.
                        Repeat for several repos.
   --no-pdf             Write report.md and the HTML files only.
   --no-compact         Skip report-compact.html and report-compact.pdf (the full report with long lists
@@ -172,14 +172,14 @@ function skillVersion(name) {
 
 /**
  * Where audit-solution-health keeps a repo's report: its state folder under the report root (the same
- * name rule as audit-solution-health's defaultStateDir), else an in-repo `.solution-health/` (--in-repo).
+ * name rule as audit-solution-health's defaultStateDir), else an in-repo `.audit-solution-health/` (--in-repo).
  */
 export function solutionHealthReport(root, { reports = reportsRoot(), readFile = readText, exists = fs.existsSync } = {}) {
   const base = path.join(reports, 'audit-solution-health');
   const name = path.basename(root).replace(/[^\w.-]+/g, '-') || 'solution';
   const owner = readFile(path.join(base, name, 'root.txt'));
   const dir = owner === null || owner.trim() === root ? path.join(base, name) : path.join(base, `${name}-${crypto.createHash('sha256').update(root).digest('hex').slice(0, 8)}`);
-  return [path.join(dir, 'report.md'), path.join(root, '.solution-health', 'report.md')].find((f) => exists(f)) || null;
+  return [path.join(dir, 'report.md'), path.join(root, '.audit-solution-health', 'report.md')].find((f) => exists(f)) || null;
 }
 
 /** Copy each repo's audit-solution-health report into the run folder. */

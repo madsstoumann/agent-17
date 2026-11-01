@@ -19,7 +19,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const scripts = join(here, '..');
 const PORT = 8700 + Math.floor(Math.random() * 200);
 const root = mkdtempSync(join(tmpdir(), 'audit-solution-health-test-'));
-const sh = join(root, '.solution-health');
+const sh = join(root, '.audit-solution-health');
 const run = (name, ...args) => {
   const r = spawnSync(process.execPath, [join(scripts, `${name}.mjs`), '--root', root, '--in-repo', ...args], { encoding: 'utf8', timeout: 300_000 });
   if (process.env.VERBOSE) process.stderr.write(r.stderr);
@@ -375,7 +375,7 @@ test('state folder: default is outside the repo under the report folder; --in-re
   assert.equal(p.dir, '/r/audit-solution-health/shop-web');
   assert.equal(p.manifest, '/r/audit-solution-health/shop-web/manifest.json');
   assert.equal(p.inRepo, false);
-  assert.equal(paths({ root: '/code/shop-web', 'in-repo': true }).dir, '/code/shop-web/.solution-health');
+  assert.equal(paths({ root: '/code/shop-web', 'in-repo': true }).dir, '/code/shop-web/.audit-solution-health');
   assert.equal(paths({ root: '/code/shop-web', dir: 'health' }).dir, '/code/shop-web/health');
   // A folder of the same name owned by another solution gets a hash suffix.
   assert.equal(defaultStateDir('/code/shop-web', { reports, readFile: () => '/code/shop-web\n' }), '/r/audit-solution-health/shop-web');
@@ -409,28 +409,7 @@ test('state is never kept in an audit run folder; state an earlier run left ther
   }
 });
 
-test('check.mjs copies an old in-repo .solution-health once and then uses the report folder', () => {
-  const repo = mkdtempSync(join(tmpdir(), 'sh-legacy-'));
-  const out = mkdtempSync(join(tmpdir(), 'sh-out-'));
-  try {
-    mkdirSync(join(repo, '.solution-health', 'run'), { recursive: true });
-    writeFileSync(join(repo, '.solution-health', 'manifest.json'), '{"apis":[]}');
-    writeFileSync(join(repo, '.solution-health', 'state.json'), '{"version":1}');
-    writeFileSync(join(repo, '.solution-health', 'run', 'junk.json'), '{}');
-    const r = spawnSync(process.execPath, [join(scripts, 'check.mjs'), '--root', repo, '--offline', '--skip', 'discover,packages,runtimes,apis'], { encoding: 'utf8', env: { ...process.env, AUDIT_OUT_DIR: out } });
-    const dir = join(out, 'audit-solution-health', basename(repo));
-    assert.match(r.stderr, /Copied the manifest and state/);
-    assert.equal(readFileSync(join(dir, 'state.json'), 'utf8'), '{"version":1}');
-    assert.equal(existsSync(join(dir, 'run', 'junk.json')), false, 'run/ is not copied');
-    assert.equal(readFileSync(join(dir, 'root.txt'), 'utf8').trim(), repo);
-    assert.equal(existsSync(join(repo, '.solution-health', 'manifest.json')), true, 'the old folder is left alone');
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-    rmSync(out, { recursive: true, force: true });
-  }
-});
-
-test('defaultStateDir moves <reports>/solution-health/ from before the rename', async () => {
+test('defaultStateDir moves an old <reports>/solution-health/ folder once', async () => {
   const { defaultStateDir } = await import('../lib.mjs');
   const reports = mkdtempSync(join(tmpdir(), 'audit-solution-health-legacy-'));
   try {

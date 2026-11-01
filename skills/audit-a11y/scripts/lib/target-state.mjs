@@ -12,12 +12,6 @@
  *
  * Skills install separately, so every audit skill carries a copy of this file. Keep the copies
  * identical (the tests compare them).
- *
- * The audits were called <name>-audit until 2026-11 (launch-audit, security-audit, …), and
- * audit-solution-health was solution-health.
- * targetDir() moves a target folder from <reports>/<old name>/ to <reports>/<new name>/ the first
- * time it is asked for, so notes.md, triage and baselines carry over, and isTool() accepts the old
- * name in report.json / findings.json files written before the rename.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -38,58 +32,32 @@ function readText(p) {
   try { return fs.readFileSync(p, 'utf8'); } catch { return null; }
 }
 
-/** New skill name → the name it had before the audit- prefix. */
-export const LEGACY_NAMES = {
-  'audit-launch': 'launch-audit',
-  'audit-a11y': 'a11y-audit',
-  'audit-seo': 'seo-audit',
-  'audit-eco': 'eco-audit',
-  'audit-privacy': 'privacy-audit',
-  'audit-infra': 'infra-audit',
-  'audit-security': 'security-audit',
-  'audit-solution-health': 'solution-health',
+/** Folder names from before the audit- prefix, moved once by targetDir(). */
+const OLD_NAMES = {
+  'audit-launch': 'launch-audit', 'audit-a11y': 'a11y-audit', 'audit-seo': 'seo-audit', 'audit-eco': 'eco-audit',
+  'audit-privacy': 'privacy-audit', 'audit-infra': 'infra-audit', 'audit-security': 'security-audit',
 };
 
-/** True when a saved result's `tool` is this skill, under its current or its old name. */
-export const isTool = (tool, skill) => tool === skill || (!!LEGACY_NAMES[skill] && tool === LEGACY_NAMES[skill]);
-
-/** A folder or file name that starts with an old skill name, rewritten to the new one (else unchanged). */
-export function renameLegacy(name) {
-  for (const [now, old] of Object.entries(LEGACY_NAMES)) {
-    if (name === old || name.startsWith(`${old}-`)) return now + name.slice(old.length);
-  }
-  return name;
-}
-
-/**
- * Move <reports>/<old name>/<entry> to <reports>/<skill>/<entry> for every entry not already
- * there, then remove the old folder if that left it empty. Runs once in practice: afterwards the
- * old folder is gone. Never overwrites, and a failed move leaves both folders as they were.
- */
-export function adoptLegacy(reports, skill) {
-  const old = LEGACY_NAMES[skill];
-  if (!old || !reports) return false;
+/** Move <reports>/<old>/<entry> into <reports>/<skill>/ where not already there; never overwrites. */
+export function moveOldFolder(reports, skill) {
+  const old = OLD_NAMES[skill];
+  if (!old || !reports) return;
   const from = path.join(reports, old);
   const to = path.join(reports, skill);
   try {
-    if (!fs.statSync(from).isDirectory()) return false;
-  } catch { return false; }
-  try {
-    if (!fs.existsSync(to)) { fs.renameSync(from, to); return true; }
-    for (const e of fs.readdirSync(from)) {
-      if (!fs.existsSync(path.join(to, e))) fs.renameSync(path.join(from, e), path.join(to, e));
-    }
+    if (!fs.statSync(from).isDirectory()) return;
+    if (!fs.existsSync(to)) return fs.renameSync(from, to);
+    for (const e of fs.readdirSync(from)) if (!fs.existsSync(path.join(to, e))) fs.renameSync(path.join(from, e), path.join(to, e));
     if (!fs.readdirSync(from).length) fs.rmdirSync(from);
-    return true;
-  } catch { return false; }
+  } catch { /* leave both as they are */ }
 }
 
 /**
  * <reports>/<skill>/<name>/. When a folder of that name already belongs to another target (its
  * target.txt says so), a short hash of `owner` is appended, the same rule audit-solution-health uses.
  */
-export function targetDir({ reports, skill, name, owner = name }, { readFile = readText, adopt = adoptLegacy } = {}) {
-  adopt(reports, skill);
+export function targetDir({ reports, skill, name, owner = name }, { readFile = readText } = {}) {
+  moveOldFolder(reports, skill);
   const base = path.join(reports, skill);
   const safe = targetName(name);
   const plain = path.join(base, safe);

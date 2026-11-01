@@ -11,7 +11,7 @@ export const SKIP_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', 'out', '.next', '.nuxt', '.output', '.svelte-kit', '.astro', '.vercel',
   '.netlify', '.turbo', '.cache', '.parcel-cache', 'coverage', 'vendor', 'bower_components', 'jspm_packages',
   'bin', 'obj', '.vs', '.idea', '__pycache__', '.venv', 'venv', '.tox', '.mypy_cache', 'target',
-  'wwwroot/lib', 'umbraco/Data', 'App_Data', '.solution-health', '.audit-security', '.security-audit',
+  'wwwroot/lib', 'umbraco/Data', 'App_Data', '.audit-solution-health', '.audit-security',
 ]);
 
 const SKIP_FILE = /(\.min\.(js|css)|\.map|\.bundle\.js|-lock\.json|\.lock|\.lockb|lock\.yaml|\.(png|jpe?g|gif|webp|avif|ico|svg|woff2?|ttf|eot|otf|mp4|webm|mp3|wav|pdf|zip|gz|tgz|7z|rar|exe|dll|so|dylib|pdb|nupkg|jar|class|wasm|psd|sketch|fig))$/i;

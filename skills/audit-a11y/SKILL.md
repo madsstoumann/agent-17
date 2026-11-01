@@ -4,7 +4,7 @@ description: Use when someone wants an accessibility audit, WCAG 2.2 or 2.1 AA c
 argument-hint: "<url> [--pages N] [--from audit-launch/report.json] [--urls FILE] [--keyboard N] [--wcag A|AA|AAA] [--repo NAME[=PATH]] [--out DIR] [--state DIR] [--baseline FILE] [--no-baseline] [--header NAME:VALUE] [--insecure] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
-  version: "2.0.0"
+  version: "2.1.0"
 ---
 
 # Accessibility audit
@@ -49,7 +49,7 @@ code 0 means it ran, whatever it found.
 
 Needs Node 22 and Chrome, Chromium or Edge. The first run downloads axe-core 4.14.0 and
 HTML_CodeSniffer 2.5.1 from jsDelivr (unpkg as fallback), checks their SHA-256 against the pinned
-value and caches them (`~/Library/Caches/audit-a11y`, `~/.cache/audit-a11y`, or `AUDIT_A11Y_CACHE`; the old `A11Y_AUDIT_CACHE` still works).
+value and caches them (`~/Library/Caches/audit-a11y`, `~/.cache/audit-a11y`, or `AUDIT_A11Y_CACHE`).
 No npm install.
 
 ### Levels and the console list

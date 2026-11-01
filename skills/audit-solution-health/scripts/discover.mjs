@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Phase 0: find dependency manifests, runtime pins and outbound hostnames in the solution.
 // Usage: node discover.mjs [--root <solution root>]
-// Writes .solution-health/run/discovery.json and prints a short summary.
+// Writes .audit-solution-health/run/discovery.json and prints a short summary.
 import { readFileSync } from 'node:fs';
 import { basename, dirname, relative } from 'node:path';
 import { parseArgs, paths, walk, ext, fileSize, writeJson, loadManifest, ensureDirs, log, nowIso, showPath } from './lib.mjs';

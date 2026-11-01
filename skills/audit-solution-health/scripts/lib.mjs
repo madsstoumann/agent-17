@@ -4,7 +4,7 @@ import { join, resolve, extname, relative, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 
-export const USER_AGENT = 'audit-solution-health-skill/3.0 (dependency and API health check; run by developers)';
+export const USER_AGENT = 'audit-solution-health-skill/3.1 (dependency and API health check; run by developers)';
 
 export function parseArgs(argv = process.argv.slice(2)) {
   const args = { _: [] };
@@ -48,33 +48,25 @@ function readText(p) {
   try { return readFileSync(p, 'utf8'); } catch { return null; }
 }
 
-/** The reports folder name before the skill was renamed (2026-11). */
-export const LEGACY_NAME = 'solution-health';
-
-/**
- * Move <reports>/solution-health/<entry> to <reports>/audit-solution-health/<entry> for every entry
- * not already there, then remove the old folder if that left it empty. Never overwrites. The same
- * rule as adoptLegacy() in the other audit skills' target-state.mjs.
- */
-export function adoptLegacy(reports) {
-  if (!reports) return false;
-  const from = join(reports, LEGACY_NAME);
+/** Move <reports>/solution-health/<entry> into <reports>/audit-solution-health/ where not already there; never overwrites. */
+export function moveOldFolder(reports) {
+  if (!reports) return;
+  const from = join(reports, 'solution-health');
   const to = join(reports, 'audit-solution-health');
-  try { if (!statSync(from).isDirectory()) return false; } catch { return false; }
   try {
-    if (!existsSync(to)) { renameSync(from, to); return true; }
+    if (!statSync(from).isDirectory()) return;
+    if (!existsSync(to)) return renameSync(from, to);
     for (const e of readdirSync(from)) if (!existsSync(join(to, e))) renameSync(join(from, e), join(to, e));
     if (!readdirSync(from).length) rmdirSync(from);
-    return true;
-  } catch { return false; }
+  } catch { /* leave both as they are */ }
 }
 
 /**
  * <reports>/audit-solution-health/<solution folder name>/. A folder of that name that belongs to another
  * solution (its root.txt names a different path) gets a short hash of this root appended.
  */
-export function defaultStateDir(root, { reports = reportsRoot(), readFile = readText, adopt = adoptLegacy } = {}) {
-  adopt(reports);
+export function defaultStateDir(root, { reports = reportsRoot(), readFile = readText } = {}) {
+  moveOldFolder(reports);
   const base = join(reports, 'audit-solution-health');
   const name = basename(root).replace(/[^\w.-]+/g, '-') || 'solution';
   const plain = join(base, name);
@@ -82,7 +74,7 @@ export function defaultStateDir(root, { reports = reportsRoot(), readFile = read
   return owner === null || owner.trim() === root ? plain : join(base, `${name}-${sha256(root).slice(0, 8)}`);
 }
 
-export const LEGACY_DIR = '.solution-health';
+export const IN_REPO_DIR = '.audit-solution-health';
 
 /** The marker audit skills leave in each run folder (see target-state.mjs in audit-launch). */
 export const RUN_MARKER = '.audit-run';
@@ -101,7 +93,7 @@ export function insideRun(dir) {
 export function paths(args = {}, opts = {}) {
   const root = resolve(args.root || process.cwd());
   let inRepo = typeof args.dir === 'string' || Boolean(args['in-repo']);
-  let dir = typeof args.dir === 'string' ? resolve(root, args.dir) : args['in-repo'] ? resolve(root, LEGACY_DIR) : defaultStateDir(root, opts);
+  let dir = typeof args.dir === 'string' ? resolve(root, args.dir) : args['in-repo'] ? resolve(root, IN_REPO_DIR) : defaultStateDir(root, opts);
   // State kept in a timestamped run folder would be lost to the next run, so `--dir` there is ignored.
   let ignoredDir = null;
   if (typeof args.dir === 'string' && insideRun(dir)) { ignoredDir = dir; dir = defaultStateDir(root, opts); inRepo = false; }
@@ -110,7 +102,6 @@ export function paths(args = {}, opts = {}) {
     dir,
     inRepo,
     ignoredDir,
-    legacyDir: resolve(root, LEGACY_DIR),
     manifest: resolve(dir, 'manifest.json'),
     state: resolve(dir, 'state.json'),
     report: resolve(dir, 'report.md'),
@@ -153,7 +144,7 @@ export function daysUntil(dateLike) {
 
 export const DEFAULT_SKIP_DIRS = new Set([
   'node_modules', '.git', 'bin', 'obj', 'dist', 'build', '.next', '.nuxt', 'out', 'coverage',
-  '.solution-health', 'packages', 'wwwroot/lib', 'umbraco', 'App_Data', 'TestResults', '.vs', '.idea', '.turbo', '.cache', 'vendor',
+  '.audit-solution-health', 'packages', 'wwwroot/lib', 'umbraco', 'App_Data', 'TestResults', '.vs', '.idea', '.turbo', '.cache', 'vendor',
 ]);
 
 // Depth-first walk yielding absolute file paths. Skips the noisy directories above.

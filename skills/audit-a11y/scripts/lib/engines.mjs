@@ -24,8 +24,7 @@ export const ENGINES = {
 };
 
 export function cacheDir(env = process.env, home = os.homedir()) {
-  const own = env.AUDIT_A11Y_CACHE || env.A11Y_AUDIT_CACHE; // A11Y_AUDIT_CACHE: the name before 2.0.0
-  if (own) return own;
+  if (env.AUDIT_A11Y_CACHE) return env.AUDIT_A11Y_CACHE;
   const base = process.platform === 'darwin' ? path.join(home, 'Library', 'Caches') : env.XDG_CACHE_HOME || (env.LOCALAPPDATA && process.platform === 'win32' ? env.LOCALAPPDATA : path.join(home, '.cache'));
   return path.join(base, 'audit-a11y');
 }

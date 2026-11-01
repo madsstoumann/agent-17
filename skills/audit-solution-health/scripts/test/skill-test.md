@@ -40,7 +40,7 @@ The fixture solution is deliberately unhealthy:
 
 When the skill was written (Oct 2026) the sandbox could reach registry.npmjs.org but not
 api.nuget.org, packages.ecosyste.ms, api.deps.dev or endoflife.date. The test seeds those four
-into `.solution-health/run/cache/` in the shapes the scripts parse:
+into `.audit-solution-health/run/cache/` in the shapes the scripts parse:
 
 - **api.nuget.org** registration index and **endoflife.date** product JSON: shapes verified against
   the live services at the time.

@@ -4,7 +4,7 @@ description: Use when someone wants the infrastructure or domain hygiene of a si
 argument-hint: "<url or domain> [--email-domain D] [--dkim-selector S] [--no-ct] [--max-subdomains N] [--only domain,email,tls,edge,ct] [--out DIR] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
-  version: "2.0.0"
+  version: "2.1.0"
 ---
 
 # Infrastructure audit
