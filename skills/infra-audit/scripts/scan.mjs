@@ -5,12 +5,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseLevel, shows, levelNote, consoleList, scratchDir, removeScratch } from './lib/levels.mjs';
 import { createResolver, apexOf, undot } from './lib/dns.mjs';
 import { SECTIONS, domainChecks, emailChecks, tlsChecks, edgeChecks, ctChecks } from './lib/checks.mjs';
 import { DKIM_SELECTORS } from './lib/email.mjs';
-import { result, countStatuses, prepareRun, finishRun, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, settle, GLYPH } from './lib/common.mjs';
+import { result, countStatuses, prepareRun, finishRun, consoleItems, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, settle, GLYPH } from './lib/common.mjs';
 
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 const UA = `Mozilla/5.0 (compatible; infra-audit/${VERSION})`;
 
 const USAGE = `infra-audit ${VERSION}: domain, DNS, email, TLS and subdomain audit
@@ -28,6 +29,10 @@ Usage: node scan.mjs <url or host> [options]
   --no-legacy            Skip the TLS 1.0/1.1 acceptance probe
   --header "Name: value" Sent with the one GET of the home page (WAF bypass rule); also AUDIT_HEADERS
   --platform-ok          Audit the platform's own domain anyway when the host is a hosting platform's address
+  --level LIST           What report.md and the summary show: error, warn, info, a comma list
+                         (error,warn), or all (default). report.json always keeps every result.
+  --console              Print a compact list of issues instead of writing report.md; the run folder is
+                         not kept in the reports folder (last-report.json is). Add --report to get both.
   -h, --help
 `;
 
@@ -49,10 +54,14 @@ export function parseArgs(argv, env = process.env) {
     else if (k === '--no-legacy') a.legacy = false;
     else if (k === '--header') addHeader(a.headers, next());
     else if (k === '--platform-ok') a.platformOk = true;
+    else if (k === '--level') a.levels = parseLevel(next());
+    else if (k === '--console') a.console = true;
+    else if (k === '--report') a.report = true;
     else if (k.startsWith('-')) throw new Error(`Unknown option ${k}`);
     else if (!a.target) a.target = k;
     else throw new Error(`Unexpected argument ${k}`);
   }
+  a.levels ||= parseLevel('all');
   for (const line of String(env.AUDIT_HEADERS || '').split('\n')) if (line.trim()) addHeader(a.headers, line);
   return a;
 }
@@ -136,12 +145,16 @@ export function markIntercepted(results) {
   return results;
 }
 
-export function renderMarkdown(report) {
-  const { target: t, counts, results } = report;
+export function renderMarkdown(report, { levels } = {}) {
+  const { target: t, counts } = report;
+  const filtered = Boolean(levels && !levels.all);
+  // --level: only rows at the chosen levels; the counts and report.json keep everything.
+  const results = report.results.filter((r) => shows(levels, r));
   const out = [`# Infrastructure audit — ${t.host}`, ''];
   if (t.platform) out.push(`> **Not the site's own domain.** ${t.host} is a ${t.platform} address, so only TLS and the edge were checked. Run infra-audit again on the live domain.`, '');
   out.push(`**Site:** ${t.url}  ·  **Domain:** ${t.platform ? `${t.platform} (hosting platform, not checked)` : t.apex}${t.emailDomain !== t.apex ? `  ·  **Mail domain:** ${t.emailDomain}` : ''}  ·  **Date:** ${report.generatedAt.slice(0, 16).replace('T', ' ')} UTC  ·  **Tool:** infra-audit ${report.version}`, '');
   out.push(resultLine(counts), '');
+  if (filtered) out.push(levelNote(levels, { hidden: report.results.length - results.length }), '');
   out.push(...fixFirst(results));
   const warns = results.filter((r) => r.status === 'warn');
   if (warns.length) {
@@ -150,13 +163,14 @@ export function renderMarkdown(report) {
     out.push('');
   }
   out.push(...carryOverSections(report));
-  out.push(...sectionTables(results, SECTIONS));
+  out.push(...sectionTables(results, SECTIONS, { hideEmpty: filtered }));
   out.push('## Not checked here', '', 'Redirects (http→https, www/apex), compression, cache headers, HTTP version, security headers, cookies and exposed files are checked by launch-audit (`redirects`, `caching`, `headers`, `exposed`). This audit only reads public DNS, certificates and registry data: no port scans, no load, no login.', '');
   return out.join('\n');
 }
 
-export function renderStdout(report, files) {
-  const { target: t, counts, results } = report;
+export function renderStdout(report, files, { levels } = {}) {
+  const { target: t, counts } = report;
+  const results = report.results.filter((r) => shows(levels, r));
   const lines = [`infra-audit ${t.host} (domain ${t.apex}, mail ${t.emailDomain})`, resultLine(counts).replace(/\*/g, '')];
   for (const s of ['fail', 'warn']) for (const r of results.filter((x) => x.status === s)) lines.push(`${GLYPH[s]} ${r.id} ${r.title}: ${r.evidence.slice(0, 220)}`);
   for (const r of results.filter((x) => x.status === 'skip')) lines.push(`${GLYPH.skip} ${r.id}: ${r.evidence.slice(0, 160)}`);
@@ -168,7 +182,9 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || !args.target) { process.stdout.write(USAGE); process.exit(args.help ? 0 : 2); }
   const { host } = parseTarget(args.target);
-  const { state, dir, baselineFile, notes } = prepareRun({ skill: 'infra-audit', host, out: args.out, baseline: args.baseline });
+  // --console alone: the run's files go to a scratch folder that is removed at the end.
+  const scratch = args.console && !args.report ? scratchDir('infra-audit') : null;
+  const { state, dir, baselineFile, notes } = prepareRun({ skill: 'infra-audit', host, out: scratch || args.out, baseline: args.baseline });
   log(`infra-audit ${VERSION}: ${host} -> ${dir}`);
   const report = await run(args);
   report.tasks = taskCandidates(report.results, { source: 'infra', ref: `${path.basename(dir)}/report.md` });
@@ -182,10 +198,14 @@ async function main() {
       report.diff = { from: baselineFile, error: e.message, fixed: [], regressed: [], changed: [] };
     }
   }
-  fs.writeFileSync(files.md, renderMarkdown(report));
+  fs.writeFileSync(files.md, renderMarkdown(report, { levels: args.levels }));
   writeJson(files.json, report);
   finishRun(state, report);
-  process.stdout.write(`${renderStdout(report, files)}\nstate:      ${state}\ncompared:   ${baselineFile || 'nothing (first run for this host)'}${notes ? '\nnotes:      notes.md included in the report' : ''}\n`);
+  const head = args.console
+    ? `${consoleList({ title: `infra-audit ${report.target.host}`, items: consoleItems(report.results), levels: args.levels })}${args.report ? `\nreport: ${files.md}` : ''}`
+    : renderStdout(report, files, { levels: args.levels });
+  removeScratch(scratch);
+  process.stdout.write(`${head}\nstate:      ${state}\ncompared:   ${baselineFile || 'nothing (first run for this host)'}${notes ? '\nnotes:      notes.md included in the report' : ''}\n`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

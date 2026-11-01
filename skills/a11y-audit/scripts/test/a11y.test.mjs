@@ -10,7 +10,8 @@ import { scFromAxeTags, scFromHtmlcsCode, enClause, criteriaFor, axeTags } from 
 import { pickPages, sitemapLocs, templateOf } from '../lib/pages.mjs';
 import { analyseWalk } from '../lib/keyboard.mjs';
 import { aggregate, toTasks, genericMessage, diffRuns } from '../lib/findings.mjs';
-import { resultLine } from '../lib/report.mjs';
+import { resultLine, buildMarkdown, consoleItems } from '../lib/report.mjs';
+import { parseLevel, consoleList } from '../lib/levels.mjs';
 import { findChrome } from '../lib/cdp.mjs';
 import { loadEngine } from '../lib/engines.mjs';
 import { parseCli, parseHeaderLines, reportsRoot, run, stateDir } from '../a11y.mjs';
@@ -101,6 +102,17 @@ test('aggregate: one issue per rule across pages, best practice and 4.1.1 apart,
   assert.match(resultLine(agg.counts), /^\d+ criteria failed, \d+ issues \(1 blocker, .*\), \d+ to review, 2 pages$/);
   assert.equal(genericMessage('Duplicate id attribute value "1a2e-44" found.'), 'Duplicate id attribute value "…" found.');
   assert.equal(genericMessage('role is "presentation" but'), 'role is "presentation" but');
+
+  // --level and --console
+  const md = (levels) => buildMarkdown({ site: 'https://x.dk/', date: new Date('2026-11-01'), level: 'AA', pages: [], agg, engines: [], version: 't', manual: 'm', levels });
+  const errorsOnly = md(parseLevel('error'));
+  assert.match(errorsOnly, /Showing errors only/);
+  assert.match(errorsOnly, /Keyboard focus gets stuck/);
+  assert.doesNotMatch(errorsOnly, /## Needs review|## WCAG 2\.2 AA criteria/);
+  assert.match(md(null), /## Needs review[\s\S]*## WCAG 2\.2 AA criteria/);
+  const list = consoleList({ title: 'a11y', items: consoleItems(agg), levels: parseLevel('error') });
+  assert.match(list.split('\n')[1], /^ERROR  blocker/);
+  assert.doesNotMatch(list, /^INFO/m);
 });
 
 test('toTasks: drafts audit-all accepts, human-owned without a repo', async () => {
@@ -140,6 +152,9 @@ test('cli: defaults, flags and headers', () => {
   assert.deepEqual([p.pages, p.level, p.repo, p.repoPath, p.headers], [3, 'AAA', 'web', '/tmp/web', { 'X-Bypass': '1', 'X-Other': '2' }]);
   assert.throws(() => parseCli([], {}), /URL is required/);
   assert.throws(() => parseCli(['x.dk', '--level', 'B'], {}), /--level/);
+  const w = parseCli(['x.dk', '--wcag', 'A', '--level', 'error,warn', '--console'], {});
+  assert.deepEqual([w.level, w.levels.words, w.console, w.report], ['A', 'error,warn', true, false]);
+  assert.equal(parseCli(['x.dk', '--level', 'AAA'], {}).levels.all, true);
   assert.throws(() => parseHeaderLines(['nope']), /Name: value/);
 });
 

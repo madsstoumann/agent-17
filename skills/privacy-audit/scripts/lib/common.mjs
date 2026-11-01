@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from './target-state.mjs';
+import { levelOf } from './levels.mjs';
 
 export const STATUSES = ['pass', 'warn', 'fail', 'info', 'skip'];
 export const GLYPH = { pass: '✅', warn: '⚠️', fail: '❌', info: 'ℹ️', skip: '⏭️' };
@@ -119,10 +120,11 @@ export function escapeCell(s, max = 300) {
 export const resultLine = (counts) => `**Result:** ${counts.pass} pass · ${counts.warn} warn · ${counts.fail} fail · ${counts.info} info · ${counts.skip} skipped`;
 
 /** Sections as numbered H2s with one table each; `sections` is [{ id, title, prefixes }]. */
-export function sectionTables(results, sections) {
+export function sectionTables(results, sections, { hideEmpty = false } = {}) {
   const out = [];
   sections.forEach((s, i) => {
     const rows = results.filter((r) => s.prefixes.includes(r.id.split('.')[0]));
+    if (hideEmpty && !rows.length) return;
     out.push(`## ${i + 1}. ${s.title}`, '');
     if (!rows.length) { out.push('_Not run._', ''); return; }
     out.push('| | Check | Finding | Fix |', '|---|---|---|---|');
@@ -170,6 +172,11 @@ export function taskCandidates(results, { source, ref }) {
     verify: `The ${r.id} check passes on the next ${source}-audit run.`,
     refs: [ref],
   }));
+}
+
+/** The --console items (levels.mjs consoleList): one per result with a level. */
+export function consoleItems(results) {
+  return results.map((r) => ({ level: levelOf(r), source: r.id.split('.')[0], id: r.id.split('.').slice(1).join('.'), title: r.title, where: `${r.subject ? `${r.subject}: ` : ''}${String(r.evidence || '').replace(/\s+/g, ' ').slice(0, 160)}` }));
 }
 
 export function writeJson(file, data) {

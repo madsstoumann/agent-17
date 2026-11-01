@@ -323,6 +323,24 @@ test('finalize: notes.md survives every run; a hand-edited report.md is saved be
   assert.equal(readFileSync(join(sh, 'notes.md'), 'utf8'), '# DAWA\n\nMigration ticket SHOP-42, owner Anna.\n', 'finalize never writes notes.md');
 });
 
+test('finalize: --level filters report.md, --console prints the list and leaves report.md alone', () => {
+  assert.equal(run('finalize', '--level', 'error').status, 0);
+  const report = readFileSync(join(sh, 'report.md'), 'utf8');
+  assert.match(report, /Showing errors only/);
+  assert.match(report, /### 🔴 DAWA/);
+  assert.doesNotMatch(report, /## Watch/);
+  const tasks = JSON.parse(readFileSync(join(sh, 'tasks.json'), 'utf8'));
+  assert.ok(tasks.tasks.some((t) => t.severity === 'medium' || t.severity === 'low'), 'tasks.json keeps every level');
+  const before = readFileSync(join(sh, 'report.md'), 'utf8');
+  const r = run('finalize', '--console', '--level', 'error,warn');
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /^solution-health .* — \d+ errors? · \d+ warnings? · \d+ info — showing errors and warnings/);
+  assert.match(r.stdout, /^ERROR  api +DAWA/m);
+  assert.doesNotMatch(r.stdout, /^INFO/m);
+  assert.equal(readFileSync(join(sh, 'report.md'), 'utf8'), before, '--console alone does not rewrite report.md');
+  assert.equal(run('finalize').status, 0);
+});
+
 test('finalize: tasks.json in the shape audit-all and audit-fix take', async () => {
   const t = JSON.parse(readFileSync(join(sh, 'tasks.json'), 'utf8'));
   assert.equal(t.subject, basename(root));

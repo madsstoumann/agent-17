@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { normaliseUrl, isPrivateHost, hostOf, stripWww, parseHeaderLines, VERSION } from './http.mjs';
 import { targetDir } from './target-state.mjs';
+import { parseLevel } from './levels.mjs';
 
 export const DEFAULTS = {
   pages: 3, maxPages: 100, maxExternal: 200, timeout: 15000, lhTimeout: 240000, concurrency: 6,
@@ -81,6 +82,9 @@ const OPTIONS = {
   header: { type: 'string', multiple: true },
   from: { type: 'string' },
   strict: { type: 'boolean' },
+  level: { type: 'string' },
+  console: { type: 'boolean' },
+  report: { type: 'boolean' },
   json: { type: 'boolean' },
   quiet: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
@@ -161,6 +165,9 @@ export function parseCli(argv, env = process.env) {
       headers: parseHeaderLines([...(values.header || []), ...String(env.AUDIT_HEADERS || '').split('\n').filter((l) => l.trim())]),
       from: values.from || env.AUDIT_FROM || '',
       strict: Boolean(values.strict),
+      levels: parseLevel(values.level),
+      console: Boolean(values.console),
+      report: Boolean(values.report),
       json: Boolean(values.json),
       quiet: Boolean(values.quiet),
       psiKey: env.PSI_API_KEY || '',
@@ -269,6 +276,10 @@ Usage: node audit.mjs <url> [flags]
   --ua STRING / --from EMAIL     Override the User-Agent / add a From: header (also AUDIT_FROM).
   --header "Name: value"         Send this header to the audited site and from Lighthouse (repeatable; also AUDIT_HEADERS,
                                  one per line). For a WAF bypass rule; never sent to third-party services by the script.
+  --level LIST                   What report.md and the summary show: error, warn, info, a comma list (error,warn), or all
+                                 (default). report.json and last-report.json always keep every result.
+  --console                      Print a compact list of issues (one line each, errors first) instead of writing report.md;
+                                 the run folder is not kept, last-report.json still is. Add --report to get both.
   --strict                       Exit 3 when anything fails (CI). Default exit code is 0 whatever the findings.
   --json                         Print report.json to stdout instead of the summary.   --quiet   No progress on stderr.
   -h, --help / -v, --version

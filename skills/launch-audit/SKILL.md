@@ -1,10 +1,10 @@
 ---
 name: launch-audit
 description: Use when a website is about to go live or has just launched and needs a pre-launch / go-live audit, a launch checklist or an "is the site ready" answer for any dev, staging or production URL — the manual round of PageSpeed Insights, securityheaders.com, the W3C and schema.org validators and MDN Observatory, plus robots/sitemap/canonical, redirects, soft 404s, TLS/DNS/SPF/DMARC, exposed files, caching, cookies and trackers, broken links, mixed content, share previews and icons. Also for re-checking a site after fixes or comparing with an earlier audit. Public and local (self-signed) URLs, any stack.
-argument-hint: "<url> [--env dev|staging|production] [--production-host HOST] [--pages N] [--skip group,...] [--out PATH] [--baseline report.json | --no-baseline] [--insecure] [--header NAME:VALUE]"
+argument-hint: "<url> [--env dev|staging|production] [--production-host HOST] [--pages N] [--skip group,...] [--out PATH] [--baseline report.json | --no-baseline] [--insecure] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Read, WebFetch
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # Launch audit
@@ -63,6 +63,20 @@ Lighthouse runs right after the start page, before the crawl and the exposed-fil
 WAF that reacts to that burst has not been triggered yet. If it still meets a bot challenge (the
 page answers 403/429/503, e.g. the Vercel Security Checkpoint), the report says so instead of
 scoring the challenge page, and switches to PageSpeed Insights when `PSI_API_KEY` is set.
+
+### Levels and the console list
+
+`--level` sets what `report.md` and the stdout summary show: `error` (failed checks, blockers included), `warn`, `info`, a comma list such as
+`error,warn`, or `all` (the default: every row, passes included). Use it when the user asks for
+"errors only", "only warnings", "skip the info" and the like. It never filters saved data:
+`report.json` and `last-report.json` keep every result, so the next run's "Since last run" is unaffected.
+
+`--console` prints a compact list instead of writing `report.md`: one line per issue, errors
+first, with the counts on top. The run's files go to a scratch folder in the system temp folder,
+so nothing is left in the reports folder except the target folder's `last-report.json`. Use it when
+the user wants "just the list", "in the terminal" or "no report". Show the list as it is, in a code
+block, with a sentence of context; there is no report path to quote. `--console --report` writes
+the report as well.
 
 ## Present the results
 

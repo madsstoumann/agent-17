@@ -4,6 +4,7 @@
  * plus a shorter report-compact.html and report-compact.pdf.
  *
  *   node combine.mjs <run-dir> [--style serif|sans] [--repo PATH]... [--no-pdf] [--no-compact] [--chrome PATH]
+ *                    [--level error,warn] [--console [--report]]
  *   (also writes fix/TODO.md and fix/tasks/*.md when <run-dir>/tasks.json exists)
  *   node combine.mjs --new <name>      print a fresh run folder path (and create it)
  */
@@ -15,9 +16,10 @@ import { fileURLToPath } from 'node:url';
 import { discoverReports, headline, parseSummary, combinedMarkdown, combinedHtml, siteMismatches } from './lib/report.mjs';
 import { printPdf, pdfDestPages } from './lib/pdf.mjs';
 import { writeFixPlan } from './lib/tasks.mjs';
+import { parseLevel, levelOfWord, consoleList } from './lib/levels.mjs';
 import { targetDir, claimTarget, newRun, previousRuns, readNotes, targetName } from './lib/target-state.mjs';
 
-export const VERSION = '1.8.1';
+export const VERSION = '1.9.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, '..', 'assets');
 const SIBLINGS = path.join(HERE, '..', '..');
@@ -38,6 +40,11 @@ Flags:
   --no-pdf             Write report.md and the HTML files only.
   --no-compact         Skip report-compact.html and report-compact.pdf (the full report with long lists
                        cut to five rows, passing checks and reference sections left out).
+  --level LIST         What fix/TODO.md (and the prompts in fix/tasks/) holds: error (blocker, high), warn (medium, low),
+                       a comma list (error,warn), or all (default). tasks.json is never filtered. Run the sub-audits
+                       with the same --level so their report.md files, which the combined report quotes, match.
+  --console            Print the fix plan as a compact list (one line per task, errors first) instead of writing
+                       report.md, report.html and the PDFs. fix/ is still written. Add --report for both.
   --chrome PATH        Browser to print with (default: CHROME_PATH, installed Chrome/Chromium/Edge, Playwright's Chromium).
 
 <reports> is $AUDIT_OUT_DIR, else the Downloads folder if it exists (XDG download folder on Linux), else ~/audit-reports.
@@ -46,7 +53,7 @@ Flags:
 const STYLES = { serif: 'serif', sans: 'sans', editorial: 'serif', modern: 'sans' };
 
 export function parseArgs(argv) {
-  const a = { dir: null, style: 'serif', repos: [], pdf: true, compact: true, chrome: null, newName: null, help: false };
+  const a = { dir: null, style: 'serif', repos: [], pdf: true, compact: true, chrome: null, newName: null, help: false, levels: parseLevel('all'), console: false, report: false };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i];
     const next = () => { if (i + 1 >= argv.length) throw new Error(`${v} needs a value`); return argv[++i]; };
@@ -59,6 +66,9 @@ export function parseArgs(argv) {
     else if (v === '--no-pdf') a.pdf = false;
     else if (v === '--no-compact') a.compact = false;
     else if (v === '--chrome') a.chrome = next();
+    else if (v === '--level' || v.startsWith('--level=')) a.levels = parseLevel(v.includes('=') ? v.split('=')[1] : next());
+    else if (v === '--console') a.console = true;
+    else if (v === '--report') a.report = true;
     else if (v === '--new') a.newName = next();
     else if (v.startsWith('--')) throw new Error(`Unknown option ${v}`);
     else a.dir = v;
@@ -211,21 +221,26 @@ export async function combine(args, { now = new Date(), log = (m) => process.std
   const toolVersions = Object.fromEntries([...new Set(reports.map((r) => r.kind))].map((k) => [k, skillVersion(k)]).filter(([, v]) => v));
 
   const md = combinedMarkdown({ summary, reports, heads, date: now, version: VERSION });
+  // --console alone: no combined report files, only the fix plan and the list on stdout.
+  const files = !args.console || args.report;
   const htmlArgs = { summary, reports, heads, date: now, version: VERSION, css: stylesheet(args.style), style: args.style, toolVersions };
   const html = combinedHtml(htmlArgs);
-  const out = { md: path.join(runDir, 'report.md'), html: path.join(runDir, 'report.html'), pdf: null, todo: null, reports: reports.map((r) => r.folder) };
-  fs.writeFileSync(out.md, md);
-  fs.writeFileSync(out.html, html);
-  if (args.compact !== false) {
+  const out = { md: files ? path.join(runDir, 'report.md') : null, html: files ? path.join(runDir, 'report.html') : null, pdf: null, todo: null, reports: reports.map((r) => r.folder) };
+  if (files) {
+    fs.writeFileSync(out.md, md);
+    fs.writeFileSync(out.html, html);
+  }
+  if (files && args.compact !== false) {
     out.compactHtml = path.join(runDir, 'report-compact.html');
     fs.writeFileSync(out.compactHtml, combinedHtml({ ...htmlArgs, compact: true }));
   }
-  const fix = writeFixPlan(runDir, { date: now, subject: summary.meta.subject || null });
+  const fix = writeFixPlan(runDir, { date: now, subject: summary.meta.subject || null, levels: args.levels });
+  if (args.console) out.list = consoleList({ title: `audit-all ${summary.meta.subject || fix.plan?.subject || path.basename(runDir)}`, items: consoleItems(fix.plan), levels: args.levels });
   for (const w of fix.warnings || []) log(`tasks.json: ${w}`);
   if (fix.written) out.todo = fix.todo;
   else if (fix.errors?.length) log(`Fix plan not written, tasks.json has problems:\n  ${fix.errors.join('\n  ')}`);
   else log('tasks.json not found: no fix plan written.');
-  if (args.pdf) {
+  if (files && args.pdf) {
     const pdfFile = path.join(runDir, 'report.pdf');
     const r = await printWithContents(htmlArgs, out.html, pdfFile, { chromePath: args.chrome, log });
     if (r.ok) out.pdf = pdfFile;
@@ -237,6 +252,12 @@ export async function combine(args, { now = new Date(), log = (m) => process.std
     }
   }
   return out;
+}
+
+/** The --console items: one per task in tasks.json, its level from the severity (blocker/high error, medium/low warning). */
+export function consoleItems(plan) {
+  if (!plan) return [];
+  return plan.tasks.map((t) => ({ level: levelOfWord(t.severity) || 'warn', source: t.sources.join(','), id: t.id, title: t.title, where: [t.severity, t.owner === 'agent' ? `agent, ${t.model}` : 'person', t.repo].filter(Boolean).join(' · ') }));
 }
 
 /**
@@ -266,6 +287,8 @@ async function main() {
   if (!args.dir) { process.stderr.write(USAGE); process.exit(2); }
   try {
     const out = await combine(args);
+    if (out.list) process.stdout.write(`${out.list}\n\n`);
+    if (args.console && !args.report) { process.stdout.write(`fix plan: ${out.todo || '(not written: no tasks.json)'}\n`); return; }
     process.stdout.write(`combined: ${out.reports.join(', ')}\n\nreport.md:   ${out.md}\nreport.html: ${out.html}\nreport.pdf:  ${out.pdf || '(not written)'}\ncompact:     ${out.compactPdf || out.compactHtml || '(not written)'}\nfix plan:    ${out.todo || '(not written)'}\n`);
   } catch (e) {
     process.stderr.write(`${e.message}\n`);

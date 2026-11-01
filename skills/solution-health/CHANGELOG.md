@@ -2,6 +2,12 @@
 
 All notable changes to the `solution-health` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.4.0] - 2026-11-01
+
+### Added
+- `finalize.mjs --level error|warn|info` (comma list; default `all`): report.md shows only findings at those levels (red is an error, amber a warning, info and unknown info). state.json and tasks.json keep every finding.
+- `finalize.mjs --console`: a compact list of findings on stdout (`scripts/lib/levels.mjs`), report.md left as it was; state.json and tasks.json still updated. `--console --report` gives both.
+
 ## [2.3.0] - 2026-10-30
 
 ### Fixed

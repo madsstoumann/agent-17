@@ -6,6 +6,7 @@
  */
 import { AREAS, STATUS_ORDER, countStatuses } from './checks.mjs';
 import { diffMarkdown } from './diff.mjs';
+import { shows, levelNote, levelOf } from './levels.mjs';
 
 export const GLYPH = { pass: '✅', warn: '⚠️', fail: '❌', info: 'ℹ️', skip: '⏭️' };
 const LABEL = { pass: 'Pass', warn: 'Warn', fail: 'Fail', info: 'Info', skip: 'Skipped' };
@@ -30,13 +31,17 @@ export function resultLine(counts) {
   return ['fail', 'warn', 'pass', 'info', 'skipped'].map((k) => `${counts[k === 'skipped' ? 'skip' : k]} ${k}`).join(', ');
 }
 
-export function renderMarkdown(report) {
-  const { site, rows, stats, env } = report;
-  const counts = countStatuses(rows);
+export function renderMarkdown(report, { levels } = {}) {
+  const { site, stats, env } = report;
+  const counts = countStatuses(report.rows);
+  const filtered = Boolean(levels && !levels.all);
+  // --level: only rows at the chosen levels; the counts and report.json keep everything.
+  const rows = report.rows.filter((r) => shows(levels, r));
   const out = [];
   out.push(`# SEO audit — ${site.host}`, '');
   out.push(`**Site:** ${site.finalUrl} · **Date:** ${report.date} · **Tool:** seo-audit ${report.version}`, '');
   out.push(`**Result:** ${resultLine(counts)}`, '');
+  if (filtered) out.push(levelNote(levels, { hidden: report.rows.length - rows.length }), '');
   out.push(`**Crawled:** ${stats.html} HTML pages and ${stats.other} other URLs (${stats.redirects} redirects, ${stats.errors} errors) by following links${stats.truncated ? ` (stopped at the --pages cap of ${stats.maxPages}; the site has more)` : ''}${stats.sitemapMissing ? `, plus ${stats.sitemapSampled} of ${stats.sitemapMissing} sitemap URLs the links did not reach` : ''}. ${stats.indexable} pages are indexable.`, '');
   if (env.note) out.push(`> ${env.note}`, '');
   if (report.notes) out.push('## Notes', '', report.notes.trim(), '');
@@ -44,7 +49,8 @@ export function renderMarkdown(report) {
 
   const issues = sorted(rows.filter((r) => r.status === 'fail' || r.status === 'warn'));
   out.push('## Fix list', '');
-  if (!issues.length) out.push('Nothing failed and nothing needs a warning. The info rows below are worth a look.', '');
+  if (!issues.length && filtered) out.push(`No ${levels.label.replace(/ only$/, '')}.`, '');
+  else if (!issues.length) out.push('Nothing failed and nothing needs a warning. The info rows below are worth a look.', '');
   else {
     out.push('| # | Status | Check | Finding | Pages |', '|---|---|---|---|---|');
     issues.forEach((r, i) => out.push(`| ${i + 1} | ${GLYPH[r.status]} ${LABEL[r.status]} | ${cell(r.title)} | ${cell(r.evidence)} | ${r.urls.length || ''} |`));
@@ -120,11 +126,17 @@ export function pagesCsv(pages, inlinks) {
   return `${lines.join('\n')}\n`;
 }
 
-export function renderStdout(report, paths) {
+export function renderStdout(report, paths, { levels } = {}) {
   const counts = countStatuses(report.rows);
+  const rows = report.rows.filter((r) => shows(levels, r));
   const out = [`seo-audit ${report.version} — ${report.site.finalUrl}`, `Result: ${resultLine(counts)}`, `Crawled ${report.stats.html} pages (${report.stats.indexable} indexable)${report.stats.truncated ? ', capped' : ''}; ${report.stats.sitemapSampled} extra sitemap URLs`, ''];
-  for (const r of sorted(report.rows.filter((x) => x.status === 'fail' || x.status === 'warn'))) out.push(`${r.status.toUpperCase().padEnd(4)} ${r.title}: ${r.evidence}`);
-  for (const r of report.rows.filter((x) => x.status === 'skip')) out.push(`SKIP ${r.title}: ${r.evidence}`);
+  for (const r of sorted(rows.filter((x) => x.status === 'fail' || x.status === 'warn'))) out.push(`${r.status.toUpperCase().padEnd(4)} ${r.title}: ${r.evidence}`);
+  for (const r of rows.filter((x) => x.status === 'skip')) out.push(`SKIP ${r.title}: ${r.evidence}`);
   out.push('', `report.md     ${paths.md}`, `findings.json ${paths.findings}`);
   return out.join('\n');
+}
+
+/** The --console items: one per row with a level (fail, warn, info). */
+export function consoleItems(report) {
+  return sorted(report.rows).map((r) => ({ level: levelOf(r), source: r.area, id: r.id.replace(/^seo\./, ''), title: r.title, where: `${cell(r.evidence, 140)}${r.urls.length ? ` (${r.urls.length} page${r.urls.length === 1 ? '' : 's'})` : ''}` }));
 }

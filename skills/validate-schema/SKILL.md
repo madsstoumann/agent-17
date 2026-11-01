@@ -3,7 +3,7 @@ name: validate-schema
 description: Validates schema.org structured data (JSON-LD, Microdata) for a URL or local HTML file using validator.schema.org. Use when checking structured data, JSON-LD markup, schema.org validation, or SEO structured data issues.
 allowed-tools: Bash(curl:*), Bash(/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome:*), Read
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Schema.org Validator
@@ -107,6 +107,20 @@ Present the results in a clear, structured format:
 
 ## Recommendations
 [Provide actionable fixes for any issues found]
+```
+
+**Levels.** When the user asks for "errors only", "only warnings" or "no info" (or passes
+`--level error`, `warn`, `error,warn` or `all`, the same flag as the other audit skills), keep
+the Summary counts complete but list only those issues under "Issues Found", and say which level
+the report shows. Errors are the validator's errors; warnings are its warnings.
+
+**Console list.** When the user wants "just the list" (or passes `--console`), skip the report
+layout and reply with one code block, one line per issue, errors first, counts on top:
+
+```
+validate-schema https://shop.example.dk — 1 error · 2 warnings · 0 info
+ERROR  Product  offers  Missing required property "price" · Offer #1
+WARN   Product  brand   Recommended property missing
 ```
 
 ### 4. Error Handling

@@ -1,10 +1,10 @@
 ---
 name: privacy-audit
 description: Use when someone wants a GDPR, ePrivacy or cookie compliance check of a website — cookies or trackers set before consent, whether "reject" is honoured, whether the consent banner offers reject on the first layer and treats both buttons equally, pre-ticked boxes, Google Consent Mode v2, embeds and Google Fonts loaded without consent, data sent to the US and other third countries, and whether the privacy policy and cookie declaration exist and name every cookie. Also "is our cookie banner legal", "what does the site track", "Datatilsynet cookie check". Drives headless Chrome as three new visitors; read-only. Not for security headers or TLS (launch-audit, infra-audit).
-argument-hint: "<url> [--pages N] [--only first,reject,accept] [--lang L] [--header NAME:VALUE] [--out DIR]"
+argument-hint: "<url> [--pages N] [--only first,reject,accept] [--lang L] [--header NAME:VALUE] [--out DIR] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, Write, Edit, WebFetch
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Privacy audit
@@ -52,6 +52,24 @@ node "${CLAUDE_SKILL_DIR}/scripts/scan.mjs" <url> [flags]
 **Run it from the EU.** Many consent tools only show the banner to EU visitors. From a US cloud IP
 the banner may be missing and everything may load at once; if `consent.banner` fails on a site that
 clearly has a banner in the EU, say so and re-run from an EU network.
+
+### Levels and the console list
+
+`--level` sets what `report.md` and the stdout summary show: `error` (failed checks), `warn`, `info`, a comma list such as
+`error,warn`, or `all` (the default: every row, passes included). Use it when the user asks for
+"errors only", "only warnings", "skip the info" and the like. It never filters saved data:
+`report.json` (with its `tasks`) and `last-report.json` keep every result, so the next run's "Since last run" is unaffected.
+
+`--console` prints a compact list instead of writing `report.md`: one line per issue, errors
+first, with the counts on top. The run's files go to a scratch folder in the system temp folder,
+so nothing is left in the reports folder except the target folder's `last-report.json`. Use it when
+the user wants "just the list", "in the terminal" or "no report". Show the list as it is, in a code
+block, with a sentence of context; there is no report path to quote. `--console --report` writes
+the report as well.
+
+With `--console` alone, the scratch folder is kept (its path is printed with the policy files):
+read the policy text from there as usual, and give the policy review in a few lines after the list
+instead of adding it to `report.md`. With a level, write the policy review at that level too.
 
 ## What it checks
 

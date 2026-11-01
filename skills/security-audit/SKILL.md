@@ -1,10 +1,10 @@
 ---
 name: security-audit
 description: Use when someone wants a security review, code security audit, vulnerability scan or "is this repo safe to ship" check of a whole codebase or folder — committed secrets and API keys (also in git history), known-vulnerable dependencies from any lockfile (npm, yarn, pnpm, NuGet, Composer, PyPI, RubyGems, Go via OSV), XSS sinks, SQL/command/template injection, SSRF, open redirects, path traversal, weak crypto, disabled TLS verification, JWT and CORS mistakes, unsafe deserialisation, debug config, and GitHub Actions risks such as pull_request_target and script injection. Report only. Not for a single diff (use /security-review), live HTTP headers or TLS of a URL (use launch-audit), or routine package upkeep (use solution-health).
-argument-hint: "[path] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline] [--visibility public|private|internal]"
+argument-hint: "[path] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline] [--visibility public|private|internal] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(git log:*), Bash(git show:*), Bash(gh repo view:*), Read, Grep, Glob, WebFetch
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # Security audit (code mode)
@@ -167,6 +167,27 @@ installed, do not install it without asking: say so under "Not checked" with the
 (`brew install semgrep` or `pipx install semgrep`).
 
 ## Report
+
+**Levels.** `--level error`, `warn`, `error,warn` or `all` (the default) limits what the scanner
+lists and what you put in `report.md` and the chat reply: errors are high and critical findings
+(blockers included), warnings medium, moderate and low. Use it when the user asks for "errors
+only", "only warnings" and the like, and still triage every hit the scanner lists. `findings.json`,
+`last-findings.json` and `triage.json` always keep everything. Say in the report which level it
+shows and how many confirmed findings it leaves out.
+
+**Console.** With `--console` (the user wants "just the list", "no report"), the scanner puts
+`findings.json` in a scratch folder in the system temp folder and you write no `report.md`. Triage
+as usual, update `triage.json`, then reply with the confirmed findings at the chosen level as one
+code block, one line each, errors first, counts on top, the same format as the other audit skills:
+
+```
+security-audit shop-web — 2 errors · 3 warnings · 0 info
+ERROR  secrets  S1  Stripe live key committed · config/payments.js:4
+ERROR  deps     S2  lodash 4.17.15, prototype pollution (GHSA-…) · fixed in 4.17.21
+WARN   config   S3  CORS allows any origin · src/server.ts:22
+```
+
+followed by a sentence on what was not checked. `--console --report` does both.
 
 Write `report.md` in the folder the scanner printed, using the layout in
 `references/report-template.md`. With a baseline, fill in "Since last run" from the scanner's

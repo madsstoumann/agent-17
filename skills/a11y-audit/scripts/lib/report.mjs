@@ -1,6 +1,7 @@
 // report.md and the stdout summary.
 import { scLabel } from './wcag.mjs';
 import { understandingUrl } from './findings.mjs';
+import { levelOfWord, levelNote } from './levels.mjs';
 
 const STATUS = { fail: 'Fails', review: 'Review', pass: 'No automated failures', manual: 'Manual check' };
 const cell = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
@@ -21,14 +22,40 @@ export function verdict(c) {
   return 'No automated failures. Automated tools find only part of the problems, so do the manual checks below.';
 }
 
-export function buildMarkdown({ site, date, level, pages, agg, engines, version, manual, diff = null, notes = null, state = null }) {
-  const c = { ...agg.counts, level };
+/** Issues are errors (blocker, high) or warnings (medium, low); review and best-practice items are info. */
+const issueLevel = (i) => levelOfWord(i.severity) || 'warn';
+
+/** The --console items. */
+export function consoleItems(agg) {
+  const where = (i) => `WCAG ${i.sc.join(', ') || '–'} · ${plural(i.pages.length, 'page')}${i.count ? `, ${plural(i.count, 'element')}` : ''}`;
+  return [
+    ...agg.issues.map((i) => ({ level: issueLevel(i), source: i.severity, id: i.id, title: i.title, where: where(i) })),
+    ...agg.review.map((r) => ({ level: 'info', source: 'review', id: '', title: r.title, where: where(r) })),
+    ...agg.bestPractice.map((b) => ({ level: 'info', source: 'practice', id: '', title: b.title, where: `${plural(b.pages.length, 'page')}` })),
+  ];
+}
+
+export function buildMarkdown({ site, date, level, pages, agg: full, engines, version, manual, diff = null, notes = null, state = null, levels = null }) {
+  const filtered = Boolean(levels && !levels.all);
+  // --level: only issues at the chosen levels; review and best-practice items are info. The counts,
+  // report.json and tasks.json keep everything.
+  const agg = filtered ? {
+    ...full,
+    issues: full.issues.filter((i) => levels[issueLevel(i)]),
+    review: levels.info ? full.review : [],
+    bestPractice: levels.info ? full.bestPractice : [],
+  } : full;
+  const c = { ...full.counts, level };
   const L = [];
   L.push(`# Accessibility audit: ${new URL(site).host}`, '');
   L.push(`**Site:** ${site} · **Standard:** WCAG 2.2 ${level}, EN 301 549 v3.2.1 · **Date:** ${date.toISOString().slice(0, 10)} · **Engines:** ${engines.map((e) => `${e.name} ${e.version}${e.name === 'HTML_CodeSniffer' ? " (Pa11y's default engine)" : ''}`).join(', ')}, keyboard walk, reflow · a11y-audit ${version}`, '');
   L.push(`**Result:** ${resultLine(c)}`, '');
   L.push(`**Verdict:** ${verdict(c)}`, '');
   L.push('> Automated checks find roughly a third of WCAG problems. "No automated failures" is not conformance: the manual checks at the end decide that.', '');
+  if (filtered) {
+    const hidden = full.issues.length - agg.issues.length + full.review.length - agg.review.length + full.bestPractice.length - agg.bestPractice.length;
+    L.push(`${levelNote(levels, { hidden })} The criteria table, manual checks and page list are left out at this level.`, '');
+  }
 
   if (diff?.error) L.push('## Since last run', '', `Baseline not usable: ${diff.error}`, '');
   else if (diff) {
@@ -51,7 +78,8 @@ export function buildMarkdown({ site, date, level, pages, agg, engines, version,
   }
 
   L.push('## Issues', '');
-  if (!agg.issues.length) L.push('No automated failures.', '');
+  if (!agg.issues.length && filtered) L.push(`No ${levels.label.replace(/ only$/, '')}.`, '');
+  else if (!agg.issues.length) L.push('No automated failures.', '');
   else {
     L.push('| # | Severity | Issue | WCAG | EN 301 549 | Pages | Elements |', '|---|---|---|---|---|---|---|');
     for (const i of agg.issues) L.push(`| ${i.id} | ${cap(i.severity)} | ${cell(i.title)} | ${i.sc.join(', ')} | ${i.en.join(', ') || '–'} | ${i.pages.length} | ${i.count} |`);
@@ -88,6 +116,7 @@ export function buildMarkdown({ site, date, level, pages, agg, engines, version,
   for (const p of pages.filter((x) => !x.error)) L.push(`| ${p.url} | ${p.reflow ? (p.reflow.overflow ? `**${p.reflow.scrollWidth}px** (scrolls sideways)` : 'Fits') : '–'} | ${p.textSpacing ? p.textSpacing.clipped : '–'} |`);
   L.push('');
 
+  if (filtered && !levels.info) return L.join('\n');
   L.push('## Needs review', '');
   if (!agg.review.length) L.push('Nothing flagged for review.', '');
   else {
@@ -102,6 +131,7 @@ export function buildMarkdown({ site, date, level, pages, agg, engines, version,
     L.push('');
   }
 
+  if (filtered) return L.join('\n');
   L.push(`## WCAG 2.2 ${level} criteria`, '');
   L.push('EN 301 549 v3.2.1 clause 9 is WCAG 2.1 A and AA for web pages, so criteria new in 2.2 have no EN clause yet. "Manual check" means no automated rule covers the criterion.', '');
   L.push('| Criterion | Level | EN 301 549 | Status | Issues |', '|---|---|---|---|---|');
@@ -121,9 +151,11 @@ export function buildMarkdown({ site, date, level, pages, agg, engines, version,
 }
 
 /** The ~25 lines Claude reads. */
-export function buildSummary({ site, agg, dir, level, state = null, diff = null, notes = null }) {
-  const c = { ...agg.counts, level };
-  const L = [`a11y-audit: ${site}`, `Result: ${resultLine(c)}`, `Verdict: ${verdict(c)}`, ''];
+export function buildSummary({ site, agg: full, dir, level, state = null, diff = null, notes = null, levels = null }) {
+  const filtered = Boolean(levels && !levels.all);
+  const agg = filtered ? { ...full, issues: full.issues.filter((i) => levels[issueLevel(i)]), review: levels.info ? full.review : [] } : full;
+  const c = { ...full.counts, level };
+  const L = [`a11y-audit: ${site}`, `Result: ${resultLine(c)}`, `Verdict: ${verdict(c)}`, ...(filtered ? [`Showing: ${levels.label} (--level ${levels.words})`] : []), ''];
   if (agg.issues.length) {
     L.push('Issues:');
     for (const i of agg.issues.slice(0, 15)) L.push(`  ${i.id} [${i.severity}] ${i.title} · WCAG ${i.sc.join(', ') || '–'} · ${i.pages.length} pages, ${i.count} elements`);

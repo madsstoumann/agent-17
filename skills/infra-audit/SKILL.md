@@ -1,10 +1,10 @@
 ---
 name: infra-audit
 description: Use when someone wants the infrastructure or domain hygiene of a site checked — domain registration expiry and transfer lock, name servers, SOA, DNSSEC, CAA, dangling CNAMEs and subdomain takeover risk, mail authentication in depth (MX, SPF followed through every include and the 10-lookup limit, DMARC including external report authorisation, DKIM key sizes, MTA-STS, TLS-RPT, BIMI), TLS per endpoint and IP (chain, expiry, names, key, TLS 1.0/1.1, OCSP, CAA vs issuer), CDN, HTTP/3, the HSTS preload list, and every subdomain in Certificate Transparency logs. Also "is our DNS/mail set up right", "why does our mail land in spam", "when does the domain or certificate expire". Passive and read-only. Not for redirects, headers or caching (launch-audit).
-argument-hint: "<url or domain> [--email-domain D] [--dkim-selector S] [--no-ct] [--max-subdomains N] [--only domain,email,tls,edge,ct] [--out DIR]"
+argument-hint: "<url or domain> [--email-domain D] [--dkim-selector S] [--no-ct] [--max-subdomains N] [--only domain,email,tls,edge,ct] [--out DIR] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # Infrastructure audit
@@ -43,6 +43,20 @@ skips) to stdout. Exit code 0 whatever it finds; non-zero means the script faile
 | `--header "Name: value"` | A WAF bypass header (see launch-audit); sent only with the one GET of the home page. Also `AUDIT_HEADERS`. |
 | `--out DIR` | The user names a folder, or audit-all passes its run folder. Default `<reports>/infra-audit/<host>/runs/<YYYYMMDD-HHMM>/`, where `<reports>` is `$AUDIT_OUT_DIR`, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. Quote the paths printed last. |
 | `--baseline FILE` | Compare with a specific earlier `report.json`. By default the script compares with the last run for the same host. |
+
+### Levels and the console list
+
+`--level` sets what `report.md` and the stdout summary show: `error` (failed checks), `warn`, `info`, a comma list such as
+`error,warn`, or `all` (the default: every row, passes included). Use it when the user asks for
+"errors only", "only warnings", "skip the info" and the like. It never filters saved data:
+`report.json` (with its `tasks`) and `last-report.json` keep every result, so the next run's "Since last run" is unaffected.
+
+`--console` prints a compact list instead of writing `report.md`: one line per issue, errors
+first, with the counts on top. The run's files go to a scratch folder in the system temp folder,
+so nothing is left in the reports folder except the target folder's `last-report.json`. Use it when
+the user wants "just the list", "in the terminal" or "no report". Show the list as it is, in a code
+block, with a sentence of context; there is no report path to quote. `--console --report` writes
+the report as well.
 
 ## What it checks
 

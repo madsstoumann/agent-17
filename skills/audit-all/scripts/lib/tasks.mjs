@@ -2,6 +2,7 @@
 // rounds that can run in parallel, and renders fix/TODO.md plus one self-contained prompt per task.
 import fs from 'node:fs';
 import path from 'node:path';
+import { levelOfWord } from './levels.mjs';
 
 export const SEVERITIES = ['blocker', 'high', 'medium', 'low'];
 export const MODELS = ['haiku', 'sonnet', 'opus', 'fable'];
@@ -169,7 +170,7 @@ export function taskPrompt(t, { plan, date, runDir }) {
 }
 
 /** fix/TODO.md: people first, then the agent rounds, as a checklist that links each prompt. */
-export function todoMarkdown(plan, { date, runDir, files }) {
+export function todoMarkdown(plan, { date, runDir, files, levels = null, hidden = 0 }) {
   const { tasks } = plan;
   const human = tasks.filter((t) => t.owner === 'human');
   const agent = tasks.filter((t) => t.owner === 'agent');
@@ -181,6 +182,7 @@ export function todoMarkdown(plan, { date, runDir, files }) {
   const models = MODELS.map((m) => [m, agent.filter((t) => t.model === m).length]).filter(([, n]) => n).map(([m, n]) => `${n} ${m}`).join(', ');
   const out = [`# Fix plan: ${plan.subject || path.basename(runDir)}`, ''];
   out.push(`${fmtDate(date)} · ${tasks.length} task${tasks.length === 1 ? '' : 's'}: ${agent.length} for agents${models ? ` (${models})` : ''}, ${human.length} for people`, '');
+  if (levels && !levels.all) out.push(`Showing ${levels.label} (\`--level ${levels.words}\`: blocker and high are errors, medium and low warnings). ${hidden} other task${hidden === 1 ? '' : 's'} left out; \`tasks.json\` has them all, and combine.mjs without --level writes the full plan.`, '');
   out.push('Run the agent tasks with the audit-fix skill (`/skills:audit-fix <this run folder>`), or paste one prompt from `tasks/` into any Claude Code session in that repo. Each agent commits on its own branch and never pushes; a person reviews and merges.', '');
   if (human.length) out.push('## For people', '', 'Not for an agent: secrets, DNS, hosting and other settings outside the code, history rewrites, product calls.', '', ...human.map(item), '');
   if (rs.length) {
@@ -191,15 +193,27 @@ export function todoMarkdown(plan, { date, runDir, files }) {
   return out.join('\n');
 }
 
-/** Read <run>/tasks.json and write <run>/fix/TODO.md and <run>/fix/tasks/*.md. */
-export function writeFixPlan(runDir, { date = new Date(), subject = null } = {}) {
+/**
+ * The plan at the chosen levels (levels.mjs: blocker/high are errors, medium/low warnings). Dependencies
+ * on a task left out are dropped from the view, so the rounds still form. tasks.json is never filtered.
+ */
+export function planAtLevel(plan, levels) {
+  if (!levels || levels.all) return { plan, hidden: 0 };
+  const tasks = plan.tasks.filter((t) => levels[levelOfWord(t.severity) || 'warn']);
+  const ids = new Set(tasks.map((t) => t.id));
+  return { plan: { ...plan, tasks: tasks.map((t) => ({ ...t, dependsOn: t.dependsOn.filter((d) => ids.has(d)) })) }, hidden: plan.tasks.length - tasks.length };
+}
+
+/** Read <run>/tasks.json and write <run>/fix/TODO.md and <run>/fix/tasks/*.md (at `levels`, default all). */
+export function writeFixPlan(runDir, { date = new Date(), subject = null, levels = null } = {}) {
   const file = path.join(runDir, 'tasks.json');
   if (!fs.existsSync(file)) return { written: false, reason: 'no tasks.json' };
   let raw;
   try { raw = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return { written: false, errors: [`tasks.json is not valid JSON: ${e.message}`], warnings: [] }; }
-  const { plan, errors, warnings } = validateTasks(raw);
-  if (!plan) return { written: false, errors, warnings };
-  plan.subject ||= subject;
+  const { plan: full, errors, warnings } = validateTasks(raw);
+  if (!full) return { written: false, errors, warnings };
+  full.subject ||= subject;
+  const { plan, hidden } = planAtLevel(full, levels);
   const dir = path.join(runDir, 'fix');
   const taskDir = path.join(dir, 'tasks');
   fs.rmSync(taskDir, { recursive: true, force: true });
@@ -207,6 +221,6 @@ export function writeFixPlan(runDir, { date = new Date(), subject = null } = {})
   const files = promptFiles(plan.tasks);
   for (const t of plan.tasks) fs.writeFileSync(path.join(taskDir, files.get(t.id)), taskPrompt(t, { plan, date, runDir }));
   const todo = path.join(dir, 'TODO.md');
-  fs.writeFileSync(todo, todoMarkdown(plan, { date, runDir, files }));
-  return { written: true, todo, taskDir, count: plan.tasks.length, errors, warnings };
+  fs.writeFileSync(todo, todoMarkdown(plan, { date, runDir, files, levels, hidden }));
+  return { written: true, todo, taskDir, count: plan.tasks.length, hidden, errors, warnings, plan: full };
 }

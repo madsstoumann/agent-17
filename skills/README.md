@@ -55,3 +55,22 @@ Nothing that should carry over between runs lives in a timestamped folder. Each 
 - solution-health's state folder is `<folder>/solution-health/<solution>/` itself (manifest.json, state.json, snapshots/, notes.md), because each run updates the state in place; `--in-repo` keeps it in the solution for teams that commit it.
 
 Skills install separately, so launch-audit, security-audit, a11y-audit and audit-all each carry a copy of `scripts/lib/target-state.mjs` (security-audit's tests check the copies are identical), and each carries its own `reportsRoot()` (see `security-audit/scripts/scan.mjs`); keep them in step. A new skill that writes reports should use the same layout.
+
+## Levels and the console list
+
+Every skill that writes a report takes the same two flags (validate-schema follows the same rules in its instructions):
+
+- `--level error|warn|info`, or a comma list such as `error,warn`, or `all` (the default). One scale for all skills: **error** is fail, blocker, critical, high or red; **warning** is warn, medium, moderate, low or amber; **info** is info, review items and unknown. Passing and skipped checks show only with `all`.
+- `--console` prints a compact list instead of writing `report.md`, one line per issue, errors first:
+
+  ```
+  launch-audit shop.example.dk — 2 errors · 5 warnings · 3 info — showing errors only
+  ERROR  exposed  secret-files  Secret files · /.env served (200)
+  ERROR  crawl    meta-robots   Meta robots · noindex, nofollow
+  ```
+
+  The run's files go to a scratch folder in the system temp folder; the target folder's `last-report.json` is still saved. `--console --report` writes both.
+
+The level filters what people read: the console list, `report.md`, the combined report and PDFs, and audit-all's `fix/TODO.md`. It never filters saved data (`report.json`, `findings.json`, `tasks.json`, `last-report.json`, `state.json`, `triage.json`), so the next run's comparison is unaffected. audit-all passes the level to each sub-audit, applies it to the fix plan, and asks for it on its first screen.
+
+Skills install separately, so each carries an identical `scripts/lib/levels.mjs` (`audit-all/scripts/test/levels.test.mjs` checks the copies). Change one, copy it to the others.

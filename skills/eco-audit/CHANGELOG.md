@@ -2,6 +2,12 @@
 
 All notable changes to the `eco-audit` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.1.0] - 2026-11-01
+
+### Added
+- `--level error|warn|info` (comma list, e.g. `error,warn`; default `all`): report.md and the stdout summary (the pages table stays) show only rows at those levels, with a line saying what is hidden. report.json, findings.json and last-report.json keep every result, so baselines are unaffected.
+- `--console`: a compact list on stdout, one line per issue, errors first, counts on top (`scripts/lib/levels.mjs`; the title line carries the start page weight, CO2e and rating). The run's files go to a scratch folder in the system temp folder; last-report.json is still saved. `--console --report` gives both.
+
 ## [1.0.0] - 2026-10-30
 
 ### Added

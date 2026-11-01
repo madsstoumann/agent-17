@@ -128,3 +128,32 @@ test('validateTasks: a11y-audit drafts are valid sources', () => {
   assert.deepEqual(plan.tasks.map((t) => t.sources), [['a11y'], ['a11y', 'launch']]);
   assert.equal(plan.tasks[0].model, 'sonnet');
 });
+
+test('--level filters fix/TODO.md and the prompts, never tasks.json; --console prints the list and skips the report files', async () => {
+  const { parseLevel } = await import('../lib/levels.mjs');
+  const run = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-all-levels-'));
+  try {
+    fs.mkdirSync(path.join(run, 'security-audit'));
+    fs.writeFileSync(path.join(run, 'security-audit', 'report.md'), '# Security audit: shop-web\n\n**Verdict:** fine.\n');
+    fs.writeFileSync(path.join(run, 'tasks.json'), JSON.stringify(PLAN));
+    const out = await combine({ dir: run, style: 'serif', repos: [], pdf: false, levels: parseLevel('error'), console: true }, { log: () => {} });
+    assert.equal(out.md, null);
+    assert.equal(fs.existsSync(path.join(run, 'report.md')), false, '--console alone writes no combined report');
+    const todo = fs.readFileSync(out.todo, 'utf8');
+    assert.match(todo, /Showing errors only/);
+    assert.match(todo, /T5 Upgrade Nuxt to 4/, 'high is an error');
+    assert.doesNotMatch(todo, /T3 Tighten the CSP|T4 Add a meta description/);
+    assert.match(todo, /2 other tasks left out/);
+    assert.equal(fs.readdirSync(path.join(run, 'fix', 'tasks')).length, 3);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(run, 'tasks.json'), 'utf8')).tasks.length, 5, 'tasks.json untouched');
+    const lines = out.list.split('\n');
+    assert.match(lines[0], /^audit-all shop\.example\.dk — 3 errors · 2 warnings · 0 info — showing errors only$/);
+    assert.equal(lines.length, 4);
+    assert.ok(lines.slice(1).every((l) => l.startsWith('ERROR  ')));
+    const both = await combine({ dir: run, style: 'serif', repos: [], pdf: false, levels: parseLevel('warn'), console: true, report: true }, { log: () => {} });
+    assert.ok(fs.existsSync(both.md));
+    assert.ok(both.list.split('\n').slice(1).every((l) => l.startsWith('WARN   ')));
+  } finally {
+    fs.rmSync(run, { recursive: true, force: true });
+  }
+});

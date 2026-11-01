@@ -113,6 +113,157 @@ Fixes that pass end up on a local `audit-fix/<run>` branch per repo for you to r
 nothing is pushed. Tasks marked for people (rotating secrets, DNS, hosting settings) stay on the
 checklist. You can also paste any single prompt from `fix/tasks/` into a Claude Code session in that repo.
 
+## Parameters
+
+You rarely need these: say what you want in plain words ("errors only", "skip Lighthouse", "just list the issues") and Claude picks the flags. They are here for scripted runs and for when you want to be exact. Every skill also answers `--help`.
+
+### Shared by every report-writing skill
+
+| Flag | What it does |
+|---|---|
+| `--level error\|warn\|info\|all` | What the report and the summary show. Takes a comma list, e.g. `error,warn`. Default `all`. **error** = fail, blocker, critical, high, red; **warning** = warn, medium, moderate, low, amber; **info** = info, review items. Saved data (`report.json`, `findings.json`, `tasks.json`, `last-report.json`) always keeps everything. |
+| `--console` | A compact list in the terminal, one line per issue, errors first, instead of `report.md`. Add `--report` to get both. |
+| `--out DIR` | Where this run's files go. Default `<reports>/<skill>/<site or repo>/runs/<stamp>/`, where `<reports>` is `$AUDIT_OUT_DIR`, else Downloads, else `~/audit-reports/`. |
+| `--state DIR` | The folder kept between runs (`last-report.json`, `notes.md`). Default `<reports>/<skill>/<site or repo>/`. |
+| `--baseline FILE` / `--no-baseline` | Compare with a specific earlier run, or not at all. Default: the last run of the same site or repo. |
+| `--header "Name: value"` | Sent to the audited site only (a firewall bypass rule). Repeatable; also `AUDIT_HEADERS`. |
+| `--insecure` | Accept a self-signed certificate (localhost, staging). |
+
+### audit-all
+
+| Flag | What it does |
+|---|---|
+| `--url URL` / `--no-site` | The live site to audit, or code audits only. |
+| `--only`, `--skip`, `--add` | Which audits run: `a11y`, `infra`, `launch`, `privacy`, `security`, `seo`, `health`, `eco` (or `all`). Default: infra, launch, privacy, security, health. |
+| `--yes` | No questions: the default audits, Editorial, level all, the detected URL. |
+| `--style serif\|sans` | Report look: Editorial (`serif`, default) or Modern (`sans`). |
+| `--level`, `--console` | As above. The level is passed to every audit and applied to `fix/TODO.md`; `--console` prints the fix plan as a list instead of the combined report and PDFs. |
+| `--out DIR` | The run folder. |
+
+`combine.mjs` (run by the skill) also takes `--repo PATH` (copy a repo's solution-health report in), `--no-pdf`, `--no-compact`, `--chrome PATH` and `--new <name>` (create a run folder).
+
+### audit-fix
+
+| Flag | What it does |
+|---|---|
+| `[run folder]` | Which audit-all run to fix. Default: the newest. |
+| `--only T1,T4` / `--skip T7` | Run only these tasks, or all but these. |
+| `--max-parallel N` | Agents running at the same time (default 4). |
+| `--dry-run` | Show the plan, run nothing. |
+
+### launch-audit
+
+| Flag | What it does |
+|---|---|
+| `--env dev\|staging\|production` | Which environment this is. Default: guessed from the hostname. On dev and staging, noindex is expected and goes on a "Before production" list. |
+| `--production-host HOST` | The future live hostname, for canonical, og:url and sitemap checks. |
+| `--pages N` | Extra sitemap pages for Lighthouse (default 3). |
+| `--max-pages N` / `--max-external N` | Crawl limit (default 100) and external links checked (default 200). |
+| `--skip a,b` / `--only a,b` | Groups: `crawl redirects notfound tls dns email exposed headers caching perf a11y privacy links social icons ops`. `--skip perf` skips Lighthouse. |
+| `--lighthouse local\|psi\|off` | Default `psi` with `PSI_API_KEY`, else `local`. |
+| `--email-domain D` | Where SPF and DMARC live (default: the host without www). |
+| `--ssllabs` | Also run Qualys SSL Labs (slow). |
+| `--no-remote` | Skip every third-party service. |
+| `--timeout MS` / `--lh-timeout MS` / `--concurrency N` | Per request (15000), per Lighthouse run (240000), parallel requests (6). |
+| `--ua STRING` / `--from EMAIL` | Override the User-Agent, add a From header. |
+| `--strict` | Exit code 3 when anything fails (CI). |
+| `--json` / `--quiet` | report.json on stdout / no progress output. |
+
+### a11y-audit
+
+| Flag | What it does |
+|---|---|
+| `--wcag A\|AA\|AAA` | WCAG target (default AA). `--level A`, `AA` or `AAA` still works. |
+| `--pages N` | Pages to audit, start page included (default 10). |
+| `--from FILE` / `--urls FILE` | Take the pages from a launch-audit `report.json`, or exactly the URLs in a file. |
+| `--keyboard N` / `--max-tabs N` | Keyboard walk on the first N pages (default 3, 0 to skip), Tab presses per walk (200). |
+| `--repo NAME[=PATH]` | The repo that renders the site, so tasks become agent tasks. |
+| `--chrome PATH` / `--timeout MS` | Browser to use, page load timeout (30000). |
+
+### seo-audit
+
+| Flag | What it does |
+|---|---|
+| `--pages N` | Pages to crawl (default 150). |
+| `--sitemap-sample N` | Extra sitemap URLs the crawl did not reach (default 50). |
+| `--external-links N` | External links to check (default 150, 0 to skip). |
+| `--schema-pages N` | Pages sent to validator.schema.org (default 8, 0 to skip). |
+| `--production-host HOST` | The future live host. |
+| `--no-remote` / `--ignore-robots` | Skip validator.schema.org / crawl paths robots.txt disallows. |
+| `--concurrency N` / `--timeout MS` / `--quiet` | Parallel requests (6), per request (15000), no progress output. |
+
+### eco-audit
+
+| Flag | What it does |
+|---|---|
+| `[more page urls]` / `--pages N` | Extra pages to measure, or N from the sitemap (default 4). |
+| `--grid CODE` | The visitors' country for grid intensity (`DK`, `SE`, `DEU` …). Default: global average. |
+| `--views N` | Page views a month, for a yearly CO2e estimate. |
+| `--mobile` | Phone viewport instead of desktop. |
+| `--no-browser` | Estimate from the HTML, no Chrome. |
+| `--no-remote` | Skip the Green Web Foundation lookup. |
+| `--chrome PATH` / `--timeout MS` / `--quiet` | Browser, page load timeout (45000), no progress output. |
+
+### privacy-audit
+
+| Flag | What it does |
+|---|---|
+| `--pages N` | Extra pages loaded before consent (default 2). |
+| `--only first,reject,accept` | Which visitors to simulate (default all three). |
+| `--lang L` | Browser language (default `da-DK,da,en`). |
+| `--no-policy` | Do not open the privacy and cookie policy pages. |
+| `--chrome PATH` | Browser to use. |
+
+### infra-audit
+
+| Flag | What it does |
+|---|---|
+| `--email-domain D` | Mail domain when it is not the site's own. |
+| `--dkim-selector S` | Your provider's DKIM selector (repeatable). |
+| `--only` / `--skip` | Groups: `domain email tls edge ct`. |
+| `--no-ct` / `--max-subdomains N` | Skip the Certificate Transparency sweep, or limit it (default 30). |
+| `--no-legacy` | Skip the TLS 1.0/1.1 probe. |
+| `--platform-ok` | Audit a hosting platform's own domain anyway (`*.umbraco.io` and the like). |
+
+### security-audit
+
+| Flag | What it does |
+|---|---|
+| `[path]` | The repo to scan (default: the current folder). |
+| `--only` / `--skip` | Groups: `deps secrets xss injection request crypto config ci`. |
+| `--history [N]` | Also scan the last N commits (default 1000) for removed secrets. |
+| `--offline` | No vulnerability lookup, dependency inventory only. |
+| `--no-tests` | Leave out hits in test, fixture and docs paths. |
+| `--max N` | Hits printed per rule (default 6). |
+| `--visibility public\|private\|internal` | The repo's visibility when `gh` cannot tell. |
+| `--json` | findings.json on stdout. |
+
+### solution-health
+
+| Flag | What it does |
+|---|---|
+| `--root PATH` | The solution to check (default: the current folder). |
+| `--in-repo` / `--dir PATH` | Keep state in the repo (`.solution-health/`), or in a folder of your choice. |
+| `--transitive` | Also check packages further down the dependency tree. |
+| `--offline` / `--no-enrich` | No network lookups / skip the extra package health data. |
+| `--skip packages,runtimes,apis` | Leave out a check. |
+| `--level`, `--console` | As above, on `finalize.mjs`: red is an error, amber a warning. |
+| `--dry-run` | On `finalize.mjs`: preview without saving. |
+
+### tech-stack
+
+| Flag | What it does |
+|---|---|
+| `<url> …` / `--file PATH` | Sites to check, or a file with one URL per line. |
+| `--browser` | Also render each page in headless Chromium. |
+| `--assets N` | Same-site scripts and stylesheets read per site (default 12). |
+| `--jobs N` / `--timeout MS` | Sites in parallel (4), per request (15000). |
+| `--out DIR` / `--insecure` / `--json` / `--quiet` | As for the other skills. |
+
+### validate-schema, is-website-safe, node-toolchain-check
+
+No flags: give validate-schema a URL or HTML file (it understands "errors only" and "just the list"), is-website-safe a domain, and node-toolchain-check nothing.
+
 ## Adding a skill
 
 Put it in its own folder under `skills/` with a `SKILL.md` and a `CHANGELOG.md`. The plugin picks it up with no other change. Refer to bundled scripts as `${CLAUDE_SKILL_DIR}/...`, not a fixed `~/.claude/skills/...` path, because a plugin installs the skill somewhere else.

@@ -1,10 +1,10 @@
 ---
 name: eco-audit
 description: Use when someone asks about a website's carbon footprint, CO2 per page view, digital sustainability, a Website Carbon style rating (A+ to F), page weight, or whether the site is on green hosting — and what to cut first (video, images, fonts, JavaScript, third parties). Measures real page loads in headless Chrome and applies the Sustainable Web Design model v4 (as CO2.js), with an optional country grid and a yearly estimate from page views. Also for re-checking after a slimming pass.
-argument-hint: "<url> [more page urls] [--pages N] [--grid DK] [--views N] [--mobile] [--out DIR] [--header NAME:VALUE]"
+argument-hint: "<url> [more page urls] [--pages N] [--grid DK] [--views N] [--mobile] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Eco audit
@@ -44,6 +44,20 @@ Run it with **`timeout: 600000`**. Each page takes 5–30 seconds (pages with vi
 | `--insecure` | localhost or a self-signed certificate. |
 | `--out DIR` | The user names a folder for this run (audit-all does this). |
 | `--state DIR`, `--baseline FILE`, `--no-baseline` | See "Folders and re-runs". |
+
+### Levels and the console list
+
+`--level` sets what `report.md` and the stdout summary show: `error` (failed checks), `warn`, `info`, a comma list such as
+`error,warn`, or `all` (the default: every row, passes included). Use it when the user asks for
+"errors only", "only warnings", "skip the info" and the like. It never filters saved data:
+`report.json`, `findings.json` and `last-report.json` keep every result, so the next run's "Since last run" is unaffected.
+
+`--console` prints a compact list instead of writing `report.md`: one line per issue, errors
+first, with the counts on top. The run's files go to a scratch folder in the system temp folder,
+so nothing is left in the reports folder except the target folder's `last-report.json`. Use it when
+the user wants "just the list", "in the terminal" or "no report". Show the list as it is, in a code
+block, with a sentence of context; there is no report path to quote. `--console --report` writes
+the report as well.
 
 ## Folders and re-runs
 

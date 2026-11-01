@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-fix` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.0.3] - 2026-11-01
+
+### Changed
+- Says what to do when fix/TODO.md was written with `--level` (audit-all 1.9.0): run the plan as it is, mention the tasks left out, or re-run combine.mjs without `--level`.
+
 ## [1.0.2] - 2026-10-30
 
 ### Changed
