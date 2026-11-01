@@ -1,10 +1,10 @@
 ---
 name: seo-audit
 description: Use when someone wants an SEO or content audit of a whole website, not just the start page — titles and meta descriptions (missing, too long, duplicated), Open Graph and share previews, structured data (JSON-LD that does not parse, validator.schema.org errors), sitemap and robots.txt consistency (noindex, redirecting, blocked or missing URLs, orphan pages), canonical and hreflang problems, broken internal and external links and redirect chains, plus GEO (AI search readiness): llms.txt and llms-full.txt, AI crawler rules in robots.txt (OAI-SearchBot, ClaudeBot, GPTBot, PerplexityBot, Google-Extended…), Content-Signal and ai.txt, and Organization/WebSite entity markup for answer engines. Also for "why is this page not indexed", re-checking after SEO fixes, or comparing with the last run. Any stack, public or local URLs.
-argument-hint: "<url> [--pages N] [--sitemap-sample N] [--external-links N] [--schema-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE]"
+argument-hint: "<url> [--pages N] [--sitemap-sample N] [--external-links N] [--schema-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # SEO audit
@@ -45,6 +45,20 @@ the findings; non-zero means the script failed (read the last stderr lines).
 | `--insecure` | localhost or a self-signed certificate. |
 | `--out DIR` | The user names a folder for this run (audit-all does this). |
 | `--state DIR`, `--baseline FILE`, `--no-baseline` | See "Folders and re-runs". |
+
+### Levels and the console list
+
+`--level` sets what `report.md` and the stdout summary show: `error` (failed checks), `warn`, `info`, a comma list such as
+`error,warn`, or `all` (the default: every row, passes included). Use it when the user asks for
+"errors only", "only warnings", "skip the info" and the like. It never filters saved data:
+`report.json`, `findings.json` and `last-report.json` keep every result, so the next run's "Since last run" is unaffected.
+
+`--console` prints a compact list instead of writing `report.md`: one line per issue, errors
+first, with the counts on top. The run's files go to a scratch folder in the system temp folder,
+so nothing is left in the reports folder except the target folder's `last-report.json`. Use it when
+the user wants "just the list", "in the terminal" or "no report". Show the list as it is, in a code
+block, with a sentence of context; there is no report path to quote. `--console --report` writes
+the report as well.
 
 ## Folders and re-runs
 

@@ -1,10 +1,10 @@
 ---
 name: solution-health
 description: Periodic health check of a solution's dependencies and external integrations. Checks npm and NuGet packages (outdated majors; vulnerable, including transitive, via npm audit, dotnet and NuGet's vulnerability database; deprecated, unmaintained or archived upstream), the licence of every installed package with compatibility flags (AGPL, GPL, source-available, missing), the NuGet sources and folders the solution's NuGet.config resolves to, runtime and framework end-of-life (Node, .NET, Umbraco, Next.js…), and external APIs the code calls (deprecation/sunset headers, shutdown notices on provider pages, including Danish ones like DAWA's). Remembers each run, so it reports what changed. Use whenever someone asks for a solution or dependency health check, to audit packages or licences, about deprecated or abandoned packages, whether an API we use is shutting down, a quarterly maintenance check, or "is anything in this project end-of-life?", even if they do not name the skill.
-argument-hint: "[--root PATH] [--in-repo | --dir PATH] [--transitive] [--offline] [--skip packages,runtimes,apis]"
+argument-hint: "[--root PATH] [--in-repo | --dir PATH] [--transitive] [--offline] [--skip packages,runtimes,apis] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(npm:*), Bash(dotnet:*), Read, Write, Edit, WebFetch, WebSearch
 metadata:
-  version: "2.3.0"
+  version: "2.4.0"
 ---
 
 # Solution health check
@@ -103,6 +103,9 @@ node "${CLAUDE_SKILL_DIR}/scripts/finalize.mjs"
 ```
 
 This merges everything, compares with the previous `state.json`, writes `report.md` and `tasks.json`, updates `state.json` and accepts the assessed snapshots. Use `--dry-run` to preview without saving.
+
+- `--level error|warn|error,warn|all` (default all) limits what `report.md` shows when the user asks for "errors only", "only warnings" and the like: red is an error, amber a warning, info and unknown are info, green and ignored show only with `all`. `state.json` and `tasks.json` always hold every finding.
+- `--console` prints a compact list of the findings on stdout (one line each, errors first, counts on top) and leaves `report.md` as it was; `state.json` and `tasks.json` are still updated. Use it when the user wants "just the list" or "no report", and show the list as it is in a code block instead of the report path. `--console --report` does both.
 
 ### 5. Look into the red packages, then summarize
 

@@ -7,6 +7,7 @@
 import { AREAS, STATUS_ORDER, countStatuses, fmtBytes } from './checks.mjs';
 import { formatMass, SWDM4, GRID_SOURCE, fmtG } from './co2.mjs';
 import { diffMarkdown } from './diff.mjs';
+import { shows, levelNote, levelOf } from './levels.mjs';
 
 export const GLYPH = { pass: '✅', warn: '⚠️', fail: '❌', info: 'ℹ️', skip: '⏭️' };
 const LABEL = { pass: 'Pass', warn: 'Warn', fail: 'Fail', info: 'Info', skip: 'Skipped' };
@@ -34,12 +35,16 @@ export function method(report) {
   return `Sustainable Web Design model v4 (as CO2.js 0.19), ${grid}, ${report.green?.green ? 'green hosting counted for the data centre' : 'no green-hosting discount'}; bytes from ${how}.`;
 }
 
-export function renderMarkdown(report) {
+export function renderMarkdown(report, { levels } = {}) {
   const out = [];
+  const filtered = Boolean(levels && !levels.all);
+  // --level: only rows at the chosen levels; the counts, the pages table and report.json keep everything.
+  const rows = report.rows.filter((r) => shows(levels, r));
   out.push(`# Eco audit — ${report.site.host}`, '');
   out.push(`**Site:** ${report.site.finalUrl} · **Date:** ${report.date} · **Tool:** eco-audit ${report.version}`, '');
   out.push(`**Result:** ${resultLine(report)}`, '');
   out.push(`**Method:** ${method(report)}`, '');
+  if (filtered) out.push(levelNote(levels, { hidden: report.rows.length - rows.length }), '');
   if (report.notes) out.push('## Notes', '', report.notes.trim(), '');
   if (report.diff && !report.diff.error) {
     const p = report.diff.prev; const s = report.pages[0];
@@ -58,9 +63,10 @@ export function renderMarkdown(report) {
     out.push(`At ${report.views.toLocaleString('en-GB')} page views a month and the average of the pages above (${fmtG(mean)} g), that is about **${formatMass(mean * report.views * 12)} CO2e a year**. Halving page weight halves it.`, '');
   }
 
-  const issues = sorted(report.rows.filter((r) => r.status === 'fail' || r.status === 'warn'));
+  const issues = sorted(rows.filter((r) => r.status === 'fail' || r.status === 'warn'));
   out.push('## Fix list', '');
-  if (!issues.length) out.push('Nothing failed and nothing needs a warning.', '');
+  if (!issues.length && filtered) out.push(`No ${levels.label.replace(/ only$/, '')}.`, '');
+  else if (!issues.length) out.push('Nothing failed and nothing needs a warning.', '');
   else {
     out.push('| # | Status | Check | Finding |', '|---|---|---|---|');
     issues.forEach((r, i) => out.push(`| ${i + 1} | ${GLYPH[r.status]} ${LABEL[r.status]} | ${cell(r.title)} | ${cell(r.evidence)} |`));
@@ -68,7 +74,7 @@ export function renderMarkdown(report) {
   }
 
   AREAS.forEach(([area, title], n) => {
-    const list = sorted(report.rows.filter((r) => r.area === area));
+    const list = sorted(rows.filter((r) => r.area === area));
     if (!list.length) return;
     out.push(`## ${n + 1}. ${title}`, '');
     out.push('| Status | Check | Evidence |', '|---|---|---|');
@@ -110,13 +116,25 @@ export function findings(report) {
   };
 }
 
-export function renderStdout(report, paths) {
+export function renderStdout(report, paths, { levels } = {}) {
+  const rows = report.rows.filter((r) => shows(levels, r));
   const out = [`eco-audit ${report.version} — ${report.site.finalUrl}`, `Result: ${resultLine(report)}`, ''];
   for (const s of report.pages) out.push(`${s.rating.padEnd(2)} ${fmtG(s.grams)} g  ${fmtBytes(s.bytes).padStart(7)}  ${s.url}`);
   for (const f of report.failed) out.push(`-- not measured: ${f.url} (${f.error})`);
   out.push('');
-  for (const r of sorted(report.rows.filter((x) => x.status === 'fail' || x.status === 'warn'))) out.push(`${r.status.toUpperCase().padEnd(4)} ${r.title}: ${r.evidence}`);
-  for (const r of report.rows.filter((x) => x.status === 'skip')) out.push(`SKIP ${r.title}: ${r.evidence}`);
+  for (const r of sorted(rows.filter((x) => x.status === 'fail' || x.status === 'warn'))) out.push(`${r.status.toUpperCase().padEnd(4)} ${r.title}: ${r.evidence}`);
+  for (const r of rows.filter((x) => x.status === 'skip')) out.push(`SKIP ${r.title}: ${r.evidence}`);
   out.push('', `report.md     ${paths.md}`, `findings.json ${paths.findings}`);
   return out.join('\n');
+}
+
+/** The --console items: one per row with a level (fail, warn, info). */
+export function consoleItems(report) {
+  return sorted(report.rows).map((r) => ({ level: levelOf(r), source: r.area, id: r.id.replace(/^eco\./, ''), title: r.title, where: cell(r.evidence, 160) }));
+}
+
+/** The --console title: the start page's weight and rating. */
+export function consoleTitle(report) {
+  const s = report.pages?.[0];
+  return `eco-audit ${report.site.host}${s ? ` — start page ${fmtBytes(s.bytes)}, ${fmtG(s.grams)} g CO2e, ${s.rating}` : ''}`;
 }

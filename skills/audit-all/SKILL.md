@@ -1,10 +1,10 @@
 ---
 name: audit-all
 description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, accessibility, SEO and AI search (GEO), sustainability (carbon footprint), privacy and consent, domain and mail infrastructure, code security and dependency health. Runs launch-audit, a11y-audit (WCAG 2.2 / EN 301 549), seo-audit, eco-audit, privacy-audit and infra-audit on the live URL, security-audit and solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing launch-audit, a11y-audit, seo-audit, eco-audit, privacy-audit, infra-audit, security-audit or solution-health reports into one.
-argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--yes] [--style serif|sans|editorial|modern] [--out DIR]"
+argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--yes] [--style serif|sans|editorial|modern] [--level error|warn|error,warn|all] [--console] [--out DIR]"
 allowed-tools: AskUserQuestion, Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.8.1"
+  version: "1.9.0"
 ---
 
 # Audit all
@@ -41,6 +41,18 @@ other way, invoke them by name instead (`skills:launch-audit` in the plugin, `la
   exactly those, `--skip health` drops one from the default set and `--add seo` adds an opt-in
   one. "only launch and security", "also check accessibility", "no SEO", "skip the carbon check"
   and the like mean the same; "everything" or `--only all` runs all eight.
+- **Show (level).** Which findings the reports show: **All** (the default), **Errors and
+  warnings** (`--level error,warn`), **Errors only** (`--level error`) or **Warnings only**
+  (`--level warn`). Errors are fail, blocker, high and red; warnings are warn, medium, low and
+  amber; info and passing checks show only with All. The level filters what people read (the
+  sub-reports' `report.md`, the combined report and PDFs, "Fix first", `fix/TODO.md`), never the
+  data: every `report.json`, `findings.json`, `tasks.json` and baseline keeps everything, so the
+  next run compares like with like. "only errors", "just the critical stuff" mean `error`;
+  "skip the info" means `error,warn`.
+- **Console.** `--console` (or "just list the issues", "no PDF, give me the list") prints a compact
+  list of issues in the chat instead of writing the combined report and PDFs: one line per task,
+  errors first. The run folder and the fix plan are still written, so audit-fix works as usual.
+  `--console --report` gives both.
 - **Look.** Two report styles: **Editorial** (`--style serif`, the default: Newsreader, like a
   printed report) and **Modern** (`--style sans`: IBM Plex Sans, like a web page). "editorial",
   "serif" or "print" mean serif; "modern", "sans", "sans-serif" or "plain" mean sans.
@@ -59,6 +71,14 @@ and always adds an "Other" row that cannot be removed.
 In the same call, unless `--style` or the request settles it, a second question (single choice,
 header "Look"): "Editorial (Recommended)": "Serif type, like a printed report" and "Modern":
 "Sans-serif type, like a web page". It shows as a second tab, so the "All" path is two clicks.
+
+In the same call, unless `--level`, `--console` or the request settles it, a third question
+(single choice, header "Show"): "All (Recommended)": "Every finding, info included", "Errors and
+warnings": "Leave out info and passing checks", "Errors only": "Fails, blockers and high
+severity", "Warnings only": "The medium and low items". Its question text ends with "Type
+'console' under Other for a list here instead of report files." Read "console" (or "list",
+"terminal") under Other as `--console` with All, and a level named there ("console, errors only")
+as both. On a re-run, recommend the level used last time.
 
 "All" runs all eight and asks nothing more. "Customize" asks the **two picker questions** in one
 second call:
@@ -102,8 +122,9 @@ may still ask their own questions.
 **Flags answer the questions,** so scripted runs and audit-fix never stop to ask. Only what is
 still open is asked:
 
-- `--yes` (or `-y`, "no questions", "just run it"): the default set (not All), Editorial, the detected URL (the first
-  candidate; none found means no site audits, said in the summary).
+- `--yes` (or `-y`, "no questions", "just run it"): the default set (not All), Editorial, level
+  All, the detected URL (the first candidate; none found means no site audits, said in the summary).
+- `--level` and `--console` settle the Show question.
 - `--only`, `--skip` or `--add` settle what to run, and `--url` or `--no-site` settle where. Given
   one of each, nothing is asked. Given only what to run, ask for the URL in one plain line when
   none was detected (not at all when only code audits were picked); given only where, ask the
@@ -157,6 +178,13 @@ folder name.
 | security-audit | Follow security-audit's SKILL.md with `--out "<run>/security-audit-<repo>"`, including the triage and `report.md` it asks you to write. Semgrep runs automatically when installed | `findings.json`, `report.md` |
 | solution-health | Follow solution-health's SKILL.md in the repo, **without** `--dir` or `--out`: it keeps its manifest, state and report in its own folder (`<reports>/solution-health/<repo>/`, or `.solution-health/` with `--in-repo`), never in the run folder. Pass the repo to `combine.mjs --repo` and it copies the report in | `report.md` in its state folder |
 
+**With a level other than All,** pass the same `--level` to every sub-audit (launch-audit,
+a11y-audit, seo-audit, eco-audit, privacy-audit, infra-audit, security-audit's scan, and
+solution-health's `finalize.mjs`), and write security-audit's `report.md` and privacy-audit's
+policy review at that level too. Their `report.md` is what the combined report quotes, and their
+JSON and baselines stay complete whatever the level. Never pass `--console` to a sub-audit: the
+combined list comes from `combine.mjs`.
+
 launch-audit and security-audit compare with their last run of the same host or repo automatically,
 from their own target folders, and security-audit reuses its earlier triage verdicts: only new hits
 need triage. Do not pass `--baseline` unless the user wants a specific run compared.
@@ -203,6 +231,9 @@ In order. Duplicates across the audits are merged.
   in both security-audit and solution-health, missing alt text or low contrast in both launch-audit's
   Lighthouse section and a11y-audit, a canonical on the staging host (launch-audit on the start page,
   seo-audit site-wide), uncompressed or uncached files (launch-audit and eco-audit). One item, both sources.
+- **With a level**, "Fix first" lists only items at that level (errors are Blocker/Fail/High/Red,
+  warnings Warn/Medium/Amber/Low). The verdict still weighs everything the audits found, and says
+  in a few words that the report shows only errors (or warnings).
 - Use only facts from the reports. More `##` sections (for example "Can wait") are rendered too.
 - **Since last run.** When `--new` printed a previous run, read its `summary.md` and `tasks.json` and
   add a `## Since last run` section: what was fixed, what is new, what is still open, using the
@@ -214,7 +245,8 @@ In order. Duplicates across the audits are merged.
 ## 5. Write tasks.json
 
 `<run>/tasks.json` is the fix plan as data: **every** confirmed problem worth fixing, not only the
-"Fix first" items. Merge duplicates the same way, one task per fix. Leave out false positives,
+"Fix first" items, and at every level whatever `--level` says (`combine.mjs` applies the level to
+`fix/TODO.md`). Merge duplicates the same way, one task per fix. Leave out false positives,
 "needs a look" items you could not confirm (list them in summary.md instead) and pure info.
 
 solution-health already writes its red and amber findings in this shape, and `combine.mjs --repo`
@@ -280,8 +312,23 @@ text in articles) are `owner: "human"`.
 ## 6. Combine
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/scripts/combine.mjs" "<run>" [--style serif|sans] [--repo <repo>]...
+node "${CLAUDE_SKILL_DIR}/scripts/combine.mjs" "<run>" [--style serif|sans] [--repo <repo>]... [--level <level>] [--console [--report]]
 ```
+
+`--level` writes `fix/TODO.md` and the prompts in `fix/tasks/` for the tasks at that level only
+(blocker and high are errors, medium and low warnings) and says how many were left out;
+`tasks.json` is untouched. `--console` prints the plan as a compact list instead of writing
+`report.md`, `report.html` and the PDFs:
+
+```
+audit-all shop.example.dk — 3 errors · 9 warnings · 0 info — showing errors only
+ERROR  security  T1  Rotate the Stripe secret key · blocker · person
+ERROR  security  T2  Read the Stripe key from the environment · blocker · agent, sonnet · shop-web
+ERROR  launch    T3  Remove noindex from the production build · high · agent, haiku · shop-web
+```
+
+Show that list to the user as it is (in a code block), followed by the verdict in one or two
+sentences and the fix plan path. summary.md is still needed for the verdict.
 
 It writes `<run>/report.md` (summary, an at-a-glance table, then every report with headings moved
 down a level), `<run>/report.html` (fonts embedded, opens anywhere) and `<run>/report.pdf`, plus a
@@ -311,6 +358,8 @@ PATH`, or Playwright's Chromium). With no browser it still writes `report.html` 
 the user to open it and print to PDF. `--no-pdf` skips the PDF.
 
 To change only the look, run `combine.mjs` again with the other `--style` (Editorial is `serif`, Modern is `sans`); nothing else re-runs.
+To change only the fix plan's level, run it again with another `--level`. The sub-reports' own
+`report.md` keep the level they were run with; re-run those audits for a different one.
 
 ## Re-running
 
@@ -329,5 +378,7 @@ run" section.
 - `scripts/lib/pdf.mjs`: finds a browser and prints to PDF.
 - `scripts/lib/tasks.mjs`: checks `tasks.json`, orders agent tasks into rounds, writes `fix/`.
 - `scripts/lib/target-state.mjs`: target folders and run folders (kept in step with the copies in launch-audit and security-audit).
+- `scripts/lib/levels.mjs`: `--level` and the `--console` list, shared by every report-writing skill
+  (identical copies; `scripts/test/levels.test.mjs` checks them).
 - `assets/report.css`: the A4 layout for both styles. `assets/fonts/`: Newsreader and IBM Plex
   (SIL Open Font License, see the `OFL-*.txt` files).

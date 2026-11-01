@@ -4,6 +4,7 @@
  * Zero dependencies. Node >= 22. The report-folder resolver is the same as launch-audit's
  * (`reportsRoot` in launch-audit/scripts/lib/cli.mjs); keep them in step.
  */
+import { parseLevel } from './levels.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -35,6 +36,9 @@ export function parseCli(argv, env = process.env) {
         insecure: { type: 'boolean' },
         'no-remote': { type: 'boolean' },
         'ignore-robots': { type: 'boolean' },
+        level: { type: 'string' },
+        console: { type: 'boolean' },
+        report: { type: 'boolean' },
         quiet: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean' },
@@ -73,6 +77,9 @@ export function parseCli(argv, env = process.env) {
       insecure: Boolean(values.insecure),
       noRemote: Boolean(values['no-remote']),
       ignoreRobots: Boolean(values['ignore-robots']),
+      levels: parseLevel(values.level),
+      console: Boolean(values.console),
+      report: Boolean(values.report),
       quiet: Boolean(values.quiet),
     };
     return { ok: true, opts };
@@ -147,6 +154,10 @@ Usage: node seo.mjs <url> [flags]
   --ignore-robots        Crawl paths robots.txt disallows (they are still reported).
   --concurrency N        Parallel requests (default ${DEFAULTS.concurrency}).
   --timeout MS           Per request (default ${DEFAULTS.timeout}).
+  --level LIST           What report.md and the summary show: error, warn, info, a comma list (error,warn), or all (default).
+                         report.json, findings.json and last-report.json always keep every result.
+  --console              Print a compact list of issues instead of writing report files (last-report.json is still saved).
+                         Add --report to get both.
   --quiet                No progress on stderr.
 
 Writes report.md, report.json, findings.json and pages.csv.`;

@@ -21,7 +21,8 @@ import { launch, measure, findChrome } from './lib/browser.mjs';
 import { measureStatic } from './lib/static.mjs';
 import { summarisePage, runChecks } from './lib/checks.mjs';
 import { perView } from './lib/co2.mjs';
-import { renderMarkdown, renderStdout, findings } from './lib/report.mjs';
+import { renderMarkdown, renderStdout, findings, consoleItems, consoleTitle } from './lib/report.mjs';
+import { consoleList, scratchDir, removeScratch } from './lib/levels.mjs';
 
 const startedAt = Date.now();
 const elapsed = () => ((Date.now() - startedAt) / 1000).toFixed(1).padStart(6);
@@ -125,7 +126,9 @@ async function main() {
   };
 
   const stateDir = claimTarget(resolveState({ state: opts.state, host: opts.host }), opts.host);
-  const dir = resolveOut({ out: opts.out, host: opts.host }, { state: stateDir, exists: fsSync.existsSync });
+  // --console alone: the run's files go to a scratch folder that is removed at the end.
+  const scratch = opts.console && !opts.report ? scratchDir('eco-audit') : null;
+  const dir = resolveOut({ out: scratch || opts.out, host: opts.host }, { state: stateDir, exists: fsSync.existsSync });
   markRun(dir, { skill: 'eco-audit', target: opts.host });
   report.state = stateDir;
   const notes = readNotes(stateDir);
@@ -140,11 +143,15 @@ async function main() {
     }
   }
   const paths = { md: path.join(dir, 'report.md'), json: path.join(dir, 'report.json'), findings: path.join(dir, 'findings.json') };
-  await fs.writeFile(paths.md, renderMarkdown(report));
+  await fs.writeFile(paths.md, renderMarkdown(report, { levels: opts.levels }));
   await fs.writeFile(paths.json, `${JSON.stringify(report, null, 2)}\n`);
   await fs.writeFile(paths.findings, `${JSON.stringify(findings(report), null, 2)}\n`);
   await fs.writeFile(path.join(stateDir, 'last-report.json'), JSON.stringify(report));
-  process.stdout.write(`${renderStdout(report, paths)}\nState: ${stateDir}\nCompared with: ${baselineFile || 'nothing (first run for this host)'}${notes ? '\nNotes: notes.md included in the report' : ''}\n`);
+  const head = opts.console
+    ? `${consoleList({ title: consoleTitle(report), items: consoleItems(report), levels: opts.levels })}${opts.report ? `\nReport: ${paths.md}` : ''}`
+    : renderStdout(report, paths, { levels: opts.levels });
+  removeScratch(scratch);
+  process.stdout.write(`${head}\nState: ${stateDir}\nCompared with: ${baselineFile || 'nothing (first run for this host)'}${notes ? '\nNotes: notes.md included in the report' : ''}\n`);
 }
 
 /**

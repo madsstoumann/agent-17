@@ -18,8 +18,9 @@ import { listFiles, readScannable, historyAddedLines, TEST_PATH } from './lib/fi
 import { collectPackages, queryOsv } from './lib/deps.mjs';
 import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
 import { annotate, baselineLines, tag } from './lib/baseline.mjs';
+import { parseLevel, levelOfWord, scratchDir } from './lib/levels.mjs';
 
-export const VERSION = '1.3.0';
+export const VERSION = '1.4.0';
 const GROUPS = ['deps', 'secrets', 'xss', 'injection', 'request', 'crypto', 'config', 'ci'];
 const SEV = { high: 3, medium: 2, low: 1 };
 
@@ -41,11 +42,16 @@ Usage: node scan.mjs [path] [options]
                     and last-findings.json between runs.
   --visibility V    public, private or internal: the repo's visibility, when gh cannot tell
                     (it sets the severity of platform credential files such as umbraco-cloud.json).
+  --level LIST      Which candidates the summary lists, and what you put in report.md: error (high, critical),
+                    warn (medium, moderate, low), info, a comma list (error,warn), or all (default).
+                    findings.json and last-findings.json always keep every hit.
+  --console         No report.md: after triage, print the compact list of confirmed issues instead.
+                    findings.json goes to a scratch folder in the system temp folder. Add --report for both.
   --json            Print findings.json to stdout instead of the summary.
 `;
 
 export function parseArgs(argv) {
-  const a = { root: '.', only: null, skip: [], history: 0, offline: false, tests: true, max: 6, out: null, json: false, baseline: null, noBaseline: false, state: null, visibility: null };
+  const a = { root: '.', only: null, skip: [], history: 0, offline: false, tests: true, max: 6, out: null, json: false, baseline: null, noBaseline: false, state: null, visibility: null, levels: parseLevel('all'), console: false, report: false };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i];
     const next = () => argv[++i];
@@ -62,6 +68,9 @@ export function parseArgs(argv) {
     else if (v === '--state') a.state = next();
     else if (v === '--visibility') a.visibility = next();
     else if (v === '--json') a.json = true;
+    else if (v === '--level') a.levels = parseLevel(next());
+    else if (v === '--console') a.console = true;
+    else if (v === '--report') a.report = true;
     else if (v.startsWith('--')) throw new Error(`Unknown option ${v}`);
     else a.root = v;
   }
@@ -252,9 +261,12 @@ export async function run(args) {
   };
 }
 
-export function summarise(r, max = 6) {
+export function summarise(r, max = 6, levels = null) {
   const L = [];
+  // --level: list only the candidates at the chosen levels; findings.json keeps every hit.
+  const show = (sev) => !levels || levels.all || Boolean(levels[levelOfWord(sev) || 'info']);
   L.push(`security-audit ${r.version} — code mode — ${r.root}`);
+  if (levels && !levels.all) L.push(`Showing ${levels.label} (--level ${levels.words}); findings.json has every hit`);
   L.push(`${r.filesScanned} text files scanned of ${r.filesListed} listed (${r.git ? 'git' : 'folder walk'}); groups: ${r.groups.join(' ')}`);
   L.push('');
   if (r.deps) {
@@ -266,17 +278,18 @@ export function summarise(r, max = 6) {
       const counts = {};
       for (const p of d.vulnerable) for (const v of p.vulns) counts[v.severity] = (counts[v.severity] || 0) + 1;
       L.push(`  ${d.vulnerable.length} vulnerable package version(s); advisories: ${Object.entries(counts).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(', ') || 'none'}`);
-      for (const p of d.vulnerable.slice(0, 15)) {
+      const vulnerable = d.vulnerable.filter((p) => show(p.vulns[0]?.severity));
+      for (const p of vulnerable.slice(0, 15)) {
         const v = p.vulns[0];
         L.push(`  ${v.severity.padEnd(8)} ${p.ecosystem} ${p.name}@${p.version}${p.dev ? ' (dev)' : ''}  ${v.id}${p.vulns.length > 1 ? ` +${p.vulns.length - 1}` : ''}  ${v.summary.slice(0, 70)}${v.fixed.length ? `  → fixed ${v.fixed.join(', ')}` : ''}${tag(v)}  #${v.fp || ''}`);
       }
-      if (d.vulnerable.length > 15) L.push(`  … ${d.vulnerable.length - 15} more in findings.json`);
+      if (vulnerable.length > 15) L.push(`  … ${vulnerable.length - 15} more in findings.json`);
     }
     L.push('');
   }
   const total = r.rules.reduce((n, x) => n + x.count, 0);
   L.push(`CODE HITS TO TRIAGE  ${total} hit(s) across ${r.rules.length} rule(s) — candidates, not findings`);
-  for (const rule of r.rules) {
+  for (const rule of r.rules.filter((x) => show(x.severity))) {
     L.push(`  [${rule.severity}] ${rule.id} — ${rule.title} (${rule.count}${rule.inTest ? `, ${rule.inTest} in test/docs paths` : ''})`);
     if (rule.platform) L.push(`      platform file, owner ${rule.owner}: repo is ${rule.visibility}${r.repo?.repo ? ` (${r.repo.repo})` : ''}${r.repo?.reason ? ` — ${r.repo.reason}; pass --visibility` : ''}. ${rule.visibility === 'public' ? 'Public: blocker, rotate in the Umbraco Cloud portal.' : rule.visibility === 'unknown' ? 'Check the visibility before calling it accepted.' : 'Review, not a blocker: accept in triage.json.'}`);
     for (const h of rule.hits.slice(0, max)) L.push(`      ${h.file}${h.line ? `:${h.line}` : ''}${h.inTest ? ' [test]' : ''}${tag(h)}  ${h.text.slice(0, 140)}  #${h.fp || ''}`);
@@ -300,7 +313,9 @@ async function main() {
   if (args.help) { process.stdout.write(USAGE); return; }
   const report = await run(args);
   const stateDir = claimTarget(resolveStateDir(args.state, report.root), report.root);
-  const outDir = resolveOutDir(args.out) || newRun(stateDir, { info: { skill: 'security-audit', target: report.root } });
+  // --console alone: findings.json goes to a scratch folder in the temp folder (kept for triage).
+  const scratch = args.console && !args.report ? scratchDir('security-audit') : null;
+  const outDir = scratch || resolveOutDir(args.out) || newRun(stateDir, { info: { skill: 'security-audit', target: report.root } });
   markRun(outDir, { skill: 'security-audit', target: report.root });
   const baseFile = resolveBaseline(args, report.root, stateDir, { exclude: outDir });
   let baseline = null;
@@ -316,7 +331,7 @@ async function main() {
   fs.writeFileSync(file, JSON.stringify(report, null, 2));
   fs.writeFileSync(path.join(stateDir, 'last-findings.json'), JSON.stringify(report, null, 2));
   if (args.json) process.stdout.write(JSON.stringify(report, null, 2));
-  else process.stdout.write(`${summarise(report, args.max)}\n\nfindings: ${file}\nreport:   ${path.join(outDir, 'report.md')} (you write this)\nstate:    ${stateDir}\ntriage:   ${report.state.triage} (you update this after triage)${report.state.notes ? `\nnotes:    ${report.state.notes} (read it before triage)` : ''}\n`);
+  else process.stdout.write(`${summarise(report, args.max, args.levels)}\n\nfindings: ${file}\nreport:   ${scratch ? 'none (--console): after triage, print the compact list of confirmed issues (SKILL.md)' : `${path.join(outDir, 'report.md')} (you write this${args.levels.all ? '' : `; ${args.levels.label}`})`}\nstate:    ${stateDir}\ntriage:   ${report.state.triage} (you update this after triage)${report.state.notes ? `\nnotes:    ${report.state.notes} (read it before triage)` : ''}\n`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

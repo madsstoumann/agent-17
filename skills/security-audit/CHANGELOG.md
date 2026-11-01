@@ -2,6 +2,12 @@
 
 All notable changes to the `security-audit` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.4.0] - 2026-11-01
+
+### Added
+- `--level error|warn|info` (comma list; default `all`): the scanner lists only candidates at those levels (high and critical are errors; medium, moderate and low warnings), and Claude writes report.md at that level. findings.json, last-findings.json and triage.json keep every hit.
+- `--console`: findings.json goes to a scratch folder in the system temp folder, no report.md is written, and after triage Claude replies with a compact list of confirmed findings in the shared one-line format. `--console --report` gives both.
+
 ## [1.3.0] - 2026-10-30
 
 ### Added

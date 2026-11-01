@@ -19,10 +19,11 @@ import { walk, analyseWalk } from './lib/keyboard.mjs';
 import { pickPages, pagesFromLaunchAudit, pagesFromFile, sitemapUrls } from './lib/pages.mjs';
 import { axeTags, htmlcsStandard, scFromAxeTags } from './lib/wcag.mjs';
 import { aggregate, toTasks, diffRuns } from './lib/findings.mjs';
-import { buildMarkdown, buildSummary } from './lib/report.mjs';
+import { buildMarkdown, buildSummary, consoleItems } from './lib/report.mjs';
 import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
+import { parseLevel, consoleList, scratchDir, removeScratch } from './lib/levels.mjs';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UA_SUFFIX = `a11y-audit/${VERSION}`;
 const DESKTOP = { width: 1280, height: 900 };
@@ -36,7 +37,12 @@ Usage: node a11y.mjs <url> [flags]
   --urls FILE          Audit exactly these URLs (one per line).
   --keyboard N         Keyboard walk on the first N pages (default 3, 0 to skip).
   --max-tabs N         Tab presses per walk (default 200).
-  --level A|AA|AAA     Target level (default AA).
+  --wcag A|AA|AAA      WCAG target level (default AA). \`--level A|AA|AAA\` still works.
+  --level LIST         What report.md and the summary show: error (blockers, high), warn (medium, low), info (review
+                       items, best practice), a comma list (error,warn), or all (default). report.json, tasks.json and
+                       last-report.json always keep everything.
+  --console            Print a compact list of issues instead of writing report.md; the run folder is not kept in the
+                       reports folder (last-report.json is). Add --report to get both.
   --out DIR            Report folder (default <target>/runs/<YYYYMMDD-HHMM>/).
   --state DIR          Target folder (default <reports>/a11y-audit/<host>/): last-report.json and notes.md live there.
   --baseline FILE      A previous report.json for "Since last run". Default: the last run for this host.
@@ -52,7 +58,7 @@ Usage: node a11y.mjs <url> [flags]
 
 const OPTIONS = {
   pages: { type: 'string' }, from: { type: 'string' }, urls: { type: 'string' }, keyboard: { type: 'string' },
-  'max-tabs': { type: 'string' }, level: { type: 'string' }, out: { type: 'string' }, repo: { type: 'string' },
+  'max-tabs': { type: 'string' }, level: { type: 'string' }, wcag: { type: 'string' }, console: { type: 'boolean' }, report: { type: 'boolean' }, out: { type: 'string' }, repo: { type: 'string' },
   state: { type: 'string' }, baseline: { type: 'string' }, 'no-baseline': { type: 'boolean' },
   header: { type: 'string', multiple: true }, insecure: { type: 'boolean' }, chrome: { type: 'string' },
   timeout: { type: 'string' }, help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' },
@@ -82,8 +88,11 @@ export function parseCli(argv, env = process.env) {
   let raw = positionals[0];
   if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
   const url = new URL(raw).href;
-  const level = String(values.level || 'AA').toUpperCase();
-  if (!['A', 'AA', 'AAA'].includes(level)) throw new Error('--level must be A, AA or AAA');
+  // --level used to be the WCAG level; A, AA and AAA still mean that. Anything else is the output level.
+  const wcagViaLevel = /^a{1,3}$/i.test(String(values.level || '')) ? values.level : null;
+  const level = String(values.wcag || wcagViaLevel || 'AA').toUpperCase();
+  if (!['A', 'AA', 'AAA'].includes(level)) throw new Error('--wcag must be A, AA or AAA');
+  const levels = parseLevel(wcagViaLevel ? 'all' : values.level);
   let repo = null; let repoPath = null;
   if (values.repo) {
     const [name, ...rest] = values.repo.split('=');
@@ -98,6 +107,9 @@ export function parseCli(argv, env = process.env) {
     keyboard: num(values.keyboard, 3, 'keyboard'),
     maxTabs: num(values['max-tabs'], 200, 'max-tabs'),
     level,
+    levels,
+    console: !!values.console,
+    report: !!values.report,
     out: values.out || null,
     state: values.state || null,
     baseline: values.baseline || null,
@@ -203,7 +215,9 @@ async function auditPage(page, url, ctx, { keyboard }) {
 
 export async function run(opts, { log = (m) => process.stderr.write(`${m}\n`), now = new Date() } = {}) {
   const state = claimTarget(stateDir(opts), new URL(opts.url).host);
-  const dir = outDir(opts, state, now);
+  // --console alone: the run's files go to a scratch folder that is removed at the end.
+  const scratch = opts.console && !opts.report ? scratchDir('a11y-audit') : null;
+  const dir = outDir(scratch ? { ...opts, out: scratch } : opts, state, now);
   const chrome = findChrome({ chromePath: opts.chrome });
   if (!chrome) throw new Error('no Chrome, Chromium or Edge found (install one or set CHROME_PATH)');
   log(`engines: loading axe-core ${ENGINES.axe.version} and HTML_CodeSniffer ${ENGINES.htmlcs.version}`);
@@ -270,7 +284,7 @@ export async function run(opts, { log = (m) => process.stderr.write(`${m}\n`), n
     try { diff = { ...diffRuns(JSON.parse(fs.readFileSync(baselineFile, 'utf8')), agg), from: baselineFile }; } catch (e) { diff = { error: `could not read ${baselineFile}: ${e.message}` }; }
   }
   const notes = readNotes(state);
-  const md = buildMarkdown({ site: opts.url, date: now, level: opts.level, pages, agg, engines, version: VERSION, manual, diff, notes, state });
+  const md = buildMarkdown({ site: opts.url, date: now, level: opts.level, pages, agg, engines, version: VERSION, manual, diff, notes, state, levels: opts.levels });
   const tasks = toTasks(agg.issues, { subject: host, repo: opts.repo, repoPath: opts.repoPath });
   const json = {
     tool: 'a11y-audit', version: VERSION, site: opts.url, date: now.toISOString(), level: opts.level,
@@ -283,7 +297,11 @@ export async function run(opts, { log = (m) => process.stderr.write(`${m}\n`), n
   fs.writeFileSync(path.join(dir, 'report.json'), `${JSON.stringify(json, null, 2)}\n`);
   fs.writeFileSync(path.join(dir, 'tasks.json'), `${JSON.stringify(tasks, null, 2)}\n`);
   fs.writeFileSync(path.join(state, 'last-report.json'), `${JSON.stringify(json)}\n`);
-  return { dir, state, agg, diff, summary: buildSummary({ site: opts.url, agg, dir, level: opts.level, state, diff, notes }) };
+  const summary = opts.console
+    ? `${consoleList({ title: `a11y-audit ${host} (WCAG 2.2 ${opts.level}, ${pages.length} pages)`, items: consoleItems(agg), levels: opts.levels })}${opts.report ? `\nreport.md: ${dir}/report.md` : ''}\nState: ${state}`
+    : buildSummary({ site: opts.url, agg, dir, level: opts.level, state, diff, notes, levels: opts.levels });
+  removeScratch(scratch);
+  return { dir, state, agg, diff, summary };
 }
 
 async function main() {

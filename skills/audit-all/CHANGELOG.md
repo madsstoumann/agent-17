@@ -2,6 +2,15 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.9.0] - 2026-11-01
+
+### Added
+- A "Show" question next to Look: All, Errors and warnings, Errors only, Warnings only; "console" under Other asks for the list instead of report files. `--level` and `--console` answer it.
+- `--level` is passed to every sub-audit, so the report.md files the combined report quotes match; their JSON and baselines stay complete. "Fix first" follows the level.
+- `combine.mjs --level`: fix/TODO.md and the prompts in fix/tasks/ hold only the tasks at that level (blocker and high are errors, medium and low warnings) and say how many were left out. tasks.json is never filtered.
+- `combine.mjs --console`: the fix plan as a compact list on stdout instead of report.md, report.html and the PDFs; fix/ is still written. `--console --report` gives both.
+- `scripts/lib/levels.mjs`, the shared levels and console-list code, with `scripts/test/levels.test.mjs` checking every skill's copy is identical.
+
 ## [1.8.1] - 2026-10-30
 
 ### Changed

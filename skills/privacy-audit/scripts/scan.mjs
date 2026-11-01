@@ -6,12 +6,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseLevel, shows, levelNote, consoleList, scratchDir, removeScratch } from './lib/levels.mjs';
 import { launch } from './lib/cdp.mjs';
 import { openContext, choose } from './lib/visit.mjs';
 import { analyse, SECTIONS } from './lib/analyse.mjs';
-import { countStatuses, prepareRun, finishRun, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, GLYPH, result } from './lib/common.mjs';
+import { countStatuses, prepareRun, finishRun, consoleItems, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, GLYPH, result } from './lib/common.mjs';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 
 const USAGE = `privacy-audit ${VERSION}: GDPR / ePrivacy check of cookies, trackers and the consent banner
 
@@ -25,6 +26,10 @@ Usage: node scan.mjs <url> [options]
   --chrome PATH          Chrome, Chromium or Edge binary (also CHROME_PATH)
   --header "Name: value" Sent to the audited host only (WAF bypass rule); also AUDIT_HEADERS
   --no-policy            Do not open the privacy and cookie policy pages
+  --level LIST           What report.md and the summary show: error, warn, info, a comma list
+                         (error,warn), or all (default). report.json always keeps every result.
+  --console              Print a compact list of issues instead of writing report.md; the run folder is
+                         kept in the reports folder (last-report.json is). Add --report to get both.
   -h, --help
 `;
 
@@ -42,10 +47,14 @@ export function parseArgs(argv, env = process.env) {
     else if (k === '--chrome') a.chrome = next();
     else if (k === '--header') addHeader(a.headers, next());
     else if (k === '--no-policy') a.policy = false;
+    else if (k === '--level') a.levels = parseLevel(next());
+    else if (k === '--console') a.console = true;
+    else if (k === '--report') a.report = true;
     else if (k.startsWith('-')) throw new Error(`Unknown option ${k}`);
     else if (!a.url) a.url = normaliseUrl(k);
     else throw new Error(`Unexpected argument ${k}`);
   }
+  a.levels ||= parseLevel('all');
   for (const line of String(env.AUDIT_HEADERS || '').split('\n')) if (line.trim()) addHeader(a.headers, line);
   if (!a.only.includes('first')) a.only.unshift('first');
   return a;
@@ -160,11 +169,15 @@ export async function run(args, { dir, browser: given } = {}) {
 const cookieRow = (c) => ({ name: c.name, domain: c.domain, path: c.path, expires: c.expires > 0 ? new Date(c.expires * 1000).toISOString().slice(0, 10) : 'session', secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite || null });
 const summariseRequests = (reqs) => (reqs ? reqs.map((r) => ({ url: r.url.slice(0, 300), type: r.type, frame: r.frame })) : null);
 
-export function renderMarkdown(report) {
-  const { target: t, counts, results } = report;
+export function renderMarkdown(report, { levels } = {}) {
+  const { target: t, counts } = report;
+  const filtered = Boolean(levels && !levels.all);
+  // --level: only rows at the chosen levels; the counts and report.json keep everything.
+  const results = report.results.filter((r) => shows(levels, r));
   const out = [`# Privacy audit — ${t.host}`, ''];
   out.push(`**Site:** ${t.url}  ·  **Date:** ${report.generatedAt.slice(0, 16).replace('T', ' ')} UTC  ·  **Tool:** privacy-audit ${report.version} · ${report.browser}`, '');
   out.push(resultLine(counts), '');
+  if (filtered) out.push(levelNote(levels, { hidden: report.results.length - results.length }), '');
   out.push('Three new visitors in headless Chrome: one makes no choice (plus a few more pages), one rejects, one accepts; both of the latter reload after choosing. Nothing is submitted.', '');
   out.push(...fixFirst(results));
   const warns = results.filter((r) => r.status === 'warn');
@@ -174,7 +187,7 @@ export function renderMarkdown(report) {
     out.push('');
   }
   out.push(...carryOverSections(report));
-  out.push(...sectionTables(results, SECTIONS));
+  out.push(...sectionTables(results, SECTIONS, { hideEmpty: filtered }));
   const ck = report.raw?.cookies || {};
   for (const [k, label] of [['first', 'before any choice'], ['accept', 'after accepting']]) {
     if (!ck[k]?.length) continue;
@@ -186,7 +199,8 @@ export function renderMarkdown(report) {
   return out.join('\n');
 }
 
-export function renderStdout(report, paths) {
+export function renderStdout(report, paths, { levels } = {}) {
+  report = { ...report, results: report.results.filter((r) => shows(levels, r)) };
   const lines = [`privacy-audit ${report.target.host}`, resultLine(report.counts).replace(/\*/g, '')];
   for (const s of ['fail', 'warn']) for (const r of report.results.filter((x) => x.status === s)) lines.push(`${GLYPH[s]} ${r.id} ${r.title}: ${r.evidence.slice(0, 240)}`);
   for (const r of report.results.filter((x) => x.status === 'skip')) lines.push(`${GLYPH.skip} ${r.id}: ${r.evidence.slice(0, 200)}`);
@@ -201,7 +215,10 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || !args.url) { process.stdout.write(USAGE); process.exit(args.help ? 0 : 2); }
   const host = new URL(args.url).hostname;
-  const { state, dir, baselineFile, notes } = prepareRun({ skill: 'privacy-audit', host, out: args.out, baseline: args.baseline });
+  // --console alone: the run's files go to a scratch folder outside the reports folder. It is kept
+  // for the policy text Claude reads; the system's temp cleanup removes it.
+  const scratch = args.console && !args.report ? scratchDir('privacy-audit') : null;
+  const { state, dir, baselineFile, notes } = prepareRun({ skill: 'privacy-audit', host, out: scratch || args.out, baseline: args.baseline });
   log(`output: ${dir}`);
   const report = await run(args, { dir });
   report.tasks = taskCandidates(report.results, { source: 'privacy', ref: `${path.basename(dir)}/report.md` });
@@ -215,10 +232,14 @@ async function main() {
       report.diff = { from: baselineFile, error: e.message, fixed: [], regressed: [], changed: [] };
     }
   }
-  fs.writeFileSync(paths.md, renderMarkdown(report));
+  fs.writeFileSync(paths.md, renderMarkdown(report, { levels: args.levels }));
   writeJson(paths.json, report);
   finishRun(state, report);
-  process.stdout.write(`${renderStdout(report, paths)}\nstate:      ${state}\ncompared:   ${baselineFile || 'nothing (first run for this host)'}${notes ? '\nnotes:      notes.md included in the report' : ''}\n`);
+  const policies = (report.raw.policies || []).filter((p) => p.file).map((p) => `\npolicy:     ${path.join(paths.dir, p.file)} (${p.url})`).join('');
+  const head = args.console
+    ? `${consoleList({ title: `privacy-audit ${report.target.host}`, items: consoleItems(report.results), levels: args.levels })}${args.report ? `\nreport:     ${paths.md}` : ''}${policies}`
+    : renderStdout(report, paths, { levels: args.levels });
+  process.stdout.write(`${head}\nstate:      ${state}\ncompared:   ${baselineFile || 'nothing (first run for this host)'}${notes ? '\nnotes:      notes.md included in the report' : ''}\n`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -106,3 +106,18 @@ test('scoreboardRows and manual links', () => {
   assert.ok(links.find((l) => l.url.includes('securityheaders.com/?q=https%3A%2F%2Fa.b%2Fc%3Fd%3D1')));
   assert.equal(Object.keys(STATUS_GLYPH).length, 5);
 });
+
+test('--level filters report.md and the summary rows, never the counts', async () => {
+  const { parseLevel } = await import('../lib/levels.mjs');
+  const r = sample({ production: true });
+  const md = renderMarkdown(r, { levels: parseLevel('error') });
+  assert.match(md, /Showing errors only \(`--level error`\)/);
+  assert.match(md, /Secret files/);
+  assert.doesNotMatch(md, /MDN Observatory \|/);
+  assert.doesNotMatch(md, /✅ \| Title/);
+  assert.match(md, /3 pass · 2 warn · 1 fail/);
+  const warn = renderStdout(r, { levels: parseLevel('warn') });
+  assert.match(warn, /WARN headers\.observatory/);
+  assert.doesNotMatch(warn, /^FAIL exposed/m);
+  assert.equal(renderMarkdown(r), renderMarkdown(r, { levels: parseLevel('all') }));
+});

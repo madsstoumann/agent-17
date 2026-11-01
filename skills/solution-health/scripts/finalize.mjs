@@ -1,15 +1,25 @@
 #!/usr/bin/env node
 // Phase 4: merge results + Claude's page assessments, compare with the previous run, write report.md and tasks.json
 // (red and amber findings as fix tasks for audit-all / audit-fix) and update state.json.
-// Usage: node finalize.mjs [--root <dir>] [--dry-run]
+// Usage: node finalize.mjs [--root <dir>] [--dry-run] [--level error,warn] [--console [--report]]
+// --level filters what report.md and the console list show (red = error, amber = warn, info/unknown = info);
+// state.json and tasks.json always hold every finding. --console prints a compact list instead of writing
+// report.md; add --report for both.
 // Optional input: run/assessments.json  { "<watched url>": { "verdict": "red|amber|info|benign", "summary": "...", "action": "..." } }
 // Snapshots of changed pages are only accepted once assessed, so an unread change keeps showing up until someone reads it.
 import { copyFileSync, existsSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { parseArgs, paths, readJson, writeJson, loadState, loadManifest, ensureDirs, log, nowIso, daysSince, showPath, readNotes } from './lib.mjs';
 import { buildTasks } from './tasks.mjs';
+import { parseLevel, levelOfWord, levelNote, consoleList } from './lib/levels.mjs';
 
 const args = parseArgs();
+let levels;
+try { levels = parseLevel(args.level === true ? undefined : args.level); } catch (e) { log(e.message); process.exit(2); }
+const filtered = !levels.all;
+// red -> error, amber -> warn, info/unknown -> info, green/ignored -> shown only with --level all.
+const showLv = (lv) => levels.all || Boolean(levels[levelOfWord(lv)]);
+const writeReport = !args.console || args.report;
 const p = paths(args);
 ensureDirs(p);
 const R = (f) => readJson(join(p.runDir, f));
@@ -72,12 +82,13 @@ line(`Solution: \`${relative(process.cwd(), p.root) || '.'}\` · Previous run: $
 line();
 line(`**${reds.length} red · ${ambers.length} amber · ${by('unknown').length} unknown · ${by('info').length} info · ${by('green').length} green${by('ignored').length ? ` · ${by('ignored').length} ignored` : ''}**`);
 line();
+if (filtered) { line(`${levelNote(levels, { where: 'state.json and tasks.json' })} Red is an error, amber a warning.`); line(); }
 const news = findings.filter((f) => f.isNew); const better = findings.filter((f) => f.improved);
 if (prev.lastRun) {
   line(`## New since ${prev.lastRun.slice(0, 10)}`);
   line();
   if (!news.length && !better.length) line('Nothing got worse since the last run.');
-  for (const f of news) line(`- ${ICON[f.level]} **${esc(f.title)}** (${f.area}) — ${fmtReasons(f.reasons)}${f.previous ? ` _(was ${f.previous})_` : ''}`);
+  for (const f of news.filter((x) => showLv(x.level))) line(`- ${ICON[f.level]} **${esc(f.title)}** (${f.area}) — ${fmtReasons(f.reasons)}${f.previous ? ` _(was ${f.previous})_` : ''}`);
   for (const f of better) line(`- ✅ ${esc(f.title)} improved: ${f.previous} → ${f.level}`);
   line();
 }
@@ -89,10 +100,12 @@ if (changedUnassessed.length) {
   for (const c of changedUnassessed) line(`- **${esc(c.api)}** — ${c.url} → \`${c.changeFile}\``);
   line();
 }
+if (showLv('red')) {
 line('## Action needed');
 line();
 if (!reds.length) line('No red findings.');
-for (const f of reds) {
+}
+for (const f of showLv('red') ? reds : []) {
   line(`### ${ICON.red} ${esc(f.title)} _(${f.area}${f.ecosystem ? `, ${f.ecosystem}` : ''})_`);
   for (const r of f.reasons) line(`- ${r}`);
   if (f.area === 'api') {
@@ -112,36 +125,41 @@ line();
 if (notes) { line(`_From \`${showPath(p, p.notes)}\`, kept between runs._`); line(); line(notes); }
 else line(`_Triage notes, migration plans and decisions go in \`${showPath(p, p.notes)}\`; this section shows it and every run keeps it._`);
 line();
-line('## Watch');
-line();
-if (!ambers.length) line('No amber findings.');
-else {
-  line('| | Item | Area | Why | Since |');
-  line('|---|---|---|---|---|');
-  for (const f of ambers) line(`| ${ICON.amber} | ${esc(f.title)} | ${f.area} | ${fmtReasons(f.reasons)} | ${f.since} |`);
+if (showLv('amber')) {
+  line('## Watch');
+  line();
+  if (!ambers.length) line('No amber findings.');
+  else {
+    line('| | Item | Area | Why | Since |');
+    line('|---|---|---|---|---|');
+    for (const f of ambers) line(`| ${ICON.amber} | ${esc(f.title)} | ${f.area} | ${fmtReasons(f.reasons)} | ${f.since} |`);
+  }
+  line();
 }
-line();
 
 // External APIs
+const apiRows = (apis?.apis || []).filter((a) => showLv(a.verdict.level));
+if (!filtered || apiRows.length) {
 line('## External APIs');
 line();
 if (!(apis?.apis || []).length) line('_No external APIs in the manifest yet._');
 else {
   line('| | API | Probe | Watched pages | Code refs | Notes |');
   line('|---|---|---|---|---|---|');
-  for (const a of apis.apis) {
+  for (const a of apiRows) {
     const pr = a.probe ? `${a.probe.status || 'ERR'}${a.probe.deprecation ? ' · Deprecation' : ''}${a.probe.sunsetDate ? ` · Sunset ${a.probe.sunsetDate.slice(0, 10)}` : ''}` : '—';
     const pages = a.pages.map((pg) => `${pg.change}${pg.assessment ? ` (${pg.assessment.verdict})` : ''}`).join(', ') || '—';
     line(`| ${ICON[a.verdict.level]} | ${esc(a.name)} | ${pr} | ${pages} | ${a.codeRefs} | ${fmtReasons(a.verdict.reasons)} |`);
   }
 }
 line();
+}
 
 // Packages
 const pk = packages?.packages || [];
 line(`## Packages (${pk.length} direct)`);
 line();
-const notable = pk.filter((x) => ['red', 'amber', 'unknown'].includes(x.verdict.level));
+const notable = pk.filter((x) => ['red', 'amber', 'unknown'].includes(x.verdict.level) && showLv(x.verdict.level));
 if (notable.length) {
   line('| | Package | Eco | Installed | Latest | Last release | Maintained* | Why |');
   line('|---|---|---|---|---|---|---|---|');
@@ -153,7 +171,7 @@ if (notable.length) {
   line('_*OpenSSF Scorecard "Maintained" check, 0–10, via deps.dev. ? = not assessed._');
   line();
 }
-const infos = pk.filter((x) => x.verdict.level === 'info');
+const infos = showLv('info') ? pk.filter((x) => x.verdict.level === 'info') : [];
 if (infos.length) {
   line(`<details><summary>${infos.length} packages with updates available</summary>`);
   line();
@@ -162,9 +180,9 @@ if (infos.length) {
   line('</details>');
   line();
 }
-const ign = pk.filter((x) => x.verdict.level === 'ignored');
+const ign = filtered ? [] : pk.filter((x) => x.verdict.level === 'ignored');
 if (ign.length) { line(`Ignored by manifest: ${ign.map((x) => `${x.name}`).join(', ')}`); line(); }
-const vulnProjects = (packages?.npmProjects || []).filter((pr) => pr.audit?.counts);
+const vulnProjects = (packages?.npmProjects || []).filter((pr) => pr.audit?.counts && (!filtered || levels.error || levels.warn));
 for (const pr of vulnProjects) {
   const c = pr.audit.counts;
   const total = (c.critical || 0) + (c.high || 0) + (c.moderate || 0) + (c.low || 0);
@@ -173,7 +191,7 @@ for (const pr of vulnProjects) {
 if (vulnProjects.length) line();
 
 // Vulnerable packages further down the tree
-const tv = packages?.transitiveVulns || [];
+const tv = (packages?.transitiveVulns || []).filter((x) => showLv(x.verdict.level));
 if (tv.length) {
   line(`## Vulnerable transitive packages (${tv.length})`);
   line();
@@ -192,15 +210,15 @@ if (lic?.packages?.length) {
   line(`Solution licence: **${esc(lic.project.id)}**${lic.project.from === 'assumed' ? ' (assumed: closed source; set `licenses.projectLicense` in the manifest if the solution is open source)' : ` (from \`${esc(lic.project.from)}\`)`}. ` +
     `Found: ${Object.entries(lic.counts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => `${esc(k)} ${n}`).join(', ')}${Object.keys(lic.counts).length > 8 ? `, ${Object.keys(lic.counts).length - 8} more` : ''}.`);
   line();
-  const flagged = lp.filter((x) => ['red', 'amber'].includes(x.verdict.level));
-  if (!flagged.length) line('No licence needs a decision.');
+  const flagged = lp.filter((x) => ['red', 'amber'].includes(x.verdict.level) && showLv(x.verdict.level));
+  if (!flagged.length) line(filtered ? `No licence at this level (${levels.label}).` : 'No licence needs a decision.');
   else {
     line('| | Package | Eco | Licence | Use | Why |');
     line('|---|---|---|---|---|---|');
     for (const x of flagged) line(`| ${ICON[x.verdict.level]} | ${esc(x.name)} ${esc(x.versions.join(', '))} | ${x.ecosystem} | ${esc(x.license || 'none')} | ${x.direct ? 'direct' : 'transitive'}, ${x.dev ? 'dev' : 'shipped'} | ${fmtReasons(x.verdict.reasons)} |`);
   }
   line();
-  const linfo = lp.filter((x) => x.verdict.level === 'info');
+  const linfo = showLv('info') ? lp.filter((x) => x.verdict.level === 'info') : [];
   if (linfo.length) {
     line(`<details><summary>${linfo.length} weak-copyleft or dev-only licences (no action, keep the notices)</summary>`);
     line();
@@ -209,13 +227,14 @@ if (lic?.packages?.length) {
     line('</details>');
     line();
   }
-  const lign = lp.filter((x) => x.verdict.level === 'ignored');
+  const lign = filtered ? [] : lp.filter((x) => x.verdict.level === 'ignored');
   if (lign.length) { line(`Accepted in the manifest: ${lign.map((x) => `${x.name} (${x.license || 'none'})`).join(', ')}`); line(); }
 }
 
 // NuGet sources and folders, as resolved from the solution's own config
 const ng = packages?.nuget;
-if (ng?.contexts?.length) {
+const ngRows = (ng?.findings || []).filter((x) => showLv(x.level));
+if (ng?.contexts?.length && (!filtered || ngRows.length)) {
   line('## NuGet sources and folders');
   line();
   const files = [...new Set(ng.contexts.flatMap((c) => c.configFiles.map((x) => `\`${x.file}\`${x.scope === 'user' ? ' (user)' : ''}`)))];
@@ -223,23 +242,27 @@ if (ng?.contexts?.length) {
   line();
   line('| | Item | Details | Projects |');
   line('|---|---|---|---|');
-  for (const x of ng.findings) line(`| ${ICON[x.level]} | ${esc(x.title)} | ${fmtReasons(x.reasons)} | ${x.where.length > 2 ? `${x.where.length} projects` : esc(x.where.join(', '))} |`);
+  for (const x of ngRows) line(`| ${ICON[x.level]} | ${esc(x.title)} | ${fmtReasons(x.reasons)} | ${x.where.length > 2 ? `${x.where.length} projects` : esc(x.where.join(', '))} |`);
   line();
 }
 
 // Runtimes
+const rtRows = (runtimes?.runtimes || []).filter((r) => showLv(r.verdict.level));
+if (!filtered || rtRows.length) {
 line('## Runtimes & frameworks');
 line();
 if (!(runtimes?.runtimes || []).length) line('_None detected._');
 else {
   line('| | Product | Cycle | EOL | Newest cycle | Found in |');
   line('|---|---|---|---|---|---|');
-  for (const r of runtimes.runtimes) line(`| ${ICON[r.verdict.level]} | ${r.product} | ${esc(r.cycle ?? r.version)} | ${esc(r.eol === false ? 'not set' : r.eol ?? '?')} | ${esc(r.newestCycle ?? '?')} | ${esc(r.sources.slice(0, 2).join(', '))} |`);
+  for (const r of rtRows) line(`| ${ICON[r.verdict.level]} | ${r.product} | ${esc(r.cycle ?? r.version)} | ${esc(r.eol === false ? 'not set' : r.eol ?? '?')} | ${esc(r.newestCycle ?? '?')} | ${esc(r.sources.slice(0, 2).join(', '))} |`);
 }
 line();
+}
 
-// Untracked hosts
+// Untracked hosts (a warning: an integration nobody watches)
 const hi = untracked.filter((h) => h.priority === 'high');
+if (!filtered || levels.warn) {
 line(`## Hosts in code that nobody is watching (${untracked.length})`);
 line();
 if (!untracked.length) line('Every outbound host found in code is either tracked or ignored in the manifest.');
@@ -250,6 +273,7 @@ else {
   if (untracked.length > 40) line(`- …and ${untracked.length - 40} more (see run/discovery.json)`);
 }
 line();
+}
 
 // Coverage
 line('## Coverage and gaps');
@@ -282,12 +306,12 @@ const tasks = buildTasks(findings, { root: p.root });
 if (!args['dry-run']) {
   // report.md edited after the last run (notes written into it by hand): keep that copy, it would be lost.
   const mtime = (f) => { try { return statSync(f).mtimeMs; } catch { return 0; } };
-  if (existsSync(p.report) && mtime(p.report) > mtime(p.state) + 2000) {
+  if (writeReport && existsSync(p.report) && mtime(p.report) > mtime(p.state) + 2000) {
     const keep = join(p.dir, `report.edited-${today}.md`);
     copyFileSync(p.report, keep);
     log(`report.md was edited after the last run; saved that version as ${showPath(p, keep)}. Move the notes worth keeping into ${showPath(p, p.notes)}.`);
   }
-  writeFileSync(p.report, L.join('\n') + '\n');
+  if (writeReport) writeFileSync(p.report, L.join('\n') + '\n');
   // State
   const state = { version: 1, lastRun: nowIso(), packages: {}, runtimes: {}, nuget: {}, vulns: {}, licenses: {}, apis: {} };
   for (const f of findings) {
@@ -319,5 +343,11 @@ if (!args['dry-run']) {
 }
 log(`${reds.length} red, ${ambers.length} amber, ${news.length} new since last run, ${changedUnassessed.length} changed page(s) unassessed, ${untracked.length} untracked host(s).`);
 log(`${tasks.tasks.length} fix task(s): ${tasks.tasks.filter((t) => t.owner === 'agent').length} for agents, ${tasks.tasks.filter((t) => t.owner === 'human').length} for people.`);
-log(args['dry-run'] ? '(dry run: report, tasks and state not written)' : `→ ${showPath(p, p.report)}, ${showPath(p, p.tasks)} and ${showPath(p, p.state)}`);
+log(args['dry-run'] ? '(dry run: report, tasks and state not written)' : `→ ${writeReport ? `${showPath(p, p.report)}, ` : ''}${showPath(p, p.tasks)} and ${showPath(p, p.state)}`);
+if (args.console) {
+  // The compact list on stdout; the log lines above go to stderr.
+  const items = findings.map((f) => ({ level: levelOfWord(f.level), source: f.area, id: '', title: f.title, where: f.reasons.join('; ').replace(/\s+/g, ' ').slice(0, 160) }));
+  for (const h of untracked.filter((x) => x.priority === 'high')) items.push({ level: 'warn', source: 'host', id: '', title: `${h.host} is called from code but not watched`, where: `${h.fileCount} file(s), e.g. ${h.files[0]}` });
+  process.stdout.write(`${consoleList({ title: `solution-health ${relative(process.cwd(), p.root) || '.'}`, items, levels })}\n`);
+}
 void manifest;

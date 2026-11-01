@@ -1,10 +1,10 @@
 ---
 name: a11y-audit
 description: Use when someone wants an accessibility audit, WCAG 2.2 or 2.1 AA check, EN 301 549 or European Accessibility Act (EAA) conformance check, webtilgængelighed / tilgængelighedserklæring review, or "is this site accessible" answer for a live or local URL — axe-core and HTML_CodeSniffer (Pa11y's engine) over a sample of pages, a keyboard-only walk for traps, invisible or covered focus and skip links, colour contrast, reflow at 320 px and text spacing, every finding mapped to WCAG criteria and EN 301 549 clauses. Writes report.md, report.json and a fix-plan draft. Not a substitute for a screen reader test, and not for code-only review without a running site.
-argument-hint: "<url> [--pages N] [--from launch-audit/report.json] [--urls FILE] [--keyboard N] [--level A|AA|AAA] [--repo NAME[=PATH]] [--out DIR] [--state DIR] [--baseline FILE] [--no-baseline] [--header NAME:VALUE] [--insecure]"
+argument-hint: "<url> [--pages N] [--from launch-audit/report.json] [--urls FILE] [--keyboard N] [--wcag A|AA|AAA] [--repo NAME[=PATH]] [--out DIR] [--state DIR] [--baseline FILE] [--no-baseline] [--header NAME:VALUE] [--insecure] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Accessibility audit
@@ -38,7 +38,7 @@ code 0 means it ran, whatever it found.
 | `--from <launch-audit report.json>` | launch-audit already crawled the site: sample from its crawl. audit-all always does this. |
 | `--urls FILE` | The user names the pages (one URL per line): the checkout, a form, a login page. |
 | `--keyboard N` (default 3) | Keyboard walk on the first N pages. `0` for a quick engine-only pass. |
-| `--level A\|AA\|AAA` | Default AA, which is what the EU directives and the Danish webtilgængelighedslov require. |
+| `--wcag A\|AA\|AAA` | Default AA, which is what the EU directives and the Danish webtilgængelighedslov require. |
 | `--repo NAME[=PATH]` | The repo that renders the site. `tasks.json` then holds agent tasks for that repo instead of tasks for a person. |
 | `--out DIR` | The user says where the report goes (audit-all passes its own run folder). Default `<target>/runs/<YYYYMMDD-HHMM>/`. |
 | `--state DIR` | Target folder for this site. Default `<reports>/a11y-audit/<host>/`, where `<reports>` is `$AUDIT_OUT_DIR`, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. |
@@ -51,6 +51,24 @@ Needs Node 22 and Chrome, Chromium or Edge. The first run downloads axe-core 4.1
 HTML_CodeSniffer 2.5.1 from jsDelivr (unpkg as fallback), checks their SHA-256 against the pinned
 value and caches them (`~/Library/Caches/a11y-audit`, `~/.cache/a11y-audit`, or `A11Y_AUDIT_CACHE`).
 No npm install.
+
+### Levels and the console list
+
+`--level` sets what `report.md` and the stdout summary show: `error` (blocker and high issues), `warn` (medium and low), `info` (review items and best practice), a comma list such as
+`error,warn`, or `all` (the default: every row, passes included). Use it when the user asks for
+"errors only", "only warnings", "skip the info" and the like. It never filters saved data:
+`report.json`, `tasks.json` and `last-report.json` keep every result, so the next run's "Since last run" is unaffected.
+
+`--console` prints a compact list instead of writing `report.md`: one line per issue, errors
+first, with the counts on top. The run's files go to a scratch folder in the system temp folder,
+so nothing is left in the reports folder except the target folder's `last-report.json`. Use it when
+the user wants "just the list", "in the terminal" or "no report". Show the list as it is, in a code
+block, with a sentence of context; there is no report path to quote. `--console --report` writes
+the report as well.
+
+The WCAG target level is `--wcag A|AA|AAA` now; `--level A`, `AA` or `AAA` still means the WCAG level,
+so older commands keep working. With a level, report.md leaves out the criteria table, the manual
+checks and the page list.
 
 ## Between runs
 

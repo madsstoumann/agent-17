@@ -3,6 +3,7 @@
  * report object that audit.mjs assembles. Pure: no I/O.
  */
 import { GROUPS } from './registry.mjs';
+import { shows, levelNote } from './levels.mjs';
 
 export const STATUS_GLYPH = { pass: '✅', warn: '⚠️', fail: '❌', info: 'ℹ️', skip: '⏭️' };
 const STATUS_LABEL = { pass: 'PASS', warn: 'WARN', fail: 'FAIL', info: 'INFO', skip: 'SKIP' };
@@ -96,13 +97,17 @@ function row(r) {
 }
 
 /** report -> Markdown. */
-export function renderMarkdown(report) {
-  const { input = {}, site = {}, counts = {}, results = [] } = report;
+export function renderMarkdown(report, { levels } = {}) {
+  const { input = {}, site = {}, counts = {} } = report;
+  const filtered = Boolean(levels && !levels.all);
+  // --level: only the rows at the chosen levels; counts and report.json keep everything.
+  const results = (report.results || []).filter((r) => shows(levels, r));
   const out = [];
   out.push(`# Launch audit — ${site.host || input.host || ''}`, '');
   out.push(`**Site:** ${input.url}${site.finalUrl && site.finalUrl !== input.url ? ` → ${site.finalUrl}` : ''}  ·  **Environment:** ${envLabel(input)}  ·  **Date:** ${fmtDate(report.generatedAt)}  ·  **Tool:** launch-audit ${report.version || ''}${site.lighthouse?.runner ? ` · Lighthouse ${site.lighthouse.runner}${site.lighthouse.version ? ` ${site.lighthouse.version}` : ''}` : ''}${report.partial ? '  ·  **PARTIAL RUN**' : ''}`);
   if (input.productionHost && input.productionHost !== (site.host || '').replace(/:\d+$/, '')) out.push(`**Production host:** ${input.productionHost}`);
   out.push('', `**Result:** ${counts.pass || 0} pass · ${counts.warn || 0} warn · ${counts.fail || 0} fail · ${counts.info || 0} info · ${counts.skip || 0} skipped`, '');
+  if (filtered) out.push(levelNote(levels, { hidden: (report.results || []).length - results.length }), '');
 
   const blockers = results.filter((r) => r.blocker && r.status === 'fail');
   if (blockers.length) {
@@ -110,7 +115,7 @@ export function renderMarkdown(report) {
     for (const b of blockers) out.push(`- ❌ **${b.title}**${b.subject ? ` (${b.subject})` : ''} — ${b.evidence}${b.fix ? ` → ${b.fix}` : ''}`);
     out.push('');
   }
-  if (report.beforeProduction?.length) {
+  if (report.beforeProduction?.length && (!filtered || levels.warn)) {
     out.push('## Before production', '', `Expected on ${input.env}; each must be reversed on the live site.`, '');
     for (const b of report.beforeProduction) out.push(`- [ ] **${b.title}** — ${b.evidence}${b.fix ? ` → ${b.fix}` : ''}`);
     out.push('');
@@ -122,6 +127,7 @@ export function renderMarkdown(report) {
 
   for (const g of GROUPS) {
     const rows = results.filter((r) => r.group === g.id);
+    if (filtered && !rows.length) continue;
     out.push(`## ${g.order}. ${g.title}`, '');
     if (!rows.length) { out.push('_Not run._', ''); continue; }
     if (g.id === 'ops') {
@@ -176,8 +182,9 @@ export function renderMarkdown(report) {
 }
 
 /** The compact stdout summary Claude reads instead of the whole report. */
-export function renderStdout(report, { reportMd, reportJson, maxWarns = 40 } = {}) {
-  const { input = {}, site = {}, counts = {}, results = [] } = report;
+export function renderStdout(report, { reportMd, reportJson, maxWarns = 40, levels } = {}) {
+  const { input = {}, site = {}, counts = {} } = report;
+  const results = (report.results || []).filter((r) => shows(levels, r));
   const lines = [];
   lines.push(`launch-audit ${site.host || ''} — env: ${envLabel(input)} — ${fmtDate(report.generatedAt)}${report.partial ? ' — PARTIAL RUN' : ''}`);
   for (const r of scoreboardRows(report)) lines.push(`${r.label}: ${r.value}`);

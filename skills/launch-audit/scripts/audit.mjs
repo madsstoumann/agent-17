@@ -20,6 +20,7 @@ import { createHttp, curlProbe, isPrivateHost, isPrivateAddress, hostOf, sibling
 import { GROUPS, runGroups, filterGroups, applyEnvPolicy, countStatuses, result, isSkipped } from './lib/registry.mjs';
 import { renderMarkdown, renderStdout, buildManualLinks } from './lib/report.mjs';
 import { diffReports } from './lib/diff.mjs';
+import { consoleList, scratchDir, removeScratch, levelOf } from './lib/levels.mjs';
 import { extractMeta } from './lib/html.mjs';
 import { parseRobotsTxt, loadSitemaps } from './lib/robots.mjs';
 import { followChain } from './lib/redirects.mjs';
@@ -66,7 +67,9 @@ async function main() {
   if (opts.insecure) process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
   const stateDir = claimTarget(resolveState({ state: opts.state, host: opts.host }), opts.host);
-  const out = resolveOut({ out: opts.out, host: opts.host }, { state: stateDir, exists: fsSync.existsSync });
+  // --console alone: the run's files go to a scratch folder that is removed at the end.
+  const scratch = opts.console && !opts.report ? scratchDir('launch-audit') : null;
+  const out = resolveOut({ out: scratch || opts.out, host: opts.host }, { state: stateDir, exists: fsSync.existsSync });
   await fs.mkdir(out.dir, { recursive: true });
   if (out.mode === 'dir') markRun(out.dir, { skill: 'launch-audit', target: opts.host });
   await fs.mkdir(out.rawDir, { recursive: true });
@@ -162,7 +165,7 @@ async function main() {
 
   const writeReport = async (report) => {
     await fs.writeFile(out.reportJson, JSON.stringify(report, null, 1));
-    await fs.writeFile(out.reportMd, renderMarkdown(report));
+    await fs.writeFile(out.reportMd, renderMarkdown(report, { levels: opts.levels }));
   };
 
   const onSignal = async (sig) => {
@@ -269,8 +272,13 @@ async function main() {
   }
   await writeReport(report);
   await fs.writeFile(path.join(stateDir, 'last-report.json'), JSON.stringify(report, null, 1));
+  const tail = `\nState: ${stateDir}${baselineFile ? `\nCompared with: ${baselineFile}` : '\nCompared with: nothing (first run for this host)'}${notes ? '\nNotes: notes.md included in the report' : ''}\n`;
   if (opts.json) process.stdout.write(`${JSON.stringify(report, null, 1)}\n`);
-  else process.stdout.write(`${renderStdout(report, { reportMd: out.reportMd, reportJson: out.reportJson })}\nState: ${stateDir}${baselineFile ? `\nCompared with: ${baselineFile}` : '\nCompared with: nothing (first run for this host)'}${notes ? '\nNotes: notes.md included in the report' : ''}\n`);
+  else if (opts.console) {
+    const items = report.results.map((r) => ({ level: levelOf(r), source: r.group, id: r.id.startsWith(`${r.group}.`) ? r.id.slice(r.group.length + 1) : r.id, title: r.title, where: [r.subject, r.evidence].filter(Boolean).join(' — ').slice(0, 160) }));
+    process.stdout.write(`${consoleList({ title: `launch-audit ${report.site.host || ''}${report.partial ? ' (partial)' : ''}`, items, levels: opts.levels })}${opts.report ? `\nReport: ${out.reportMd}` : ''}${tail}`);
+  } else process.stdout.write(`${renderStdout(report, { reportMd: out.reportMd, reportJson: out.reportJson, levels: opts.levels })}${tail}`);
+  removeScratch(scratch);
   if (opts.strict && report.counts.fail > 0) process.exit(3);
   process.exit(0);
 }

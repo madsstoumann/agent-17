@@ -2,6 +2,12 @@
 
 All notable changes to the `privacy-audit` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.1.0] - 2026-11-01
+
+### Added
+- `--level error|warn|info` (comma list, e.g. `error,warn`; default `all`): report.md and the stdout summary show only rows at those levels, with a line saying what is hidden. report.json (with `tasks`) and last-report.json keep every result, so baselines are unaffected.
+- `--console`: a compact list on stdout, one line per issue, errors first, counts on top (`scripts/lib/levels.mjs`). The run's files go to a scratch folder in the system temp folder; last-report.json is still saved. `--console --report` gives both. The scratch folder is kept for the policy text; Claude gives the policy review after the list.
+
 ## [1.0.0] - 2026-10-30
 
 ### Added
