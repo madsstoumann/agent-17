@@ -29,7 +29,7 @@ Usage: node scan.mjs <url> [options]
   --level LIST           What report.md and the summary show: error, warn, info, a comma list
                          (error,warn), or all (default). report.json always keeps every result.
   --console              Print a compact list of issues instead of writing report.md; the run folder is
-                         kept in the reports folder (last-report.json is). Add --report to get both.
+                         not kept in the reports folder (last-report.json is). Add --report to get both.
   -h, --help
 `;
 
