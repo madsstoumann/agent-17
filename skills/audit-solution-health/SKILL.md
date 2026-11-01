@@ -4,7 +4,7 @@ description: Periodic health check of a solution's dependencies and external int
 argument-hint: "[--root PATH] [--in-repo | --dir PATH] [--transitive] [--offline] [--skip packages,runtimes,apis] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(npm:*), Bash(dotnet:*), Read, Write, Edit, WebFetch, WebSearch
 metadata:
-  version: "3.0.0"
+  version: "3.1.0"
 ---
 
 # Solution health check
@@ -22,9 +22,7 @@ audit skills. The name is stable, so each run compares with the previous one; a 
 the folder belongs to (two solutions with the same folder name get a hash suffix). `check.mjs` prints the folder.
 
 A team that wants the state committed, so every developer and the PR history see it, runs with `--in-repo`
-(`.solution-health/` in the solution) or `--dir PATH`. Pass the same flag to every script. An old in-repo
-`.solution-health/` from before 2.0.0 is copied to the state folder on the first run (not `run/`), and left in
-place: tell the user it is no longer used and can be deleted, unless they want `--in-repo`.
+(`.audit-solution-health/` in the solution) or `--dir PATH`. Pass the same flag to every script.
 
 Never point `--dir` at an audit run folder (audit-all's or any skill's timestamped `runs/<stamp>/`, marked with
 an `.audit-run` file): the next run would not look there. The scripts ignore such a `--dir` and use the state
@@ -40,7 +38,7 @@ copies the newest one over once and says so.
 | `notes.md` | You and the team | Triage notes, migration plans, decisions. No script writes it; `finalize.mjs` shows it in the report's "Notes" section on every run |
 | `report.md` | Scripts | Latest report, rewritten by every `finalize.mjs` run. Do not write notes into it |
 | `tasks.json` | Scripts + you | Red and amber findings as fix tasks, in audit-all's `tasks.json` shape |
-| `run/` | Scripts | Scratch: raw results, HTTP cache, change files (with `--in-repo`, add `.solution-health/run/` to `.gitignore`) |
+| `run/` | Scripts | Scratch: raw results, HTTP cache, change files (with `--in-repo`, add `.audit-solution-health/run/` to `.gitignore`) |
 
 Scripts are in `scripts/` next to this file. They are zero-dependency Node (18+), so they run on any dev machine with Node, including .NET-only devs. Run them from the solution root, or pass `--root <path>`. The commands below use `${CLAUDE_SKILL_DIR}`, this skill's folder wherever it is installed (`.claude/skills/audit-solution-health/` in the solution, `~/.claude/skills/`, or a plugin); if it is not filled in, use the folder this `SKILL.md` is in. `references/sample-report.md` shows what a finished report looks like.
 
@@ -125,7 +123,7 @@ Then reply in chat with:
 - the untracked hosts that still need a decision,
 - gaps (unreachable sources, missing tools), so a clean report is not mistaken for a clean bill of health.
 
-Keep it short; the report has the detail, and give its full path. With `--in-repo`, remind them to commit `.solution-health/` (except `run/`).
+Keep it short; the report has the detail, and give its full path. With `--in-repo`, remind them to commit `.audit-solution-health/` (except `run/`).
 
 ## How the verdicts work
 

@@ -13,12 +13,6 @@ const p = paths(args);
 const skip = new Set(String(args.skip || '').split(',').filter(Boolean));
 const pass = process.argv.slice(2).filter((a, i, all) => a !== '--skip' && all[i - 1] !== '--skip');
 
-// State used to live in the solution (.solution-health/). Copy it to the new place once, so the
-// first run there still compares with the last one; the old folder is left for the team to delete.
-if (!p.inRepo && existsSync(join(p.legacyDir, 'manifest.json')) && !existsSync(p.manifest)) {
-  cpSync(p.legacyDir, p.dir, { recursive: true, filter: (src) => !src.startsWith(join(p.legacyDir, 'run')) });
-  console.error(`Copied the manifest and state from ${p.legacyDir} to ${p.dir}. The old folder is no longer used; delete it (or run with --in-repo to keep using it).`);
-}
 if (p.ignoredDir) console.error(`${p.ignoredDir} is inside an audit run folder, which the next run will not look in. Keeping the state in ${p.dir} instead.`);
 // State an earlier run left in an audit run folder (e.g. --dir into an audit-all run): copy the newest once.
 if (!p.inRepo && !existsSync(p.manifest)) {

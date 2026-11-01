@@ -20,10 +20,10 @@ import { pickPages, pagesFromLaunchAudit, pagesFromFile, sitemapUrls } from './l
 import { axeTags, htmlcsStandard, scFromAxeTags } from './lib/wcag.mjs';
 import { aggregate, toTasks, diffRuns } from './lib/findings.mjs';
 import { buildMarkdown, buildSummary, consoleItems } from './lib/report.mjs';
-import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes, isTool } from './lib/target-state.mjs';
+import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
 import { parseLevel, consoleList, scratchDir, removeScratch } from './lib/levels.mjs';
 
-export const VERSION = '2.0.0';
+export const VERSION = '2.1.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UA_SUFFIX = `audit-a11y/${VERSION}`;
 const DESKTOP = { width: 1280, height: 900 };
@@ -162,7 +162,7 @@ export function findBaseline(opts, state, dir, { root = reportsRoot() } = {}) {
   const last = path.join(state, 'last-report.json');
   if (fs.existsSync(last)) return last;
   const host = new URL(opts.url).host;
-  const sameHost = (j) => { try { return isTool(j?.tool, 'audit-a11y') && new URL(j.site).host === host; } catch { return false; } };
+  const sameHost = (j) => { try { return j?.tool === 'audit-a11y' && new URL(j.site).host === host; } catch { return false; } };
   return findEarlier([path.join(root, 'audit-a11y'), path.join(root, 'audit-all')], 'report.json', sameHost, { exclude: dir })[0] || null;
 }
 

@@ -42,7 +42,7 @@ export function validateTasks(raw) {
       severity: str(t.severity).toLowerCase() || 'medium',
       owner: str(t.owner).toLowerCase() || 'agent',
       model: str(t.model).toLowerCase() || null,
-      sources: list(t.sources).map((s) => s.toLowerCase().replace(/-audit$|^audit-/, '').replace(/^solution-/, '')),
+      sources: list(t.sources).map((s) => s.toLowerCase().replace(/^audit-/, '').replace(/^solution-/, '')),
       area: str(t.area),
       repo: str(t.repo) || null,
       files: list(t.files),

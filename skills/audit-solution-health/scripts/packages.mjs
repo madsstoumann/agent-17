@@ -2,7 +2,7 @@
 // Phase 1: npm + NuGet packages — outdated, vulnerable, deprecated, "is anyone still maintaining this?",
 // plus the whole installed tree: vulnerable transitive packages and every package's licence.
 // Usage: node packages.mjs [--root <dir>] [--transitive] [--no-enrich] [--offline]
-// Reads .solution-health/run/discovery.json (run discover.mjs first). Writes run/packages.json.
+// Reads .audit-solution-health/run/discovery.json (run discover.mjs first). Writes run/packages.json.
 import { readFileSync, existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';

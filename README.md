@@ -29,10 +29,6 @@ A plugin added on claude.ai is saved to your account, so it also loads in Cowork
 
 Copy its folder into `~/.claude/skills/` (Claude Code), or zip the folder and upload it under Customize > Skills (claude.ai).
 
-### Renamed skills (November 2026)
-
-Every audit skill now starts with `audit`: `launch-audit` is `audit-launch`, and likewise `audit-a11y`, `audit-seo`, `audit-eco`, `audit-privacy`, `audit-infra` and `audit-security`, and `solution-health` is `audit-solution-health`. Run them as `/skills:audit-launch` and so on. If you copied or uploaded one of the old folders by hand, remove that copy. Reports go to `<reports>/audit-launch/…`; the first run under the new name moves the old `<reports>/launch-audit/` folder across, so notes.md, triage and baselines carry over (`<reports>/solution-health/` moves to `<reports>/audit-solution-health/` the same way; the opt-in in-repo folder is still `.solution-health/`). The old `A11Y_AUDIT_CACHE` and `*_AUDIT_DEBUG` variables still work next to the new `AUDIT_A11Y_CACHE` and `AUDIT_*_DEBUG`.
-
 ## Setup for the audit skills
 
 None of this is required; each item makes audit-launch (and audit-all) more complete.

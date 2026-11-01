@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseBlocks, renderBlocks, inline, joinLines, escapeHtml, plain } from './markdown.mjs';
 import { compactReport } from './compact.mjs';
-import { renameLegacy } from './target-state.mjs';
 
 export const KINDS = {
   'audit-launch': {
@@ -42,17 +41,16 @@ export const KINDS = {
 };
 const ORDER = Object.keys(KINDS);
 
-/** Sub-folders named `<kind>` or `<kind>-<target>` (or the old skill name, e.g. launch-audit/) that hold a report.md, in kind order then name order. */
+/** Sub-folders named `<kind>` or `<kind>-<target>` that hold a report.md, in kind order then name order. */
 export function discoverReports(runDir) {
   const found = [];
   for (const name of fs.readdirSync(runDir).sort()) {
     const dir = path.join(runDir, name);
     const file = path.join(dir, 'report.md');
     if (!fs.statSync(dir).isDirectory() || !fs.existsSync(file)) continue;
-    const known = renameLegacy(name); // launch-audit/, security-audit-<repo>/ in runs from before the rename
-    const kind = ORDER.find((k) => known === k || known.startsWith(`${k}-`));
+    const kind = ORDER.find((k) => name === k || name.startsWith(`${k}-`));
     if (!kind) continue;
-    const target = known === kind ? null : known.slice(kind.length + 1);
+    const target = name === kind ? null : name.slice(kind.length + 1);
     found.push({ kind, target, folder: name, file, md: fs.readFileSync(file, 'utf8') });
   }
   return found.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind) || a.folder.localeCompare(b.folder));

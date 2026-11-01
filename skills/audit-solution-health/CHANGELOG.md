@@ -2,6 +2,14 @@
 
 All notable changes to the `audit-solution-health` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [3.1.0] - 2026-11-01
+
+### Changed
+- The in-repo folder (`--in-repo`) is now `.audit-solution-health/`.
+
+### Removed
+- The one-time copy of a pre-2.0.0 in-repo `.solution-health/` folder. An old `<reports>/solution-health/` folder is still moved once, silently.
+
 ## [3.0.0] - 2026-11-01
 
 ### Changed

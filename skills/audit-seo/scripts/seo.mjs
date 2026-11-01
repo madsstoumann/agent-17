@@ -14,7 +14,7 @@ import path from 'node:path';
 import dns from 'node:dns/promises';
 
 import { parseCli, resolveOut, resolveState, reportsRoot, usage } from './lib/cli.mjs';
-import { claimTarget, markRun, findEarlier, readNotes, isTool } from './lib/target-state.mjs';
+import { claimTarget, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
 import { diffRows } from './lib/diff.mjs';
 import { createHttp, isPrivateHost, isPrivateAddress, siblingHost, challengeVendor, pLimit, VERSION } from './lib/http.mjs';
 import { parseRobotsTxt, loadSitemaps } from './lib/robots.mjs';
@@ -51,7 +51,7 @@ async function main() {
 
   const log = opts.quiet ? () => {} : (m) => process.stderr.write(`[${elapsed()}s] ${m}\n`);
   const siteHosts = [opts.host, siblingHost(opts.host)].filter(Boolean);
-  const http = createHttp({ timeout: opts.timeout, concurrency: opts.concurrency, siteHeaders: opts.headers, siteHosts, log: (m) => { if (process.env.AUDIT_SEO_DEBUG || process.env.SEO_AUDIT_DEBUG) log(m); } });
+  const http = createHttp({ timeout: opts.timeout, concurrency: opts.concurrency, siteHeaders: opts.headers, siteHosts, log: (m) => { if (process.env.AUDIT_SEO_DEBUG) log(m); } });
 
   log(`audit-seo ${VERSION} — ${opts.url}`);
   const chain = await followChain(http, opts.url, { maxHops: 10 });
@@ -179,7 +179,7 @@ function findBaseline(opts, stateDir, outDir) {
   const last = path.join(stateDir, 'last-report.json');
   if (fsSync.existsSync(last)) return last;
   const reports = reportsRoot();
-  return findEarlier([path.join(reports, 'audit-seo'), path.join(reports, 'audit-all')], 'report.json', (j) => isTool(j?.tool, 'audit-seo') && j.site?.host === opts.host, { exclude: outDir })[0] || null;
+  return findEarlier([path.join(reports, 'audit-seo'), path.join(reports, 'audit-all')], 'report.json', (j) => j?.tool === 'audit-seo' && j.site?.host === opts.host, { exclude: outDir })[0] || null;
 }
 
 main().catch((e) => fail(1, `audit-seo failed: ${e?.stack || e}`));

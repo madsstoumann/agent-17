@@ -15,7 +15,7 @@ import path from 'node:path';
 import dns from 'node:dns/promises';
 
 import { parseCli, resolveOut, resolveState, reportsRoot, usage } from './lib/cli.mjs';
-import { claimTarget, markRun, findEarlier, readNotes, isTool } from './lib/target-state.mjs';
+import { claimTarget, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
 import { createHttp, curlProbe, isPrivateHost, isPrivateAddress, hostOf, siblingHost, stripWww, challengeVendor, VERSION, UA } from './lib/http.mjs';
 import { GROUPS, runGroups, filterGroups, applyEnvPolicy, countStatuses, result, isSkipped } from './lib/registry.mjs';
 import { renderMarkdown, renderStdout, buildManualLinks } from './lib/report.mjs';
@@ -77,7 +77,7 @@ async function main() {
   const log = opts.quiet ? () => {} : (m) => process.stderr.write(`[${elapsed()}s] ${m}\n`);
   // --header values go to the audited host (and its www/apex sibling) only, never to third-party services.
   const siteHosts = [opts.host, siblingHost(opts.host)].filter(Boolean);
-  const http = createHttp({ timeout: opts.timeout, ua: opts.ua || UA, from: opts.from, concurrency: opts.concurrency, siteHeaders: opts.headers, siteHosts, log: (m) => { if (process.env.AUDIT_LAUNCH_DEBUG || process.env.LAUNCH_AUDIT_DEBUG) log(m); } });
+  const http = createHttp({ timeout: opts.timeout, ua: opts.ua || UA, from: opts.from, concurrency: opts.concurrency, siteHeaders: opts.headers, siteHosts, log: (m) => { if (process.env.AUDIT_LAUNCH_DEBUG) log(m); } });
 
   // ------------------------------------------------------------------ Phase A
   log(`audit-launch ${VERSION} — ${opts.url} (env: ${opts.env}, ${opts.envSource})`);
@@ -295,7 +295,7 @@ function findBaseline(opts, stateDir, outDir) {
   if (fsSync.existsSync(last)) return last;
   const reports = reportsRoot();
   return findEarlier([path.join(reports, 'audit-launch'), path.join(reports, 'audit-all')], 'report.json',
-    (j) => isTool(j?.tool, 'audit-launch') && !j.partial && (() => { try { return hostOf(j.input.url) === opts.host; } catch { return false; } })(), { exclude: outDir })[0] || null;
+    (j) => j?.tool === 'audit-launch' && !j.partial && (() => { try { return hostOf(j.input.url) === opts.host; } catch { return false; } })(), { exclude: outDir })[0] || null;
 }
 
 main().catch((e) => {

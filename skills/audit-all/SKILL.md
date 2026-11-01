@@ -4,7 +4,7 @@ description: Use when someone wants the full audit of a site and its code in one
 argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--yes] [--style serif|sans|editorial|modern] [--level error|warn|error,warn|all] [--console] [--out DIR]"
 allowed-tools: AskUserQuestion, Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.11.0"
+  version: "1.12.0"
 ---
 
 # Audit all
@@ -176,7 +176,7 @@ folder name.
 | audit-privacy | Follow audit-privacy's SKILL.md with `--out "<run>/audit-privacy"`, including the policy review it asks you to add to `report.md` | `report.md`, `report.json`, `banner.png`, `policy-*.txt` |
 | audit-infra | Follow audit-infra's SKILL.md with `--out "<run>/audit-infra"` | `report.md`, `report.json` |
 | audit-security | Follow audit-security's SKILL.md with `--out "<run>/audit-security-<repo>"`, including the triage and `report.md` it asks you to write. Semgrep runs automatically when installed | `findings.json`, `report.md` |
-| audit-solution-health | Follow audit-solution-health's SKILL.md in the repo, **without** `--dir` or `--out`: it keeps its manifest, state and report in its own folder (`<reports>/audit-solution-health/<repo>/`, or `.solution-health/` with `--in-repo`), never in the run folder. Pass the repo to `combine.mjs --repo` and it copies the report in | `report.md` in its state folder |
+| audit-solution-health | Follow audit-solution-health's SKILL.md in the repo, **without** `--dir` or `--out`: it keeps its manifest, state and report in its own folder (`<reports>/audit-solution-health/<repo>/`, or `.audit-solution-health/` with `--in-repo`), never in the run folder. Pass the repo to `combine.mjs --repo` and it copies the report in | `report.md` in its state folder |
 
 **With a level other than All,** pass the same `--level` to every sub-audit (audit-launch,
 audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security's scan, and

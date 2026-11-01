@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes, isTool } from './target-state.mjs';
+import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from './target-state.mjs';
 import { levelOf } from './levels.mjs';
 
 export const STATUSES = ['pass', 'warn', 'fail', 'info', 'skip'];
@@ -60,7 +60,7 @@ export function prepareRun({ skill, host, out, baseline }, { home = os.homedir()
   let baselineFile = null;
   if (baseline) baselineFile = path.resolve(cwd, expandHome(baseline, home));
   else if (fs.existsSync(path.join(state, 'last-report.json'))) baselineFile = path.join(state, 'last-report.json');
-  else baselineFile = findEarlier([path.join(reports, skill), path.join(reports, 'audit-all')], 'report.json', (j) => isTool(j?.tool, skill) && j.target?.host === host, { exclude: dir })[0] || null;
+  else baselineFile = findEarlier([path.join(reports, skill), path.join(reports, 'audit-all')], 'report.json', (j) => j?.tool === skill && j.target?.host === host, { exclude: dir })[0] || null;
   return { state, dir, baselineFile, notes: readNotes(state) };
 }
 

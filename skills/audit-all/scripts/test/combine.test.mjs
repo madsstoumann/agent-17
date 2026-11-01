@@ -180,9 +180,9 @@ test('combine: run folder -> report.md and report.html (no PDF), audit-solution-
     fs.writeFileSync(path.join(run, 'audit-launch', 'report.md'), sample('audit-launch'));
     fs.mkdirSync(path.join(run, 'audit-security-shop-web'));
     fs.writeFileSync(path.join(run, 'audit-security-shop-web', 'report.md'), SECURITY);
-    fs.mkdirSync(path.join(repo, '.solution-health'));
-    fs.writeFileSync(path.join(repo, '.solution-health', 'report.md'), sample('audit-solution-health'));
-    fs.writeFileSync(path.join(repo, '.solution-health', 'tasks.json'), '{"tasks":[]}');
+    fs.mkdirSync(path.join(repo, '.audit-solution-health'));
+    fs.writeFileSync(path.join(repo, '.audit-solution-health', 'report.md'), sample('audit-solution-health'));
+    fs.writeFileSync(path.join(repo, '.audit-solution-health', 'tasks.json'), '{"tasks":[]}');
     fs.writeFileSync(path.join(run, 'summary.md'), SUMMARY);
     const logs = [];
     const out = await combine({ dir: run, style: 'sans', repos: [repo], pdf: false }, { now: new Date('2026-10-30T09:00:00Z'), log: (m) => logs.push(m) });
@@ -219,12 +219,12 @@ test('combine: a run folder with no reports is an error', async () => {
   }
 });
 
-test('solutionHealthReport: the report folder first, then an in-repo .solution-health', async () => {
+test('solutionHealthReport: the report folder first, then an in-repo .audit-solution-health', async () => {
   const { solutionHealthReport } = await import('../combine.mjs');
-  const files = new Set(['/r/audit-solution-health/shop-web/report.md', '/code/api/.solution-health/report.md']);
+  const files = new Set(['/r/audit-solution-health/shop-web/report.md', '/code/api/.audit-solution-health/report.md']);
   const opts = { reports: '/r', readFile: () => null, exists: (f) => files.has(f) };
   assert.equal(solutionHealthReport('/code/shop-web', opts), '/r/audit-solution-health/shop-web/report.md');
-  assert.equal(solutionHealthReport('/code/api', opts), '/code/api/.solution-health/report.md');
+  assert.equal(solutionHealthReport('/code/api', opts), '/code/api/.audit-solution-health/report.md');
   assert.equal(solutionHealthReport('/code/none', opts), null);
   const clash = solutionHealthReport('/other/shop-web', { reports: '/r', readFile: () => '/code/shop-web\n', exists: (f) => /shop-web-[0-9a-f]{8}\/report\.md$/.test(f) });
   assert.match(clash, /^\/r\/audit-solution-health\/shop-web-[0-9a-f]{8}\/report\.md$/);

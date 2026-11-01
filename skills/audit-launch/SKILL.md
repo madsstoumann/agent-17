@@ -4,7 +4,7 @@ description: Use when a website is about to go live or has just launched and nee
 argument-hint: "<url> [--env dev|staging|production] [--production-host HOST] [--pages N] [--skip group,...] [--out PATH] [--baseline report.json | --no-baseline] [--insecure] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Read, WebFetch
 metadata:
-  version: "2.0.0"
+  version: "2.1.0"
 ---
 
 # Launch audit
