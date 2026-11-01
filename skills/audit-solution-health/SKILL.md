@@ -1,10 +1,10 @@
 ---
-name: solution-health
+name: audit-solution-health
 description: Periodic health check of a solution's dependencies and external integrations. Checks npm and NuGet packages (outdated majors; vulnerable, including transitive, via npm audit, dotnet and NuGet's vulnerability database; deprecated, unmaintained or archived upstream), the licence of every installed package with compatibility flags (AGPL, GPL, source-available, missing), the NuGet sources and folders the solution's NuGet.config resolves to, runtime and framework end-of-life (Node, .NET, Umbraco, Next.js…), and external APIs the code calls (deprecation/sunset headers, shutdown notices on provider pages, including Danish ones like DAWA's). Remembers each run, so it reports what changed. Use whenever someone asks for a solution or dependency health check, to audit packages or licences, about deprecated or abandoned packages, whether an API we use is shutting down, a quarterly maintenance check, or "is anything in this project end-of-life?", even if they do not name the skill.
 argument-hint: "[--root PATH] [--in-repo | --dir PATH] [--transitive] [--offline] [--skip packages,runtimes,apis] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(npm:*), Bash(dotnet:*), Read, Write, Edit, WebFetch, WebSearch
 metadata:
-  version: "2.4.1"
+  version: "3.0.0"
 ---
 
 # Solution health check
@@ -16,7 +16,7 @@ It is **report only**. Do not change code, upgrade packages or edit lockfiles as
 ## Files
 
 Everything lives in the **state folder**, outside the repo by default, so a run never adds files to the solution:
-`<reports>/solution-health/<solution folder name>/`, where `<reports>` is `$AUDIT_OUT_DIR` if set, else the
+`<reports>/audit-solution-health/<solution folder name>/`, where `<reports>` is `$AUDIT_OUT_DIR` if set, else the
 Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`, the same as the other
 audit skills. The name is stable, so each run compares with the previous one; a `root.txt` records which solution
 the folder belongs to (two solutions with the same folder name get a hash suffix). `check.mjs` prints the folder.
@@ -42,7 +42,7 @@ copies the newest one over once and says so.
 | `tasks.json` | Scripts + you | Red and amber findings as fix tasks, in audit-all's `tasks.json` shape |
 | `run/` | Scripts | Scratch: raw results, HTTP cache, change files (with `--in-repo`, add `.solution-health/run/` to `.gitignore`) |
 
-Scripts are in `scripts/` next to this file. They are zero-dependency Node (18+), so they run on any dev machine with Node, including .NET-only devs. Run them from the solution root, or pass `--root <path>`. The commands below use `${CLAUDE_SKILL_DIR}`, this skill's folder wherever it is installed (`.claude/skills/solution-health/` in the solution, `~/.claude/skills/`, or a plugin); if it is not filled in, use the folder this `SKILL.md` is in. `references/sample-report.md` shows what a finished report looks like.
+Scripts are in `scripts/` next to this file. They are zero-dependency Node (18+), so they run on any dev machine with Node, including .NET-only devs. Run them from the solution root, or pass `--root <path>`. The commands below use `${CLAUDE_SKILL_DIR}`, this skill's folder wherever it is installed (`.claude/skills/audit-solution-health/` in the solution, `~/.claude/skills/`, or a plugin); if it is not filled in, use the folder this `SKILL.md` is in. `references/sample-report.md` shows what a finished report looks like.
 
 ## Workflow
 

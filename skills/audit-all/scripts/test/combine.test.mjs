@@ -83,11 +83,11 @@ test('plain strips Markdown and emoji', () => {
   assert.equal(plain('### 🔴 **left-pad**@1.3.0 _(package)_'), '### left-pad@1.3.0 (package)');
 });
 
-test('headline: audit-launch, solution-health and audit-security figures', () => {
+test('headline: audit-launch, audit-solution-health and audit-security figures', () => {
   const la = headline({ kind: 'audit-launch', target: null, md: sample('audit-launch') });
   assert.deepEqual(la.counts, { pass: 47, warn: 17, fail: 1, info: 54, skipped: 1 });
   assert.match(la.target, /ondigitalocean\.app/);
-  const sh = headline({ kind: 'solution-health', target: 'shop-web', md: sample('solution-health') });
+  const sh = headline({ kind: 'audit-solution-health', target: 'shop-web', md: sample('audit-solution-health') });
   assert.equal(sh.counts.red, 14);
   assert.equal(sh.counts.amber, 3);
   assert.match(sh.what, /^Action needed: left-pad@1\.3\.0/);
@@ -172,7 +172,7 @@ test('findChrome: explicit, CHROME_PATH, macOS app, PATH, Playwright, none', () 
   assert.equal(buildPrintArgs('/a.html', '/a.pdf', { root: false }).includes('--no-sandbox'), false);
 });
 
-test('combine: run folder -> report.md and report.html (no PDF), solution-health copied from --repo', async () => {
+test('combine: run folder -> report.md and report.html (no PDF), audit-solution-health copied from --repo', async () => {
   const run = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-all-test-'));
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'shop-web-'));
   try {
@@ -181,13 +181,13 @@ test('combine: run folder -> report.md and report.html (no PDF), solution-health
     fs.mkdirSync(path.join(run, 'audit-security-shop-web'));
     fs.writeFileSync(path.join(run, 'audit-security-shop-web', 'report.md'), SECURITY);
     fs.mkdirSync(path.join(repo, '.solution-health'));
-    fs.writeFileSync(path.join(repo, '.solution-health', 'report.md'), sample('solution-health'));
+    fs.writeFileSync(path.join(repo, '.solution-health', 'report.md'), sample('audit-solution-health'));
     fs.writeFileSync(path.join(repo, '.solution-health', 'tasks.json'), '{"tasks":[]}');
     fs.writeFileSync(path.join(run, 'summary.md'), SUMMARY);
     const logs = [];
     const out = await combine({ dir: run, style: 'sans', repos: [repo], pdf: false }, { now: new Date('2026-10-30T09:00:00Z'), log: (m) => logs.push(m) });
-    assert.deepEqual(out.reports, ['audit-launch', 'audit-security-shop-web', `solution-health-${path.basename(repo)}`]);
-    assert.ok(fs.existsSync(path.join(run, `solution-health-${path.basename(repo)}`, 'tasks.json')), 'solution-health draft tasks copied too');
+    assert.deepEqual(out.reports, ['audit-launch', 'audit-security-shop-web', `audit-solution-health-${path.basename(repo)}`]);
+    assert.ok(fs.existsSync(path.join(run, `audit-solution-health-${path.basename(repo)}`, 'tasks.json')), 'audit-solution-health draft tasks copied too');
     const md = fs.readFileSync(out.md, 'utf8');
     assert.match(md, /^# Ready to launch, with two things to fix first/);
     assert.match(md, /## At a glance/);
@@ -221,13 +221,13 @@ test('combine: a run folder with no reports is an error', async () => {
 
 test('solutionHealthReport: the report folder first, then an in-repo .solution-health', async () => {
   const { solutionHealthReport } = await import('../combine.mjs');
-  const files = new Set(['/r/solution-health/shop-web/report.md', '/code/api/.solution-health/report.md']);
+  const files = new Set(['/r/audit-solution-health/shop-web/report.md', '/code/api/.solution-health/report.md']);
   const opts = { reports: '/r', readFile: () => null, exists: (f) => files.has(f) };
-  assert.equal(solutionHealthReport('/code/shop-web', opts), '/r/solution-health/shop-web/report.md');
+  assert.equal(solutionHealthReport('/code/shop-web', opts), '/r/audit-solution-health/shop-web/report.md');
   assert.equal(solutionHealthReport('/code/api', opts), '/code/api/.solution-health/report.md');
   assert.equal(solutionHealthReport('/code/none', opts), null);
   const clash = solutionHealthReport('/other/shop-web', { reports: '/r', readFile: () => '/code/shop-web\n', exists: (f) => /shop-web-[0-9a-f]{8}\/report\.md$/.test(f) });
-  assert.match(clash, /^\/r\/solution-health\/shop-web-[0-9a-f]{8}\/report\.md$/);
+  assert.match(clash, /^\/r\/audit-solution-health\/shop-web-[0-9a-f]{8}\/report\.md$/);
 });
 
 test('newRunFolder: one target folder per subject, runs under runs/, previous run found; notes.md is shown in the report', async () => {

@@ -39,7 +39,7 @@ test('isTool and renameLegacy accept the old names', () => {
   assert.ok(!isTool('seo-audit', 'audit-launch'));
   assert.equal(renameLegacy('security-audit-shop-web'), 'audit-security-shop-web');
   assert.equal(renameLegacy('a11y-audit'), 'audit-a11y');
-  assert.equal(renameLegacy('solution-health-shop-web'), 'solution-health-shop-web');
+  assert.equal(renameLegacy('audit-solution-health-shop-web'), 'audit-solution-health-shop-web');
 });
 
 test('discoverReports reads run folders written before the rename', () => {

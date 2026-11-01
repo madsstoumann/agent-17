@@ -1,10 +1,10 @@
-// Shared helpers for the solution-health scripts. Zero dependencies, Node 18+.
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, accessSync, constants as fsConstants } from 'node:fs';
+// Shared helpers for the audit-solution-health scripts. Zero dependencies, Node 18+.
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, accessSync, renameSync, rmdirSync, constants as fsConstants } from 'node:fs';
 import { join, resolve, extname, relative, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 
-export const USER_AGENT = 'solution-health-skill/2.1 (dependency and API health check; run by developers)';
+export const USER_AGENT = 'audit-solution-health-skill/3.0 (dependency and API health check; run by developers)';
 
 export function parseArgs(argv = process.argv.slice(2)) {
   const args = { _: [] };
@@ -48,12 +48,34 @@ function readText(p) {
   try { return readFileSync(p, 'utf8'); } catch { return null; }
 }
 
+/** The reports folder name before the skill was renamed (2026-11). */
+export const LEGACY_NAME = 'solution-health';
+
 /**
- * <reports>/solution-health/<solution folder name>/. A folder of that name that belongs to another
+ * Move <reports>/solution-health/<entry> to <reports>/audit-solution-health/<entry> for every entry
+ * not already there, then remove the old folder if that left it empty. Never overwrites. The same
+ * rule as adoptLegacy() in the other audit skills' target-state.mjs.
+ */
+export function adoptLegacy(reports) {
+  if (!reports) return false;
+  const from = join(reports, LEGACY_NAME);
+  const to = join(reports, 'audit-solution-health');
+  try { if (!statSync(from).isDirectory()) return false; } catch { return false; }
+  try {
+    if (!existsSync(to)) { renameSync(from, to); return true; }
+    for (const e of readdirSync(from)) if (!existsSync(join(to, e))) renameSync(join(from, e), join(to, e));
+    if (!readdirSync(from).length) rmdirSync(from);
+    return true;
+  } catch { return false; }
+}
+
+/**
+ * <reports>/audit-solution-health/<solution folder name>/. A folder of that name that belongs to another
  * solution (its root.txt names a different path) gets a short hash of this root appended.
  */
-export function defaultStateDir(root, { reports = reportsRoot(), readFile = readText } = {}) {
-  const base = join(reports, 'solution-health');
+export function defaultStateDir(root, { reports = reportsRoot(), readFile = readText, adopt = adoptLegacy } = {}) {
+  adopt(reports);
+  const base = join(reports, 'audit-solution-health');
   const name = basename(root).replace(/[^\w.-]+/g, '-') || 'solution';
   const plain = join(base, name);
   const owner = readFile(join(plain, 'root.txt'));

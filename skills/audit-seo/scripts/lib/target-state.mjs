@@ -8,12 +8,13 @@
  *
  * <target> is the repo folder name or the site host, never a run folder's name, so the next run
  * finds the state whatever the last run folder was called. A run folder is never a state folder:
- * the `.audit-run` marker tells other skills (solution-health) not to keep state inside one.
+ * the `.audit-run` marker tells other skills (audit-solution-health) not to keep state inside one.
  *
  * Skills install separately, so every audit skill carries a copy of this file. Keep the copies
  * identical (the tests compare them).
  *
- * The site and code audits were called <name>-audit until 2026-11 (launch-audit, security-audit, …).
+ * The audits were called <name>-audit until 2026-11 (launch-audit, security-audit, …), and
+ * audit-solution-health was solution-health.
  * targetDir() moves a target folder from <reports>/<old name>/ to <reports>/<new name>/ the first
  * time it is asked for, so notes.md, triage and baselines carry over, and isTool() accepts the old
  * name in report.json / findings.json files written before the rename.
@@ -46,6 +47,7 @@ export const LEGACY_NAMES = {
   'audit-privacy': 'privacy-audit',
   'audit-infra': 'infra-audit',
   'audit-security': 'security-audit',
+  'audit-solution-health': 'solution-health',
 };
 
 /** True when a saved result's `tool` is this skill, under its current or its old name. */
@@ -84,7 +86,7 @@ export function adoptLegacy(reports, skill) {
 
 /**
  * <reports>/<skill>/<name>/. When a folder of that name already belongs to another target (its
- * target.txt says so), a short hash of `owner` is appended, the same rule solution-health uses.
+ * target.txt says so), a short hash of `owner` is appended, the same rule audit-solution-health uses.
  */
 export function targetDir({ reports, skill, name, owner = name }, { readFile = readText, adopt = adoptLegacy } = {}) {
   adopt(reports, skill);

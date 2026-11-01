@@ -1,4 +1,4 @@
-// End-to-end test of the solution-health scripts against a fixture solution and a mock provider.
+// End-to-end test of the audit-solution-health scripts against a fixture solution and a mock provider.
 // Run from the skill folder:  node --test scripts/test/
 //
 // What is real here: discovery, the verdict logic, page diffing, header parsing, finalize/state.
@@ -18,7 +18,7 @@ import { sha256, writeJson } from '../lib.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const scripts = join(here, '..');
 const PORT = 8700 + Math.floor(Math.random() * 200);
-const root = mkdtempSync(join(tmpdir(), 'solution-health-test-'));
+const root = mkdtempSync(join(tmpdir(), 'audit-solution-health-test-'));
 const sh = join(root, '.solution-health');
 const run = (name, ...args) => {
   const r = spawnSync(process.execPath, [join(scripts, `${name}.mjs`), '--root', root, '--in-repo', ...args], { encoding: 'utf8', timeout: 300_000 });
@@ -334,7 +334,7 @@ test('finalize: --level filters report.md, --console prints the list and leaves 
   const before = readFileSync(join(sh, 'report.md'), 'utf8');
   const r = run('finalize', '--console', '--level', 'error,warn');
   assert.equal(r.status, 0);
-  assert.match(r.stdout, /^solution-health .* — \d+ errors? · \d+ warnings? · \d+ info — showing errors and warnings/);
+  assert.match(r.stdout, /^audit-solution-health .* — \d+ errors? · \d+ warnings? · \d+ info — showing errors and warnings/);
   assert.match(r.stdout, /^ERROR  api +DAWA/m);
   assert.doesNotMatch(r.stdout, /^INFO/m);
   assert.equal(readFileSync(join(sh, 'report.md'), 'utf8'), before, '--console alone does not rewrite report.md');
@@ -372,14 +372,14 @@ test('state folder: default is outside the repo under the report folder; --in-re
   const { paths, defaultStateDir, reportsRoot } = await import('../lib.mjs');
   const reports = '/r';
   const p = paths({ root: '/code/shop-web' }, { reports, readFile: () => null });
-  assert.equal(p.dir, '/r/solution-health/shop-web');
-  assert.equal(p.manifest, '/r/solution-health/shop-web/manifest.json');
+  assert.equal(p.dir, '/r/audit-solution-health/shop-web');
+  assert.equal(p.manifest, '/r/audit-solution-health/shop-web/manifest.json');
   assert.equal(p.inRepo, false);
   assert.equal(paths({ root: '/code/shop-web', 'in-repo': true }).dir, '/code/shop-web/.solution-health');
   assert.equal(paths({ root: '/code/shop-web', dir: 'health' }).dir, '/code/shop-web/health');
   // A folder of the same name owned by another solution gets a hash suffix.
-  assert.equal(defaultStateDir('/code/shop-web', { reports, readFile: () => '/code/shop-web\n' }), '/r/solution-health/shop-web');
-  assert.match(defaultStateDir('/other/shop-web', { reports, readFile: () => '/code/shop-web\n' }), /^\/r\/solution-health\/shop-web-[0-9a-f]{8}$/);
+  assert.equal(defaultStateDir('/code/shop-web', { reports, readFile: () => '/code/shop-web\n' }), '/r/audit-solution-health/shop-web');
+  assert.match(defaultStateDir('/other/shop-web', { reports, readFile: () => '/code/shop-web\n' }), /^\/r\/audit-solution-health\/shop-web-[0-9a-f]{8}$/);
   assert.equal(reportsRoot({ env: { AUDIT_OUT_DIR: '/out' }, home: '/h' }), '/out');
   assert.equal(reportsRoot({ env: {}, home: '/h', isDir: (d) => d === '/h/Downloads', readFile: () => null }), '/h/Downloads');
   assert.equal(reportsRoot({ env: {}, home: '/h', isDir: () => false, readFile: () => null }), '/h/audit-reports');
@@ -389,14 +389,14 @@ test('state is never kept in an audit run folder; state an earlier run left ther
   const repo = mkdtempSync(join(tmpdir(), 'sh-run-'));
   const out = mkdtempSync(join(tmpdir(), 'sh-out-'));
   try {
-    const runDir = join(out, 'audit-all', 'any-name-at-all', 'solution-health');
+    const runDir = join(out, 'audit-all', 'any-name-at-all', 'audit-solution-health');
     mkdirSync(join(runDir, 'run'), { recursive: true });
     writeFileSync(join(out, 'audit-all', 'any-name-at-all', '.audit-run'), '{}');
     writeFileSync(join(runDir, 'manifest.json'), '{"apis":[{"name":"Loby"}]}');
     writeFileSync(join(runDir, 'state.json'), '{"version":1,"lastRun":"2026-10-30"}');
     writeJson(join(runDir, 'run', 'discovery.json'), { root: repo });
     const r = spawnSync(process.execPath, [join(scripts, 'check.mjs'), '--root', repo, '--offline', '--skip', 'discover,packages,runtimes,apis'], { encoding: 'utf8', env: { ...process.env, AUDIT_OUT_DIR: out } });
-    const dir = join(out, 'solution-health', basename(repo));
+    const dir = join(out, 'audit-solution-health', basename(repo));
     assert.match(r.stderr, /Copied the manifest and state from .*any-name-at-all/);
     assert.match(readFileSync(join(dir, 'manifest.json'), 'utf8'), /Loby/);
     // --dir pointing into a run folder is ignored in favour of the stable folder
@@ -418,7 +418,7 @@ test('check.mjs copies an old in-repo .solution-health once and then uses the re
     writeFileSync(join(repo, '.solution-health', 'state.json'), '{"version":1}');
     writeFileSync(join(repo, '.solution-health', 'run', 'junk.json'), '{}');
     const r = spawnSync(process.execPath, [join(scripts, 'check.mjs'), '--root', repo, '--offline', '--skip', 'discover,packages,runtimes,apis'], { encoding: 'utf8', env: { ...process.env, AUDIT_OUT_DIR: out } });
-    const dir = join(out, 'solution-health', basename(repo));
+    const dir = join(out, 'audit-solution-health', basename(repo));
     assert.match(r.stderr, /Copied the manifest and state/);
     assert.equal(readFileSync(join(dir, 'state.json'), 'utf8'), '{"version":1}');
     assert.equal(existsSync(join(dir, 'run', 'junk.json')), false, 'run/ is not copied');
@@ -428,4 +428,18 @@ test('check.mjs copies an old in-repo .solution-health once and then uses the re
     rmSync(repo, { recursive: true, force: true });
     rmSync(out, { recursive: true, force: true });
   }
+});
+
+test('defaultStateDir moves <reports>/solution-health/ from before the rename', async () => {
+  const { defaultStateDir } = await import('../lib.mjs');
+  const reports = mkdtempSync(join(tmpdir(), 'audit-solution-health-legacy-'));
+  try {
+    mkdirSync(join(reports, 'solution-health', 'shop-web'), { recursive: true });
+    writeFileSync(join(reports, 'solution-health', 'shop-web', 'root.txt'), '/code/shop-web\n');
+    writeFileSync(join(reports, 'solution-health', 'shop-web', 'notes.md'), 'keep me\n');
+    const dir = defaultStateDir('/code/shop-web', { reports });
+    assert.equal(dir, join(reports, 'audit-solution-health', 'shop-web'));
+    assert.equal(readFileSync(join(dir, 'notes.md'), 'utf8'), 'keep me\n');
+    assert.ok(!existsSync(join(reports, 'solution-health')), 'old folder gone');
+  } finally { rmSync(reports, { recursive: true, force: true }); }
 });

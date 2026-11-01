@@ -1,6 +1,14 @@
 # Changelog
 
-All notable changes to the `solution-health` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
+All notable changes to the `audit-solution-health` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
+
+## [3.0.0] - 2026-11-01
+
+### Changed
+- Renamed from `solution-health` to `audit-solution-health` (folder, `name:`, `/skills:audit-solution-health`, User-Agent, the reports folder `<reports>/audit-solution-health/`).
+- The first run moves an existing `<reports>/solution-health/` folder to `<reports>/audit-solution-health/`, so manifest.json, state.json and notes.md carry over. Never overwrites.
+- The in-repo folder (`--in-repo`, and the old default) keeps its name `.solution-health/`, so existing manifests in repos keep working.
+- Major version because the skill's name and invocation changed.
 
 ## [2.4.1] - 2026-11-01
 
