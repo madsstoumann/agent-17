@@ -2,6 +2,44 @@
 
 Each folder is one skill: a `SKILL.md` plus whatever scripts, references and templates it needs.
 
+## Contents
+
+Install the plugin as described in the [root README](../README.md#install-the-skills), then run a skill as `/skills:<name>`, or just ask in your own words and Claude picks the skill. Every flag is listed under [Parameters](../README.md#parameters).
+
+**Keep this list current.** A pull request that adds, removes or renames a skill, or changes what it does or how it is called, updates the tables below in the same PR.
+
+### Audits
+
+Each audit writes `report.md` and JSON to the [report folder](#report-folders) and takes `--level` and `--console` (see [Levels](#levels-and-the-console-list)).
+
+| Skill | What it does | How to use it |
+| --- | --- | --- |
+| [audit-all](audit-all/SKILL.md) | Runs any or all of the audits below on a live URL and one or more repos, then writes one combined report and PDF with a verdict, a "fix first" list and a fix plan for audit-fix. | `/skills:audit-all https://example.com ../my-repo` · [flags](../README.md#audit-all) |
+| [audit-fix](audit-fix/SKILL.md) | Works through an audit-all fix plan with one subagent per task, each in its own git worktree. Commits locally, never pushes; a person reviews and merges. | `/skills:audit-fix` after audit-all, or `/skills:audit-fix <run folder>` · [flags](../README.md#audit-fix) |
+| [audit-launch](audit-launch/SKILL.md) | Pre-launch or go-live check: Lighthouse, security headers, validators, robots/sitemap/canonical, redirects, soft 404s, TLS, DNS, exposed files, caching, cookies, broken links, share previews and icons. | `/skills:audit-launch https://staging.example.com --env staging` · [flags](../README.md#audit-launch) |
+| [audit-a11y](audit-a11y/SKILL.md) | Accessibility against WCAG 2.2 and EN 301 549: axe-core and HTML_CodeSniffer, a keyboard-only walk, contrast, 320 px reflow and text spacing. | `/skills:audit-a11y https://example.com --pages 10` · [flags](../README.md#audit-a11y) |
+| [audit-seo](audit-seo/SKILL.md) | Site-wide SEO and AI search (GEO): titles and descriptions, share previews, structured data and rich results, sitemap and robots, canonical and hreflang, broken links, llms.txt and AI crawler rules. | `/skills:audit-seo https://example.com`, or `--schema-only page.html` for markup only · [flags](../README.md#audit-seo) |
+| [audit-eco](audit-eco/SKILL.md) | Carbon footprint per page view (Sustainable Web Design model), page weight, green hosting and what to cut first. | `/skills:audit-eco https://example.com --grid DK --views 50000` · [flags](../README.md#audit-eco) |
+| [audit-privacy](audit-privacy/SKILL.md) | GDPR and cookie compliance as three new visitors (no choice, reject, accept): trackers before consent, banner design, Consent Mode v2, third-country transfers, privacy and cookie policy. | `/skills:audit-privacy https://example.com` · [flags](../README.md#audit-privacy) |
+| [audit-infra](audit-infra/SKILL.md) | Domain, DNS and DNSSEC, mail authentication (SPF, DKIM, DMARC, MTA-STS), TLS per endpoint, CDN and HTTP/3, HSTS preload and subdomains from Certificate Transparency. | `/skills:audit-infra example.com` · [flags](../README.md#audit-infra) |
+| [audit-security](audit-security/SKILL.md) | Code security review of a repo: committed secrets (also in git history), vulnerable dependencies, injection and XSS sinks, weak crypto, config and GitHub Actions risks. Report only. | `/skills:audit-security ../my-repo --history` · [flags](../README.md#audit-security) |
+| [audit-solution-health](audit-solution-health/SKILL.md) | Periodic dependency health check: outdated, vulnerable and deprecated npm and NuGet packages, licences, runtime end-of-life and external APIs that are shutting down. Remembers the last run. | `/skills:audit-solution-health` in the solution folder · [flags](../README.md#audit-solution-health) |
+
+### Checks
+
+Checks describe or look something up. They give no verdict on the code and take no `--level`.
+
+| Skill | What it does | How to use it |
+| --- | --- | --- |
+| [check-tech-stack](check-tech-stack/SKILL.md) | Tells what one or more websites are built with: CMS, framework, libraries and versions, hosting, CDN, analytics, tag manager, consent tool, with evidence for each finding. | `/skills:check-tech-stack https://example.com https://competitor.com` · [flags](../README.md#check-tech-stack) |
+| [check-node-toolchain](check-node-toolchain/SKILL.md) | Reports what is outdated in your local Node setup (nvm, Node versions, global npm packages, brew-installed pnpm/yarn/bun/deno, a stray system Node) and upgrades only what you approve. | `/skills:check-node-toolchain` |
+
+### Other
+
+| Skill | What it does | How to use it |
+| --- | --- | --- |
+| [is-website-safe](is-website-safe/SKILL.md) | Tells whether a website or link is safe, real or a scam: lookalike and spoofed domains, what the page asks for, phishing blocklists, domain age, history and Trustpilot, with a verdict and the red flags. | `/skills:is-website-safe paypa1.com`, or `--brand PayPal` to name the site it should be |
+
 ## Versioning
 
 Every skill carries a [semver](https://semver.org/) version in its `SKILL.md` frontmatter and a `CHANGELOG.md` next to it.
