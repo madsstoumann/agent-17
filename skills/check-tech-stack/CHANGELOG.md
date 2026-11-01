@@ -1,6 +1,11 @@
 # Changelog
 
-All notable changes to the `tech-stack` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
+All notable changes to the `check-tech-stack` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
+
+## [2.0.0] - 2026-11-01
+
+### Changed
+- Renamed from `tech-stack` to `check-tech-stack`; run it as `/skills:check-tech-stack`. The runner is now `scripts/check-tech-stack.mjs`, requests carry `X-Audit: check-tech-stack/<version>`, `results.json` says `"tool": "check-tech-stack"`, and reports go to `<reports>/check-tech-stack/`.
 
 ## [1.1.1] - 2026-11-01
 

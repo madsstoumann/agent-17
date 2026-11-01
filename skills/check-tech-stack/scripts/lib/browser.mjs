@@ -46,7 +46,7 @@ function probe(paths) {
 export async function render(pw, url, { timeout = 30000, settle = 3000, paths = [], insecure = false } = {}) {
   const browser = await pw.chromium.launch({ headless: true, args: ['--no-sandbox'] });
   try {
-    const context = await browser.newContext({ userAgent: UA, ignoreHTTPSErrors: insecure, extraHTTPHeaders: { 'x-audit': `tech-stack/${VERSION}` } });
+    const context = await browser.newContext({ userAgent: UA, ignoreHTTPSErrors: insecure, extraHTTPHeaders: { 'x-audit': `check-tech-stack/${VERSION}` } });
     const page = await context.newPage();
     const requests = new Set();
     page.on('request', (r) => { if (requests.size < 2000) requests.add(r.url()); });

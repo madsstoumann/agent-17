@@ -1,10 +1,10 @@
 ---
-name: tech-stack
+name: check-tech-stack
 description: Use when someone asks what a website is built with or runs on — its CMS, framework, JavaScript libraries and versions, hosting, CDN, web server, analytics, tag manager, trackers, consent tool or other third-party services ("what's this site made with", "is it WordPress or Umbraco", "Wappalyzer this", "which analytics does X use", "compare the stacks of these competitors"). One URL or a list of URLs; reports evidence for every finding. Not for pre-launch audits (audit-launch) or security reviews (audit-security).
 argument-hint: "<url> [<url> …] [--file urls.txt] [--browser] [--out DIR] [--json]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "1.1.1"
+  version: "2.0.0"
 ---
 
 # Tech stack
@@ -19,15 +19,15 @@ hand grep for "react" or "angular" produces.
 
 It is passive: one GET per site plus at most `--assets` same-site files the page itself
 references. It never probes paths, so it is fine for any public site, including competitors'.
-Requests carry an `X-Audit: tech-stack/<version>` header.
+Requests carry an `X-Audit: check-tech-stack/<version>` header.
 
 ## Run it
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/scripts/tech-stack.mjs" <url> [<url> …] [flags]
+node "${CLAUDE_SKILL_DIR}/scripts/check-tech-stack.mjs" <url> [<url> …] [flags]
 ```
 
-`${CLAUDE_SKILL_DIR}` is this skill's folder, wherever it is installed (`~/.claude/skills/tech-stack`, a plugin, or an uploaded skill). If it is not filled in, use the folder this `SKILL.md` is in.
+`${CLAUDE_SKILL_DIR}` is this skill's folder, wherever it is installed (`~/.claude/skills/check-tech-stack`, a plugin, or an uploaded skill). If it is not filled in, use the folder this `SKILL.md` is in.
 
 A site takes 2–10 seconds; `--browser` adds 5–15 seconds per site. For more than about 20 sites,
 run it through Bash with `timeout: 600000`. Stdout has one line per site, then the two output
@@ -37,7 +37,7 @@ paths; progress goes to stderr. Exit code is 0 unless every site failed.
 |---|---|
 | `--file urls.txt` | The user gives a list or a file. One URL per line, `#` comments allowed. Bare hosts are fine. |
 | `--browser` | The user asks about analytics, trackers, tags or consent, or the site is a client-rendered SPA. Renders the page in headless Chromium so tags loaded by a tag manager, cookies set by JavaScript and window globals (`jQuery.fn.jquery`, `next.version`) count too. Needs Playwright; without it the script says so and continues with raw HTML. |
-| `--out DIR` | The user says where the report should go. Default `<reports>/tech-stack/<host or batch-N>-<YYYYMMDD-HHMM>/`, where `<reports>` is `$AUDIT_OUT_DIR` if set, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. The folder is created and its path printed last on stdout. Do not point it into the current repo unless the user asks. |
+| `--out DIR` | The user says where the report should go. Default `<reports>/check-tech-stack/<host or batch-N>-<YYYYMMDD-HHMM>/`, where `<reports>` is `$AUDIT_OUT_DIR` if set, else the Downloads folder if it exists (the XDG download folder on Linux), else `~/audit-reports/`. The folder is created and its path printed last on stdout. Do not point it into the current repo unless the user asks. |
 | `--assets N` | Default 12 same-site scripts and stylesheets per site. Raise it (30) for big SPAs where the framework hides in a later chunk; `0` for headers and markup only. |
 | `--jobs N` | Sites in parallel, default 4 (2 with `--browser`). |
 | `--insecure` | `localhost` or a self-signed certificate. |
@@ -93,12 +93,12 @@ in `scripts/test/detect.test.mjs` with the evidence you saw, and bump the minor 
 ## Example prompts
 
 ```
-/tech-stack https://www.example.com
+/check-tech-stack https://www.example.com
 What is https://www.carlsberg.dk built with?
 Is novonordisk.com running Sitecore or AEM?
 Which analytics and consent tools does https://www.example.com use?      (→ --browser)
 Compare the tech stacks of these five competitors: a.dk, b.dk, c.dk, d.dk, e.dk
-Run tech-stack on the URLs in ~/clients.txt and save the report in ./research/
+Run check-tech-stack on the URLs in ~/clients.txt and save the report in ./research/
 ```
 
 Mapping: a list or a file → `--file` or several URLs; analytics, trackers, tags, consent, or an
@@ -106,7 +106,7 @@ SPA that shows little → `--browser`; "save it in …" → `--out`.
 
 ## Files
 
-- `scripts/tech-stack.mjs`: the runner (`--help` lists every flag). Zero dependencies, Node ≥ 20.
+- `scripts/check-tech-stack.mjs`: the runner (`--help` lists every flag). Zero dependencies, Node ≥ 20.
   Playwright only for `--browser`.
 - `scripts/lib/signatures.mjs`: the technology signatures.
 - `scripts/lib/detect.mjs`: matching, versions, implied technologies, confidence.

@@ -34,8 +34,8 @@ function readText(p) {
 
 export const expandHome = (p, home = os.homedir()) => p.replace(/^~(?=$|[\\/])/, home);
 
-/** `--out` (a leading ~ is expanded) or <reportsRoot>/tech-stack/<name>-<stamp>/. */
+/** `--out` (a leading ~ is expanded) or <reportsRoot>/check-tech-stack/<name>-<stamp>/. */
 export function resolveOutDir(out, name, { home = os.homedir(), now, base } = {}) {
-  if (!out) return path.join(base || reportsRoot({ home }), 'tech-stack', `${name}-${now}`);
+  if (!out) return path.join(base || reportsRoot({ home }), 'check-tech-stack', `${name}-${now}`);
   return path.resolve(expandHome(out, home));
 }

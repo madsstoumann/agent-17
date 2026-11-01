@@ -1,8 +1,8 @@
 ---
-name: node-toolchain-check
+name: check-node-toolchain
 description: Use when the user asks to check, audit or update their Node toolchain — nvm, Node versions, global npm packages, brew-installed pnpm/yarn/bun/deno, or a stray system Node — or asks "is anything outdated" about their local JS tooling.
 metadata:
-  version: "1.0.1"
+  version: "2.0.0"
 ---
 
 # Node toolchain check
@@ -17,7 +17,7 @@ Run the read-only check script:
 bash "${CLAUDE_SKILL_DIR}/check.sh"
 ```
 
-`${CLAUDE_SKILL_DIR}` is this skill's folder, wherever it is installed (`~/.claude/skills/node-toolchain-check` or a plugin). If it is not filled in, use the folder this `SKILL.md` is in.
+`${CLAUDE_SKILL_DIR}` is this skill's folder, wherever it is installed (`~/.claude/skills/check-node-toolchain` or a plugin). If it is not filled in, use the folder this `SKILL.md` is in.
 
 Summarise it as one short list: item, current, latest, and a recommendation. Flag:
 

@@ -62,7 +62,7 @@ export function markdown(results, { generatedAt = new Date().toISOString(), vers
   // Blocked sites only show their protection layer, so they stay out of the usage counts.
   const ok = results.filter((r) => !r.error && !r.challenge);
   L.push(results.length === 1 ? `# Tech stack: ${hostOf(results[0].finalUrl || results[0].url)}` : `# Tech stack: ${results.length} sites`, '');
-  L.push(`Generated ${generatedAt} by the \`tech-stack\` skill${version ? ` ${version}` : ''}. Detection is passive: one page per site plus the scripts and stylesheets it loads from its own domain. A missing technology is not proof it is absent.`, '');
+  L.push(`Generated ${generatedAt} by the \`check-tech-stack\` skill${version ? ` ${version}` : ''}. Detection is passive: one page per site plus the scripts and stylesheets it loads from its own domain. A missing technology is not proof it is absent.`, '');
 
   if (results.length > 1) {
     L.push('## Comparison', '');

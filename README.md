@@ -254,7 +254,7 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 | `--level`, `--console` | As above, on `finalize.mjs`: red is an error, amber a warning. |
 | `--dry-run` | On `finalize.mjs`: preview without saving. |
 
-### tech-stack
+### check-tech-stack
 
 | Flag | What it does |
 |---|---|
@@ -275,7 +275,7 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 
 Optional keys, each adding one lookup: `GOOGLE_SAFE_BROWSING_KEY` (Google Safe Browsing), `VIRUSTOTAL_API_KEY`, `URLHAUS_AUTH_KEY` (abuse.ch) and `URLSCAN_API_KEY` (works without, lower quota). All have free tiers; see the skill for where to get them.
 
-### node-toolchain-check
+### check-node-toolchain
 
 No flags. To validate one page's schema.org markup, run audit-seo with `--schema-only`, or on a local HTML file.
 

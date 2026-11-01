@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * tech-stack: detects what a website is built with (CMS, frameworks, libraries,
+ * check-tech-stack: detects what a website is built with (CMS, frameworks, libraries,
  * hosting, CDN, analytics, consent, …) with the evidence for each finding.
  *
- *   node tech-stack.mjs <url> [<url> …] [--file urls.txt] [--browser] [--out DIR] [--json]
+ *   node check-tech-stack.mjs <url> [<url> …] [--file urls.txt] [--browser] [--out DIR] [--json]
  *
  * Writes report.md and results.json, prints a one-line summary per site to
  * stdout, progress to stderr. Exit 0 unless the script itself fails (or, with
@@ -18,9 +18,9 @@ import { loadPlaywright, render } from './lib/browser.mjs';
 import { markdown, siteLine } from './lib/report.mjs';
 import { resolveOutDir } from './lib/out-dir.mjs';
 
-const HELP = `tech-stack ${VERSION}: detect a website's technology stack
+const HELP = `check-tech-stack ${VERSION}: detect a website's technology stack
 
-Usage: node tech-stack.mjs <url> [<url> …] [options]
+Usage: node check-tech-stack.mjs <url> [<url> …] [options]
 
   --file PATH        Read URLs from a file, one per line (# comments allowed)
   --browser          Also render each page in headless Chromium (Playwright) to see
@@ -28,7 +28,7 @@ Usage: node tech-stack.mjs <url> [<url> …] [options]
   --assets N         Same-site scripts/stylesheets to read per site (default 12, 0 = none)
   --jobs N           Sites analysed in parallel (default 4; 2 with --browser)
   --timeout MS       Per-request timeout (default 15000)
-  --out DIR          Output folder (default <reports>/tech-stack/<name>-<YYYYMMDD-HHMM>/, where
+  --out DIR          Output folder (default <reports>/check-tech-stack/<name>-<YYYYMMDD-HHMM>/, where
                      <reports> is $AUDIT_OUT_DIR, else Downloads, else ~/audit-reports)
   --insecure         Accept self-signed certificates (localhost, dev boxes)
   --json             Print results.json to stdout instead of the summary
@@ -90,7 +90,7 @@ async function analyse(url) {
   }
 }
 
-log(`tech-stack ${VERSION}: ${urls.length} site${urls.length > 1 ? 's' : ''}${pw ? ', with browser' : ''}`);
+log(`check-tech-stack ${VERSION}: ${urls.length} site${urls.length > 1 ? 's' : ''}${pw ? ', with browser' : ''}`);
 const results = new Array(urls.length);
 let next = 0;
 await Promise.all(Array.from({ length: Math.min(jobs, urls.length) }, async () => {
@@ -102,7 +102,7 @@ const name = urls.length === 1 ? new URL(urls[0]).host.replace(/[^a-z0-9.-]/gi, 
 const outDir = resolveOutDir(opt.out, name, { now: stamp });
 mkdirSync(outDir, { recursive: true });
 const generatedAt = new Date().toISOString();
-const doc = { tool: 'tech-stack', version: VERSION, generatedAt, browser: !!pw, results };
+const doc = { tool: 'check-tech-stack', version: VERSION, generatedAt, browser: !!pw, results };
 writeFileSync(path.join(outDir, 'results.json'), `${JSON.stringify(doc, null, 2)}\n`);
 writeFileSync(path.join(outDir, 'report.md'), markdown(results, { generatedAt, version: VERSION }));
 
