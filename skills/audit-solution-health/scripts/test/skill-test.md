@@ -1,9 +1,9 @@
-# Testing solution-health
+# Testing audit-solution-health
 
 ```bash
-cd skills/solution-health
-node --test scripts/test/solution-health.test.mjs        # ~10 s
-VERBOSE=1 KEEP=1 node --test scripts/test/solution-health.test.mjs   # show script output, keep the temp solution
+cd skills/audit-solution-health
+node --test scripts/test/audit-solution-health.test.mjs        # ~10 s
+VERBOSE=1 KEEP=1 node --test scripts/test/audit-solution-health.test.mjs   # show script output, keep the temp solution
 ```
 
 ## What the test does

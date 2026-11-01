@@ -31,7 +31,7 @@ Copy its folder into `~/.claude/skills/` (Claude Code), or zip the folder and up
 
 ### Renamed skills (November 2026)
 
-Every audit skill now starts with `audit`: `launch-audit` is `audit-launch`, and likewise `audit-a11y`, `audit-seo`, `audit-eco`, `audit-privacy`, `audit-infra` and `audit-security`. Run them as `/skills:audit-launch` and so on. If you copied or uploaded one of the old folders by hand, remove that copy. Reports go to `<reports>/audit-launch/…`; the first run under the new name moves the old `<reports>/launch-audit/` folder across, so notes.md, triage and baselines carry over. The old `A11Y_AUDIT_CACHE` and `*_AUDIT_DEBUG` variables still work next to the new `AUDIT_A11Y_CACHE` and `AUDIT_*_DEBUG`.
+Every audit skill now starts with `audit`: `launch-audit` is `audit-launch`, and likewise `audit-a11y`, `audit-seo`, `audit-eco`, `audit-privacy`, `audit-infra` and `audit-security`, and `solution-health` is `audit-solution-health`. Run them as `/skills:audit-launch` and so on. If you copied or uploaded one of the old folders by hand, remove that copy. Reports go to `<reports>/audit-launch/…`; the first run under the new name moves the old `<reports>/launch-audit/` folder across, so notes.md, triage and baselines carry over (`<reports>/solution-health/` moves to `<reports>/audit-solution-health/` the same way; the opt-in in-repo folder is still `.solution-health/`). The old `A11Y_AUDIT_CACHE` and `*_AUDIT_DEBUG` variables still work next to the new `AUDIT_A11Y_CACHE` and `AUDIT_*_DEBUG`.
 
 ## Setup for the audit skills
 
@@ -144,7 +144,7 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 | `--level`, `--console` | As above. The level is passed to every audit and applied to `fix/TODO.md`; `--console` prints the fix plan as a list instead of the combined report and PDFs. |
 | `--out DIR` | The run folder. |
 
-`combine.mjs` (run by the skill) also takes `--repo PATH` (copy a repo's solution-health report in), `--no-pdf`, `--no-compact`, `--chrome PATH` and `--new <name>` (create a run folder).
+`combine.mjs` (run by the skill) also takes `--repo PATH` (copy a repo's audit-solution-health report in), `--no-pdf`, `--no-compact`, `--chrome PATH` and `--new <name>` (create a run folder).
 
 ### audit-fix
 
@@ -242,7 +242,7 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 | `--visibility public\|private\|internal` | The repo's visibility when `gh` cannot tell. |
 | `--json` | findings.json on stdout. |
 
-### solution-health
+### audit-solution-health
 
 | Flag | What it does |
 |---|---|

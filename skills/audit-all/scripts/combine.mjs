@@ -19,12 +19,12 @@ import { writeFixPlan } from './lib/tasks.mjs';
 import { parseLevel, levelOfWord, consoleList } from './lib/levels.mjs';
 import { targetDir, claimTarget, newRun, previousRuns, readNotes, targetName } from './lib/target-state.mjs';
 
-export const VERSION = '1.10.0';
+export const VERSION = '1.11.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, '..', 'assets');
 const SIBLINGS = path.join(HERE, '..', '..');
 
-const USAGE = `audit-all ${VERSION}: combine audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security and solution-health reports
+const USAGE = `audit-all ${VERSION}: combine audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security and audit-solution-health reports
 
 Usage:
   node combine.mjs <run-dir> [flags]   Combine <run-dir>/<kind>[-<target>]/report.md into <run-dir>/report.{md,html,pdf},
@@ -34,8 +34,8 @@ Usage:
 
 Flags:
   --style serif|sans   Typeface for the HTML and PDF (default serif). Also editorial (= serif), modern (= sans).
-  --repo PATH          Copy PATH's solution-health report (<reports>/solution-health/<repo name>/report.md,
-                       or PATH/.solution-health/report.md for --in-repo setups) into <run-dir>/solution-health-<repo name>/ first.
+  --repo PATH          Copy PATH's audit-solution-health report (<reports>/audit-solution-health/<repo name>/report.md,
+                       or PATH/.solution-health/report.md for --in-repo setups) into <run-dir>/audit-solution-health-<repo name>/ first.
                        Repeat for several repos.
   --no-pdf             Write report.md and the HTML files only.
   --no-compact         Skip report-compact.html and report-compact.pdf (the full report with long lists
@@ -171,28 +171,28 @@ function skillVersion(name) {
 }
 
 /**
- * Where solution-health keeps a repo's report: its state folder under the report root (the same
- * name rule as solution-health's defaultStateDir), else an in-repo `.solution-health/` (--in-repo).
+ * Where audit-solution-health keeps a repo's report: its state folder under the report root (the same
+ * name rule as audit-solution-health's defaultStateDir), else an in-repo `.solution-health/` (--in-repo).
  */
 export function solutionHealthReport(root, { reports = reportsRoot(), readFile = readText, exists = fs.existsSync } = {}) {
-  const base = path.join(reports, 'solution-health');
+  const base = path.join(reports, 'audit-solution-health');
   const name = path.basename(root).replace(/[^\w.-]+/g, '-') || 'solution';
   const owner = readFile(path.join(base, name, 'root.txt'));
   const dir = owner === null || owner.trim() === root ? path.join(base, name) : path.join(base, `${name}-${crypto.createHash('sha256').update(root).digest('hex').slice(0, 8)}`);
   return [path.join(dir, 'report.md'), path.join(root, '.solution-health', 'report.md')].find((f) => exists(f)) || null;
 }
 
-/** Copy each repo's solution-health report into the run folder. */
+/** Copy each repo's audit-solution-health report into the run folder. */
 export function collectSolutionHealth(runDir, repos, opts = {}) {
   const copied = [];
   for (const repo of repos) {
     const root = path.resolve(expandHome(repo, os.homedir()));
     const src = solutionHealthReport(root, opts);
     if (!src) { copied.push({ repo: root, ok: false }); continue; }
-    const dest = path.join(runDir, `solution-health-${safeName(path.basename(root))}`);
+    const dest = path.join(runDir, `audit-solution-health-${safeName(path.basename(root))}`);
     fs.mkdirSync(dest, { recursive: true });
     fs.copyFileSync(src, path.join(dest, 'report.md'));
-    // solution-health 2.2+ also writes its red and amber findings as draft fix tasks in this skill's tasks.json shape.
+    // audit-solution-health 2.2+ also writes its red and amber findings as draft fix tasks in this skill's tasks.json shape.
     const tasks = path.join(path.dirname(src), 'tasks.json');
     if (fs.existsSync(tasks)) fs.copyFileSync(tasks, path.join(dest, 'tasks.json'));
     copied.push({ repo: root, ok: true, dest });
@@ -203,10 +203,10 @@ export function collectSolutionHealth(runDir, repos, opts = {}) {
 export async function combine(args, { now = new Date(), log = (m) => process.stderr.write(`${m}\n`) } = {}) {
   const runDir = path.resolve(expandHome(args.dir, os.homedir()));
   if (!fs.existsSync(runDir)) throw new Error(`Run folder not found: ${runDir}`);
-  for (const c of collectSolutionHealth(runDir, args.repos)) log(c.ok ? `solution-health: copied ${c.repo} -> ${c.dest}` : `solution-health: no report for ${c.repo} (run solution-health there first)`);
+  for (const c of collectSolutionHealth(runDir, args.repos)) log(c.ok ? `audit-solution-health: copied ${c.repo} -> ${c.dest}` : `audit-solution-health: no report for ${c.repo} (run audit-solution-health there first)`);
 
   const reports = discoverReports(runDir);
-  if (!reports.length) throw new Error(`No reports in ${runDir}. Expected sub-folders like audit-launch/, audit-a11y/, audit-privacy/, audit-infra/, audit-security-<repo>/, solution-health-<repo>/ with a report.md each.`);
+  if (!reports.length) throw new Error(`No reports in ${runDir}. Expected sub-folders like audit-launch/, audit-a11y/, audit-privacy/, audit-infra/, audit-security-<repo>/, audit-solution-health-<repo>/ with a report.md each.`);
   const summaryFile = path.join(runDir, 'summary.md');
   let summaryMd = fs.existsSync(summaryFile) ? fs.readFileSync(summaryFile, 'utf8') : '';
   if (!summaryMd) log('summary.md not found: the report will have no verdict or "Fix first" list.');

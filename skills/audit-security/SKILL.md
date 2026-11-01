@@ -1,6 +1,6 @@
 ---
 name: audit-security
-description: Use when someone wants a security review, code security audit, vulnerability scan or "is this repo safe to ship" check of a whole codebase or folder — committed secrets and API keys (also in git history), known-vulnerable dependencies from any lockfile (npm, yarn, pnpm, NuGet, Composer, PyPI, RubyGems, Go via OSV), XSS sinks, SQL/command/template injection, SSRF, open redirects, path traversal, weak crypto, disabled TLS verification, JWT and CORS mistakes, unsafe deserialisation, debug config, and GitHub Actions risks such as pull_request_target and script injection. Report only. Not for a single diff (use /security-review), live HTTP headers or TLS of a URL (use audit-launch), or routine package upkeep (use solution-health).
+description: Use when someone wants a security review, code security audit, vulnerability scan or "is this repo safe to ship" check of a whole codebase or folder — committed secrets and API keys (also in git history), known-vulnerable dependencies from any lockfile (npm, yarn, pnpm, NuGet, Composer, PyPI, RubyGems, Go via OSV), XSS sinks, SQL/command/template injection, SSRF, open redirects, path traversal, weak crypto, disabled TLS verification, JWT and CORS mistakes, unsafe deserialisation, debug config, and GitHub Actions risks such as pull_request_target and script injection. Report only. Not for a single diff (use /security-review), live HTTP headers or TLS of a URL (use audit-launch), or routine package upkeep (use audit-solution-health).
 argument-hint: "[path] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline] [--visibility public|private|internal] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(git log:*), Bash(git show:*), Bash(gh repo view:*), Read, Grep, Glob, WebFetch
 metadata:
@@ -101,7 +101,7 @@ fixed version and the lockfile. Dev-only packages (`(dev)`) matter less unless t
 with secrets. One vulnerable package often shows several advisories; group them under the
 package. Do not claim a vulnerability is exploitable in this app; it is known-vulnerable code
 that ships. For regular npm/NuGet upkeep (outdated, deprecated, end-of-life), point to the
-`solution-health` skill rather than expanding this section.
+`audit-solution-health` skill rather than expanding this section.
 
 **Secrets:** a confirmed secret is always a blocker, even when it has been deleted (the
 history hits). The fix is rotate first, then remove, then purge history if the repo is or

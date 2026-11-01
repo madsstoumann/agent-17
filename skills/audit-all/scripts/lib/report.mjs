@@ -35,7 +35,7 @@ export const KINDS = {
     title: 'Security audit',
     standfirst: 'The repository and its git history, scanned for secrets, injection, unsafe request handling and vulnerable dependencies, then triaged by hand.',
   },
-  'solution-health': {
+  'audit-solution-health': {
     title: 'Solution health',
     standfirst: 'Packages, runtimes and the external APIs the code calls, compared with the previous run.',
   },
@@ -129,7 +129,7 @@ export function headline(report) {
       h.result = start ? `${start[1]} g CO2e per view (${start[2]}) · ${plain(line[1]).split(' · ')[0]}` : (line ? plain(line[1]) : null);
       h.what = start ? `Start page ${start[1]} g CO2e per view, rating ${start[2]}.` : null;
     }
-  } else if (kind === 'solution-health') {
+  } else if (kind === 'audit-solution-health') {
     const line = md.match(/\*\*(\d+\s+red\b[^*]*)\*\*/i);
     h.counts = line ? countsIn(line[1], ['red', 'amber', 'unknown', 'info', 'green']) : {};
     h.figures = [[h.counts.red, 'red'], [h.counts.amber, 'amber']];

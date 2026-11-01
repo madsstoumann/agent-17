@@ -67,7 +67,7 @@ function licenceTask(f) {
   return {
     title: `Decide on the ${x.license || 'missing'} licence of ${x.name}`, owner: 'human', area: 'licences',
     evidence: `${x.ecosystem} ${x.name} ${x.versions.join(', ')} (${x.direct ? 'direct' : 'transitive'}, ${x.dev ? 'dev only' : 'shipped'}): ${f.reasons.join('; ')}`,
-    fix: `Confirm how ${x.name} is used. If it is shipped or served to users, replace it with a permissively licensed alternative (an agent can do that once you pick one), buy a commercial licence, or record the decision as a \`licenses.accept\` entry in the solution-health manifest.`,
+    fix: `Confirm how ${x.name} is used. If it is shipped or served to users, replace it with a permissively licensed alternative (an agent can do that once you pick one), buy a commercial licence, or record the decision as a \`licenses.accept\` entry in the audit-solution-health manifest.`,
   };
 }
 
@@ -81,7 +81,7 @@ function runtimeTask(f, repo, pkgs) {
     evidence: [`${f.title}: ${f.reasons.join('; ')}`, ...fromPkg.map((p) => `${p.title}: ${p.reasons.join('; ')}`)].join('. '),
     absorbs: fromPkg.map((p) => p.key),
     fix: `Move ${x.product} to a supported release${x.newestCycle ? ` (newest is ${x.newestCycle})` : ''}, everywhere it is pinned, and follow the upgrade guide for each major in between.`,
-    verify: 'The build, tests and app start pass on the new version; the next solution-health run shows it green.',
+    verify: 'The build, tests and app start pass on the new version; the next audit-solution-health run shows it green.',
   };
 }
 
@@ -105,7 +105,7 @@ function licenceReviewTask(list) {
   return {
     title: `Check ${list.length} licence${list.length === 1 ? '' : 's'} the scan could not clear`, owner: 'human', area: 'licences',
     evidence: lines.join('; '),
-    fix: 'Read each licence (the package folder, its repo, or the URL given). Record the fine ones in the solution-health manifest (`licenses.allow` for a licence id, `licenses.accept` with a reason for a package) so they stop coming back; replace or buy a licence for any that are not.',
+    fix: 'Read each licence (the package folder, its repo, or the URL given). Record the fine ones in the audit-solution-health manifest (`licenses.allow` for a licence id, `licenses.accept` with a reason for a package) so they stop coming back; replace or buy a licence for any that are not.',
   };
 }
 
@@ -137,7 +137,7 @@ export function buildTasks(findings, { root }) {
     if (f.area === 'licence' && f.level === 'amber') {
       if (f !== licenceReview[0]) continue;
       const t = licenceReviewTask(licenceReview);
-      tasks.push({ id: null, ...t, severity: 'medium', sources: ['health'], refs: [`solution-health-${repo}/report.md`], key: 'lic:review' });
+      tasks.push({ id: null, ...t, severity: 'medium', sources: ['health'], refs: [`audit-solution-health-${repo}/report.md`], key: 'lic:review' });
       continue;
     }
     let t = null;
@@ -157,7 +157,7 @@ export function buildTasks(findings, { root }) {
     else if (f.area === 'api') t = apiTask(f, repo);
     else if (f.area === 'nuget') t = nugetTask(f);
     if (!t) continue;
-    const task = Object.fromEntries(Object.entries({ id: null, ...t, severity: SEVERITY[f.level], sources: ['health'], refs: [`solution-health-${repo}/report.md`], key: f.key }).filter(([, v]) => v !== undefined));
+    const task = Object.fromEntries(Object.entries({ id: null, ...t, severity: SEVERITY[f.level], sources: ['health'], refs: [`audit-solution-health-${repo}/report.md`], key: f.key }).filter(([, v]) => v !== undefined));
     tasks.push(task);
     byKey.set(f.key, task);
   }

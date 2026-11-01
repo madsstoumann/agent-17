@@ -1,16 +1,16 @@
 ---
 name: audit-all
-description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, accessibility, SEO and AI search (GEO), sustainability (carbon footprint), privacy and consent, domain and mail infrastructure, code security and dependency health. Runs audit-launch, audit-a11y (WCAG 2.2 / EN 301 549), audit-seo, audit-eco, audit-privacy and audit-infra on the live URL, audit-security and solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security or solution-health reports into one.
+description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, accessibility, SEO and AI search (GEO), sustainability (carbon footprint), privacy and consent, domain and mail infrastructure, code security and dependency health. Runs audit-launch, audit-a11y (WCAG 2.2 / EN 301 549), audit-seo, audit-eco, audit-privacy and audit-infra on the live URL, audit-security and audit-solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security or audit-solution-health reports into one.
 argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--yes] [--style serif|sans|editorial|modern] [--level error|warn|error,warn|all] [--console] [--out DIR]"
 allowed-tools: AskUserQuestion, Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.10.0"
+  version: "1.11.0"
 ---
 
 # Audit all
 
 One run folder, up to eight audits, one report. This skill does not check anything itself: it runs the
-sibling skills (audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security, solution-health), each writing its own `report.md`
+sibling skills (audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security, audit-solution-health), each writing its own `report.md`
 as usual, then you write a short `summary.md` and `scripts/combine.mjs` merges everything into a
 combined `report.md`, a self-contained `report.html` and a typeset `report.pdf`. You also write
 `tasks.json`, and `combine.mjs` turns it into a fix plan: `fix/TODO.md` and one prompt per task in
@@ -29,7 +29,7 @@ other way, invoke them by name instead (`skills:audit-launch` in the plugin, `au
   The candidates you find are the defaults for the URL question in step 1a; confirm once, never
   more. `--no-site` (or "no site", "just the code") skips the site audits. Staging URLs are fine;
   audit-launch works out the environment.
-- **Repos** for audit-security and solution-health. Default: the current directory when it is a
+- **Repos** for audit-security and audit-solution-health. Default: the current directory when it is a
   repo root (has `.git`). The user can name several ("audit-all ~/code/shop-web ~/code/shop-api
   https://shop.example.dk"); each gets its own run of both.
 - **Audits.** Eight, by the names the user sees (flag name in brackets): Accessibility (`a11y`),
@@ -116,7 +116,7 @@ Launch, Privacy, Security") and mark those "(Recommended)" in the pickers instea
 
 Read the answers literally: what is ticked runs, what is not is skipped. If every audit ends up
 unticked, say so and stop. Repeat the final list in one line ("Running Infrastructure, Launch,
-Privacy, Security and Solution health on glyptoteket.dk") and carry on without asking again; later steps (solution-health's manifest, audit-security's triage)
+Privacy, Security and Solution health on glyptoteket.dk") and carry on without asking again; later steps (audit-solution-health's manifest, audit-security's triage)
 may still ask their own questions.
 
 **Flags answer the questions,** so scripted runs and audit-fix never stop to ask. Only what is
@@ -155,7 +155,7 @@ Do not put the run folder inside a repo unless asked: security reports can descr
 
 **What carries over is never in a run folder.** Each skill keeps it in its own target folder, named
 after the site host or repo folder: `<reports>/audit-launch/<host>/`, `<reports>/audit-security/<repo>/`,
-`<reports>/solution-health/<repo>/` and `<reports>/audit-all/<name>/`. That is where the manifests,
+`<reports>/audit-solution-health/<repo>/` and `<reports>/audit-all/<name>/`. That is where the manifests,
 triage verdicts, baselines and `notes.md` live, and each skill finds its own there whatever run
 folder the output goes to. Run folders are marked with an `.audit-run` file and are disposable.
 
@@ -163,7 +163,7 @@ folder the output goes to. Run folders are marked with an `.audit-run` file and 
 
 Run them one after another, each into its own sub-folder of the run folder. Folder names matter:
 `combine.mjs` finds reports by the prefix `audit-launch`, `audit-a11y`, `audit-seo`, `audit-eco`, `audit-privacy`, `audit-infra`,
-`audit-security` or `solution-health`,
+`audit-security` or `audit-solution-health`,
 optionally followed by `-<target>`. With one repo, plain names are fine; with several, add the repo
 folder name.
 
@@ -176,11 +176,11 @@ folder name.
 | audit-privacy | Follow audit-privacy's SKILL.md with `--out "<run>/audit-privacy"`, including the policy review it asks you to add to `report.md` | `report.md`, `report.json`, `banner.png`, `policy-*.txt` |
 | audit-infra | Follow audit-infra's SKILL.md with `--out "<run>/audit-infra"` | `report.md`, `report.json` |
 | audit-security | Follow audit-security's SKILL.md with `--out "<run>/audit-security-<repo>"`, including the triage and `report.md` it asks you to write. Semgrep runs automatically when installed | `findings.json`, `report.md` |
-| solution-health | Follow solution-health's SKILL.md in the repo, **without** `--dir` or `--out`: it keeps its manifest, state and report in its own folder (`<reports>/solution-health/<repo>/`, or `.solution-health/` with `--in-repo`), never in the run folder. Pass the repo to `combine.mjs --repo` and it copies the report in | `report.md` in its state folder |
+| audit-solution-health | Follow audit-solution-health's SKILL.md in the repo, **without** `--dir` or `--out`: it keeps its manifest, state and report in its own folder (`<reports>/audit-solution-health/<repo>/`, or `.solution-health/` with `--in-repo`), never in the run folder. Pass the repo to `combine.mjs --repo` and it copies the report in | `report.md` in its state folder |
 
 **With a level other than All,** pass the same `--level` to every sub-audit (audit-launch,
 audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security's scan, and
-solution-health's `finalize.mjs`), and write audit-security's `report.md` and audit-privacy's
+audit-solution-health's `finalize.mjs`), and write audit-security's `report.md` and audit-privacy's
 policy review at that level too. Their `report.md` is what the combined report quotes, and their
 JSON and baselines stay complete whatever the level. Never pass `--console` to a sub-audit: the
 combined list comes from `combine.mjs`.
@@ -191,7 +191,7 @@ need triage. Do not pass `--baseline` unless the user wants a specific run compa
 
 Each skill's own rules still apply (report only, no fixes, audit-launch only on sites the user owns
 or works on). Keep each skill's chat summary to a few lines: the combined report is the deliverable.
-If an audit cannot run (no Node 22 for Lighthouse, no network, no solution-health manifest
+If an audit cannot run (no Node 22 for Lighthouse, no network, no audit-solution-health manifest
 yet and the user does not want to set one up), say so in the summary and carry on with the rest.
 
 ## 4. Write summary.md
@@ -228,7 +228,7 @@ In order. Duplicates across the audits are merged.
   A11y, SEO, Eco, Privacy, Infra, Security or Health, comma-separated when several audits found the same thing.
 - **Merge duplicates.** The same problem often shows up twice: an exposed `.env` (audit-launch) and a
   committed `.env` (audit-security), a weak CSP in headers and in `nuxt.config`, a vulnerable package
-  in both audit-security and solution-health, missing alt text or low contrast in both audit-launch's
+  in both audit-security and audit-solution-health, missing alt text or low contrast in both audit-launch's
   Lighthouse section and audit-a11y, a canonical on the staging host (audit-launch on the start page,
   audit-seo site-wide), uncompressed or uncached files (audit-launch and audit-eco). One item, both sources.
 - **With a level**, "Fix first" lists only items at that level (errors are Blocker/Fail/High/Red,
@@ -249,8 +249,8 @@ In order. Duplicates across the audits are merged.
 `fix/TODO.md`). Merge duplicates the same way, one task per fix. Leave out false positives,
 "needs a look" items you could not confirm (list them in summary.md instead) and pure info.
 
-solution-health already writes its red and amber findings in this shape, and `combine.mjs --repo`
-copies them to `solution-health-<repo>/tasks.json` (ids `H1`, `H2`, …). Start from those: renumber
+audit-solution-health already writes its red and amber findings in this shape, and `combine.mjs --repo`
+copies them to `audit-solution-health-<repo>/tasks.json` (ids `H1`, `H2`, …). Start from those: renumber
 them, merge each with the same fix from the other audits (a vulnerable package audit-security also
 found), and keep their owner, model and files unless you know better.
 
@@ -367,12 +367,12 @@ To change only the fix plan's level, run it again with another `--level`. The su
 questions in step 1a recommend the audits that ran last time; "same as last time" or `--yes`
 with the same `--only` skips them. Every audit
 compares with its last run by itself (audit-launch and audit-security from their target folders,
-solution-health from its state), and `--new` names the previous audit-all run for the "Since last
+audit-solution-health from its state), and `--new` names the previous audit-all run for the "Since last
 run" section.
 
 ## Files
 
-- `scripts/combine.mjs`: run folder (`--new`), solution-health copy (`--repo`), merge and print.
+- `scripts/combine.mjs`: run folder (`--new`), audit-solution-health copy (`--repo`), merge and print.
 - `scripts/lib/markdown.mjs`: the small Markdown renderer (raw HTML in reports is escaped).
 - `scripts/lib/report.mjs`: finds reports, pulls headline numbers, builds the Markdown and HTML.
 - `scripts/lib/pdf.mjs`: finds a browser and prints to PDF.

@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.11.0] - 2026-11-01
+
+### Changed
+- solution-health is now audit-solution-health: run sub-folders are `audit-solution-health-<repo>/`; older `solution-health-<repo>/` folders are still read, and the `health` source accepts both names.
+
 ## [1.10.0] - 2026-11-01
 
 ### Changed

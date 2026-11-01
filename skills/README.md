@@ -29,7 +29,7 @@ Changes that touch only the changelog or other repo housekeeping do not bump the
 
 ## Report folders
 
-Skills that write report files (audit-a11y, audit-all, audit-eco, audit-infra, audit-launch, audit-privacy, audit-seo, audit-security, solution-health, tech-stack) use the same default folder, so reports from one machine end up in one place. First match wins:
+Skills that write report files (audit-a11y, audit-all, audit-eco, audit-infra, audit-launch, audit-privacy, audit-seo, audit-security, audit-solution-health, tech-stack) use the same default folder, so reports from one machine end up in one place. First match wins:
 
 1. `--out` when the user names a folder,
 2. `$AUDIT_OUT_DIR`,
@@ -42,7 +42,7 @@ Nothing that should carry over between runs lives in a timestamped folder. Each 
 
 ```
 <folder>/<skill>/<target>/            what carries over
-  target.txt                          which repo path or host the folder belongs to (root.txt in solution-health)
+  target.txt                          which repo path or host the folder belongs to (root.txt in audit-solution-health)
   notes.md                            hand-written notes; no script writes it, reports show it
   last-report.json, triage.json, …    the last result to compare with, verdicts, manifests
   runs/<YYYYMMDD-HHMM>/               one folder per run, marked with an .audit-run file
@@ -50,9 +50,9 @@ Nothing that should carry over between runs lives in a timestamped folder. Each 
 
 - A second target with the same name (two repos called `web`) gets a short hash suffix, decided by `target.txt`.
 - Each skill finds its own target folder by target, even when the run output goes somewhere else (audit-all passes `--out` into its own run folder), and compares with its last run automatically. `--baseline FILE` picks a specific run; `--no-baseline` skips the comparison.
-- A folder with an `.audit-run` marker, or one inside it, is never used for state: solution-health ignores a `--dir` there.
+- A folder with an `.audit-run` marker, or one inside it, is never used for state: audit-solution-health ignores a `--dir` there.
 - When a target folder is new, a skill looks once for its earlier results in the old layouts (timestamped folders, audit-all run folders) by their content, not by folder name.
-- solution-health's state folder is `<folder>/solution-health/<solution>/` itself (manifest.json, state.json, snapshots/, notes.md), because each run updates the state in place; `--in-repo` keeps it in the solution for teams that commit it.
+- audit-solution-health's state folder is `<folder>/audit-solution-health/<solution>/` itself (manifest.json, state.json, snapshots/, notes.md), because each run updates the state in place; `--in-repo` keeps it in the solution for teams that commit it.
 
 Skills install separately, so audit-launch, audit-security, audit-a11y and audit-all each carry a copy of `scripts/lib/target-state.mjs` (audit-security's tests check the copies are identical), and each carries its own `reportsRoot()` (see `audit-security/scripts/scan.mjs`); keep them in step. A new skill that writes reports should use the same layout.
 

@@ -1,5 +1,5 @@
 {
-  "$comment": "solution-health manifest. Committed to the repo; owned by the team. Claude proposes changes, a developer approves them. Secrets never go here: reference env vars as \"$NAME\".",
+  "$comment": "audit-solution-health manifest. Committed to the repo; owned by the team. Claude proposes changes, a developer approves them. Secrets never go here: reference env vars as \"$NAME\".",
   "apis": [
     {
       "name": "DAWA (Danmarks Adressers Web API)",
