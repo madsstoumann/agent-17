@@ -90,6 +90,9 @@ li > ul, li > ol { margin: .2em 0 .3em; }
 .cover h1 { margin-top: 8mm; font-size: 46pt; line-height: 1.02; font-weight: 300; letter-spacing: -.02em; max-width: 15em; }
 .cover h1 .host { display: block; font-size: 14pt; font-weight: 400; letter-spacing: 0; color: var(--muted); margin-top: 6mm; }
 .cover .deck { margin-top: 8mm; font-size: 14pt; line-height: 1.4; font-style: italic; font-weight: 300; max-width: 30ch; }
+.cover .stack { margin-top: 6mm; font-size: 9.5pt; line-height: 1.45; color: var(--muted); max-width: 60ch; }
+.cover .stack .label { display: block; margin-bottom: 1mm; }
+.cover .stack .line { display: block; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .cover .meta { margin-top: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 6mm; border-top: 1.5px solid var(--ink); }
 .cover .meta.cols-1 { grid-template-columns: minmax(0, 1fr); }
 .cover .meta.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }

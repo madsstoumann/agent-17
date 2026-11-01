@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { detect } from '../lib/detect.mjs';
+import { detect, mergePages } from '../lib/detect.mjs';
 import { SIGNATURES, CATEGORIES } from '../lib/signatures.mjs';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
@@ -116,4 +116,52 @@ test('every evidence list is capped and implied evidence comes last', () => {
   for (const x of t) assert.ok(x.evidence.length <= 4);
   const wp = find(t, 'WordPress');
   assert.ok(!wp.evidence[0].startsWith('implied'));
+});
+
+test('Nordic platforms and services', () => {
+  const t = detect({
+    url: 'https://shop.example.dk/',
+    html: '<meta name="generator" content="Dynamicweb 9.17"><img src="/Admin/Public/GetImage.ashx?Image=/Files/Images/a.jpg">',
+    urls: ['https://custom.clerk.io/shop.js', 'https://helloretailcdn.com/helloretail.js', 'https://sleeknotecustomerscripts.sleeknote.com/123.js',
+      'https://payment.quickpay.net/embedded/v2/quickpay.js', 'https://checkout.reepay.com/checkout.js', 'https://checkout.vipps.no/checkout-button/v1/vipps.js'],
+  });
+  assert.equal(find(t, 'Dynamicweb').version, '9.17');
+  for (const n of ['Clerk.io', 'Hello Retail', 'Sleeknote', 'QuickPay', 'Frisbii (Reepay)', 'Vipps MobilePay', 'Microsoft ASP.NET']) assert.ok(names(t).includes(n), n);
+});
+
+test('headless CMSs: Heartcore, Contentstack, Magnolia; Directus only possible from a bare asset URL', () => {
+  const t = detect({
+    url: 'https://example.com/',
+    html: '<img src="https://media.umbraco.io/acme/abc/x.jpg"><img src="https://eu-images.contentstack.com/v3/assets/x.jpg"><a href="/dam/jcr:0f0e2b8c-1234-4abc-9def-0123456789ab/file.pdf">x</a><img src="/assets/0f0e2b8c-1234-4abc-9def-0123456789ab?width=200">',
+  });
+  for (const n of ['Umbraco Heartcore', 'Contentstack', 'Magnolia CMS']) assert.ok(names(t).includes(n), n);
+  assert.ok(names(t, 'possible').includes('Directus'));
+  assert.ok(!names(t).includes('Umbraco'), 'Heartcore media is not Umbraco CMS');
+});
+
+test('server-side GTM on a first-party host, Cloudflare Zaraz', () => {
+  const t = detect({
+    url: 'https://www.example.com/',
+    urls: ['https://sgtm.example.com/gtm.js?id=GTM-ABC123', 'https://www.example.com/cdn-cgi/zaraz/s.js?z=abc'],
+  });
+  assert.deepEqual(find(t, 'Server-side Google Tag Manager').ids, ['GTM-ABC123']);
+  assert.ok(names(t).includes('Cloudflare Zaraz'));
+  const g = detect({ url: 'https://www.example.com/', urls: ['https://www.googletagmanager.com/gtm.js?id=GTM-ABC123'] });
+  assert.ok(!find(g, 'Server-side Google Tag Manager'), 'Google-hosted GTM is not server-side');
+});
+
+test('npm package is carried on the result for version lookups', () => {
+  const t = detect({ url: 'https://example.com/', urls: ['https://code.jquery.com/jquery-3.5.1.min.js'] });
+  assert.equal(find(t, 'jQuery').npm, 'jquery');
+});
+
+test('mergePages adds technologies seen only on other pages, with where', () => {
+  const main = detect({ url: 'https://www.example.com/', headers: [['server', 'nginx']] });
+  const shop = detect({ url: 'https://shop.example.com/', headers: [['x-shopid', '123'], ['x-shopify-stage', 'production']], html: '<script src="https://cdn.shopify.com/s/x.js"></script>', urls: ['https://cdn.shopify.com/s/x.js'] });
+  const m = mergePages(main, [{ path: 'shop.example.com/', technologies: shop }, { path: '/blog/', technologies: shop }]);
+  const s = find(m, 'Shopify');
+  assert.ok(s, 'Shopify merged');
+  assert.deepEqual(s.pages, ['shop.example.com/', '/blog/']);
+  assert.match(s.evidence[0], /\(on shop\.example\.com\/\)$/);
+  assert.ok(!find(m, 'Nginx').pages, 'start-page technology keeps its own entry');
 });

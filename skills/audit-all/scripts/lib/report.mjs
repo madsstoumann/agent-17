@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseBlocks, renderBlocks, inline, joinLines, escapeHtml, plain } from './markdown.mjs';
 import { compactReport } from './compact.mjs';
+import { stackLines } from './stack.mjs';
 
 export const KINDS = {
   'audit-launch': {
@@ -196,11 +197,12 @@ export function parseAction(text) {
 const fmtDate = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 
 /** The combined report as Markdown: summary, at-a-glance table, then every report with headings demoted one level. */
-export function combinedMarkdown({ summary, reports, heads, date, version }) {
+export function combinedMarkdown({ summary, reports, heads, date, version, stack = [] }) {
   const subject = summary.meta.subject || heads.find((h) => h.target)?.target || 'Audit';
   const out = [`# ${summary.meta.title || `Audit report: ${subject}`}`, ''];
   out.push(`${subject} · ${fmtDate(date)} · audit-all ${version}`, '');
   if (summary.meta.deck) out.push(`_${summary.meta.deck}_`, '');
+  for (const line of stackLines(stack)) out.push(`Built with: ${line}`, '');
   const body = summary.raw ? summary.raw.trim() : '';
   if (body) out.push(body, '');
   out.push('## At a glance', '', '| Audit | Target | Result | Report |', '|---|---|---|---|');
@@ -307,7 +309,7 @@ const PAGE_FONT = { serif: '"AA Newsreader", "Iowan Old Style", Charter, Georgia
  * With more than one report a contents page follows the cover; `pages` ({ summary, 'audit-1', … })
  * fills in its page numbers once a first print has shown where each section starts.
  */
-export function combinedHtml({ summary, reports, heads, date, version, css, style, toolVersions = {}, compact = false, pages = {} }) {
+export function combinedHtml({ summary, reports, heads, date, version, css, style, toolVersions = {}, compact = false, pages = {}, stack = [] }) {
   const subject = summary.meta.subject || heads.find((h) => h.target)?.target || 'Audit';
   const title = summary.meta.title || `Audit report: ${subject}`;
   const names = [...new Set(reports.map((r) => KINDS[r.kind].title))].map((t, i) => (i ? t.toLowerCase() : t));
@@ -341,6 +343,7 @@ ${css}
   <div class="label kicker">Audit report</div>
   <h1>${inline(title)}<span class="host mono">${escapeHtml(subject)}</span></h1>
   <p class="deck">${inline(deck)}</p>
+  ${stack.length ? `<p class="stack"><span class="label">Built with</span>${stackLines(stack).map((l) => `<span class="line">${escapeHtml(l)}</span>`).join('')}</p>` : ''}
   <div class="meta cols-${Math.min(reports.length, 3)}">${coverMeta(reports, heads)}</div>
   <div class="colophon"><span>${summary.meta['prepared-for'] ? `Prepared for ${escapeHtml(summary.meta['prepared-for'])}` : fmtDate(date)}</span><span>${escapeHtml(tools)}</span></div>
 </section>

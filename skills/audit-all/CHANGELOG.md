@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.13.0] - 2026-11-01
+
+### Added
+- A "Built with" line on the cover and under the title of report.md: the CMS, framework, hosting, tags and consent tool check-tech-stack found, read from `<run>/check-tech-stack/results.json`. audit-all runs check-tech-stack whenever a site audit runs.
+
 ## [1.12.0] - 2026-11-01
 
 ### Removed

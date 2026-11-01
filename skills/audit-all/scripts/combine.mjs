@@ -16,10 +16,11 @@ import { fileURLToPath } from 'node:url';
 import { discoverReports, headline, parseSummary, combinedMarkdown, combinedHtml, siteMismatches } from './lib/report.mjs';
 import { printPdf, pdfDestPages } from './lib/pdf.mjs';
 import { writeFixPlan } from './lib/tasks.mjs';
+import { readStack } from './lib/stack.mjs';
 import { parseLevel, levelOfWord, consoleList } from './lib/levels.mjs';
 import { targetDir, claimTarget, newRun, previousRuns, readNotes, targetName } from './lib/target-state.mjs';
 
-export const VERSION = '1.12.0';
+export const VERSION = '1.13.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, '..', 'assets');
 const SIBLINGS = path.join(HERE, '..', '..');
@@ -220,10 +221,11 @@ export async function combine(args, { now = new Date(), log = (m) => process.std
   for (const m of siteMismatches(reports, heads, summary.meta.subject)) log(`Warning: ${m.title} checked ${m.target}, not ${m.subject}. Re-run ${m.kind} on ${m.subject}; the report says so too.`);
   const toolVersions = Object.fromEntries([...new Set(reports.map((r) => r.kind))].map((k) => [k, skillVersion(k)]).filter(([, v]) => v));
 
-  const md = combinedMarkdown({ summary, reports, heads, date: now, version: VERSION });
+  const stack = readStack(runDir);
+  const md = combinedMarkdown({ summary, reports, heads, date: now, version: VERSION, stack });
   // --console alone: no combined report files, only the fix plan and the list on stdout.
   const files = !args.console || args.report;
-  const htmlArgs = { summary, reports, heads, date: now, version: VERSION, css: stylesheet(args.style), style: args.style, toolVersions };
+  const htmlArgs = { summary, reports, heads, date: now, version: VERSION, css: stylesheet(args.style), style: args.style, toolVersions, stack };
   const html = combinedHtml(htmlArgs);
   const out = { md: files ? path.join(runDir, 'report.md') : null, html: files ? path.join(runDir, 'report.html') : null, pdf: null, todo: null, reports: reports.map((r) => r.folder) };
   if (files) {

@@ -328,3 +328,23 @@ test('siteMismatches: a site audit run on another domain than the subject is fla
   const html = combinedHtml({ summary: parseSummary(SUMMARY.replace('shop.example.dk', 'helmsecurity.ai')), reports, heads, date: new Date(), version: VERSION, css: '', style: 'sans' });
   assert.match(html, /class="mismatch">.*Infrastructure audit checked helm-live\.euwest01\.umbraco\.io, not helmsecurity\.ai/);
 });
+
+test('Built with: check-tech-stack results on the cover and under the title', async () => {
+  const { readStack, builtWith } = await import('../lib/stack.mjs');
+  const { combinedMarkdown } = await import('../lib/report.mjs');
+  const run = fs.mkdtempSync(path.join(os.tmpdir(), 'aa-stack-'));
+  fs.mkdirSync(path.join(run, 'check-tech-stack'));
+  const t = (name, category, version = null, confidence = 'detected') => ({ name, category, version, confidence });
+  fs.writeFileSync(path.join(run, 'check-tech-stack', 'results.json'), JSON.stringify({ results: [
+    { url: 'https://shop.example.dk/', finalUrl: 'https://shop.example.dk/', technologies: [t('jQuery', 'js-library', '3.7.1'), t('Cloudflare', 'cdn'), t('Umbraco', 'cms', '13.2'), t('Next.js', 'meta-framework', '15.0.0'), t('Hotjar', 'analytics', null, 'possible')] },
+    { url: 'https://blocked.example/', challenge: 'Cloudflare challenge', technologies: [t('Cloudflare', 'cdn')] },
+  ] }));
+  assert.deepEqual(builtWith({ technologies: [t('A', 'cdn'), t('B', 'cms')] }), ['B', 'A']);
+  const stack = readStack(run);
+  assert.deepEqual(stack, [{ host: 'shop.example.dk', items: ['Umbraco 13.2', 'Next.js 15.0.0', 'Cloudflare'] }]);
+  const security = { kind: 'audit-security', folder: 'audit-security', target: null, md: '# Security audit\n\nResult: ok\n' };
+  const args = { summary: parseSummary('---\nsubject: shop.example.dk\n---\n'), reports: [security], heads: [headline(security)], date: new Date('2026-11-01'), version: 'x', css: '', style: 'serif', stack };
+  assert.match(combinedHtml(args), /<p class="stack"><span class="label">Built with<\/span><span class="line">Umbraco 13\.2 · Next\.js 15\.0\.0 · Cloudflare<\/span><\/p>/);
+  assert.match(combinedMarkdown(args), /\nBuilt with: Umbraco 13\.2 · Next\.js 15\.0\.0 · Cloudflare\n/);
+  assert.doesNotMatch(combinedHtml({ ...args, stack: [] }), /class="stack"/);
+});

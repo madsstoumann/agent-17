@@ -85,3 +85,65 @@ export function challengeReason(status, html, headers = []) {
   if (status === 403 || status === 429) return `HTTP ${status}, likely bot protection`;
   return null;
 }
+
+const NOT_A_PAGE = /\.(?:jpe?g|png|gif|webp|avif|svg|ico|pdf|zip|docx?|xlsx?|pptx?|mp4|webm|mp3|css|js|json|xml|txt|woff2?)$/i;
+
+/**
+ * Up to `n` same-site pages linked from the page, chosen to cover different parts of the
+ * site: other hosts first (shop.example.com often runs another platform), then a different
+ * first path segment each (/shop/, /blog/, /careers/). Query strings and fragments are dropped.
+ */
+export function pickLinks(html, base, n) {
+  if (!n) return [];
+  const start = new URL(base);
+  const seen = new Set([start.origin + start.pathname]);
+  const candidates = [];
+  for (const m of String(html).matchAll(/<a\b[^>]*>/gi)) {
+    const href = attr(m[0], 'href');
+    const abs = resolveUrl(href, base);
+    if (!abs) continue;
+    const u = new URL(abs);
+    if (!/^https?:$/.test(u.protocol) || !sameSite(u.href, base) || NOT_A_PAGE.test(u.pathname)) continue;
+    u.search = ''; u.hash = '';
+    if (seen.has(u.origin + u.pathname)) continue;
+    seen.add(u.origin + u.pathname);
+    candidates.push(u);
+  }
+  const section = (u) => `${u.host}/${u.pathname.split('/').filter(Boolean)[0] || ''}`;
+  const startSection = section(start);
+  const picked = []; const sections = new Set([startSection]);
+  // Other hosts, then new sections, then anything left.
+  const passes = [(u) => u.host !== start.host, (u) => !sections.has(section(u)), () => true];
+  for (const ok of passes) {
+    for (const u of candidates) {
+      if (picked.length >= n) break;
+      if (picked.includes(u.href) || !ok(u)) continue;
+      if (ok !== passes[2] && sections.has(section(u))) continue;
+      picked.push(u.href); sections.add(section(u));
+    }
+  }
+  return picked;
+}
+
+/** Text a reader would see, roughly: markup, scripts and styles removed. */
+export function visibleText(html) {
+  return String(html)
+    .replace(/<(script|style|noscript|template|svg)\b[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&[a-z#0-9]+;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Why the raw HTML is probably not enough and a browser render would show more, or null.
+ * An empty app shell, a page with almost no text, or no CMS or framework recognised.
+ */
+export function thinReason({ status, challenge, html = '', scripts = 0 }, technologies = []) {
+  if (challenge || status >= 400 || !html) return null;
+  if (/<(div|main)\b[^>]*\bid=["'](?:root|app|__next|__nuxt|svelte)["'][^>]*>\s*<\/\1>|<app-root\b[^>]*>\s*<\/app-root>/i.test(html)) return 'the page is an empty app shell';
+  if (scripts > 0 && visibleText(html).length < 200) return 'the HTML has almost no text';
+  const core = ['cms', 'ecommerce', 'headless-cms', 'meta-framework', 'js-framework'];
+  if (!technologies.some((t) => t.confidence === 'detected' && core.includes(t.category))) return 'nothing in the HTML shows the CMS or framework';
+  return null;
+}

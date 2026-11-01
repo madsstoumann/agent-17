@@ -24,5 +24,6 @@ test('reportsRoot: ~/Downloads only if it exists, else ~/audit-reports', () => {
 test('resolveOutDir: --out is used as given, ~ expanded', () => {
   assert.equal(resolveOutDir('~/x', 'a.com', { home }), '/home/u/x');
   assert.equal(resolveOutDir('rel', 'a.com', { home }), path.resolve('rel'));
-  assert.equal(resolveOutDir(null, 'a.com', { home, base: '/b', now: '20261030-0800' }), '/b/tech-stack/a.com-20261030-0800');
+  assert.equal(resolveOutDir(null, 'a.com', { home, base: '/b', now: '20261030-0800' }), '/b/check-tech-stack/a.com/runs/20261030-0800');
+  assert.equal(resolveOutDir(null, 'batch-3', { home, base: '/b', now: '20261030-0800', batch: true }), '/b/check-tech-stack/batch-3-20261030-0800');
 });
