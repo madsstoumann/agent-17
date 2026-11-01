@@ -280,7 +280,7 @@ Optional keys, each adding one lookup: `GOOGLE_SAFE_BROWSING_KEY` (Google Safe B
 
 ### check-node-toolchain
 
-No flags. To validate one page's schema.org markup, run audit-seo with `--schema-only`, or on a local HTML file.
+No flags.
 
 ## Adding a skill
 
