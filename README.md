@@ -264,9 +264,20 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 | `--jobs N` / `--timeout MS` | Sites in parallel (4), per request (15000). |
 | `--out DIR` / `--insecure` / `--json` / `--quiet` | As for the other skills. |
 
-### is-website-safe, node-toolchain-check
+### is-website-safe
 
-No flags: give is-website-safe a domain, and node-toolchain-check nothing. To validate one page's schema.org markup, run audit-seo with `--schema-only`, or on a local HTML file.
+| Flag | What it does |
+|---|---|
+| `<url or domain>` | The link or site to check, path included. Short links are followed. |
+| `--brand X` | The site the user expects (`PostNord`, `postnord.dk`, or any brand name); any other domain is flagged as not theirs. |
+| `--no-page` | Skip loading the page: name, registration, DNS and blocklists only. |
+| `--json` | Print every fact as JSON instead of the summary. |
+
+Optional keys, each adding one lookup: `GOOGLE_SAFE_BROWSING_KEY` (Google Safe Browsing), `VIRUSTOTAL_API_KEY`, `URLHAUS_AUTH_KEY` (abuse.ch) and `URLSCAN_API_KEY` (works without, lower quota). All have free tiers; see the skill for where to get them.
+
+### node-toolchain-check
+
+No flags. To validate one page's schema.org markup, run audit-seo with `--schema-only`, or on a local HTML file.
 
 ## Adding a skill
 

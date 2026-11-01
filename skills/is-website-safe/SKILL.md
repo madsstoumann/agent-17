@@ -1,253 +1,126 @@
 ---
 name: is-website-safe
-description: Analyzes website safety and trustworthiness by checking domain registration, WHOIS data, DNS records, and Trustpilot reviews. Returns a comprehensive trust score and security report. Use when checking if a website is safe, legitimate, trustworthy, or when analyzing domain reputation.
-allowed-tools: Bash(whois:*), Bash(dig:*), Bash(curl:*), WebSearch, WebFetch
+description: Use when someone asks whether a website or link is safe, real, legit or a scam — "is this the real PayPal/MitID/PostNord site?", a link from an SMS or email, a webshop with prices too good to be true, a lookalike or spoofed domain (paypa1.com, apple-support-login.xyz), a phishing page, or a fake copy of a famous site. Checks what the name imitates, what the page asks for, phishing blocklists, domain and certificate age, history, popularity and Trustpilot, and gives a verdict with the red flags.
+argument-hint: "<url or domain> [--brand <real site or brand name>] [--no-page] [--json]"
+allowed-tools: Bash(node:*), WebFetch, WebSearch
 metadata:
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
-# Website Safety Analyzer
+# Is this website safe?
 
-This skill performs a comprehensive safety and trustworthiness analysis of any website by examining domain registration details, DNS configuration, online reviews, and security indicators.
+One script answers the question people really ask: is this the site it pretends to be, a copy of
+a famous one, or a fake shop? It looks at the name (lookalikes of about 150 brands that phishing
+and fake shops copy, Danish ones included), the page (what it calls itself, whether it asks for a
+password, card or CPR number, where those forms send it, whether it wears the brand's icon or loads
+its files), phishing blocklists, how old the domain and its first certificate are, whether it
+changed hands, how popular it is, and Trustpilot. It prints a verdict, the red flags and the facts
+behind them. Your job is to run it, add what it could not get, and give a plain answer.
 
-## When to Use
+It is **read-only**: DNS lookups and ordinary GETs, never a form submitted, never a login tried. The
+page is fetched with a normal browser user agent, so it is safe to check a phishing link this way;
+never open such a link in a real browser for the user.
 
-```dot
-digraph when_to_use {
-    "User asks about website safety?" [shape=diamond];
-    "User provides URL or domain?" [shape=diamond];
-    "is-website-safe" [shape=box style=filled fillcolor=lightgreen];
-    "Ask for URL/domain" [shape=box];
-    "Use other skill" [shape=box];
+## Run it
 
-    "User asks about website safety?" -> "User provides URL or domain?" [label="yes\n(safe, trustworthy,\nlegitimate, scam)"];
-    "User asks about website safety?" -> "Use other skill" [label="no"];
-    "User provides URL or domain?" -> "is-website-safe" [label="yes"];
-    "User provides URL or domain?" -> "Ask for URL/domain" [label="no"];
-}
-```
-
-Use this skill when:
-- User asks "Is [website] safe?"
-- User wants to check if a site is trustworthy/legitimate
-- User asks about domain reputation or age
-- User wants to avoid scams or phishing sites
-
-## Process Flow
-
-```dot
-digraph process_flow {
-    rankdir=TB;
-
-    subgraph cluster_extraction {
-        label="Step 1: Domain Extraction";
-        style=filled;
-        fillcolor=lightblue;
-        "Extract domain from URL" [shape=box];
-        "Normalize domain" [shape=box];
-    }
-
-    subgraph cluster_parallel {
-        label="Step 2: Parallel Data Collection";
-        style=filled;
-        fillcolor=lightgreen;
-        "Run WHOIS lookup" [shape=box];
-        "Run DNS queries (A, MX, NS)" [shape=box];
-        "Search Trustpilot reviews" [shape=box];
-    }
-
-    subgraph cluster_scoring {
-        label="Step 3: Trust Score Calculation";
-        style=filled;
-        fillcolor=lightyellow;
-        "Calculate domain age score (25pts)" [shape=box];
-        "Calculate WHOIS info score (20pts)" [shape=box];
-        "Calculate DNS config score (15pts)" [shape=box];
-        "Calculate Trustpilot score (30pts)" [shape=box];
-        "Calculate additional indicators (10pts)" [shape=box];
-        "Sum total score (0-100%)" [shape=box];
-    }
-
-    "Start: Receive URL/domain" [shape=oval style=filled fillcolor=lightgray];
-    "Lookup failed?" [shape=diamond];
-    "Note missing data" [shape=box];
-    "Adjust scoring proportionally" [shape=box];
-    "Format report" [shape=box];
-    "End: Return safety report" [shape=oval style=filled fillcolor=lightgray];
-
-    "Start: Receive URL/domain" -> "Extract domain from URL";
-    "Extract domain from URL" -> "Normalize domain";
-    "Normalize domain" -> "Run WHOIS lookup";
-    "Normalize domain" -> "Run DNS queries (A, MX, NS)";
-    "Normalize domain" -> "Search Trustpilot reviews";
-    
-    "Run WHOIS lookup" -> "Lookup failed?";
-    "Run DNS queries (A, MX, NS)" -> "Lookup failed?";
-    "Search Trustpilot reviews" -> "Lookup failed?";
-    
-    "Lookup failed?" -> "Note missing data" [label="yes"];
-    "Note missing data" -> "Adjust scoring proportionally";
-    "Lookup failed?" -> "Calculate domain age score (25pts)" [label="no"];
-    "Adjust scoring proportionally" -> "Calculate domain age score (25pts)";
-    
-    "Calculate domain age score (25pts)" -> "Calculate WHOIS info score (20pts)";
-    "Calculate WHOIS info score (20pts)" -> "Calculate DNS config score (15pts)";
-    "Calculate DNS config score (15pts)" -> "Calculate Trustpilot score (30pts)";
-    "Calculate Trustpilot score (30pts)" -> "Calculate additional indicators (10pts)";
-    "Calculate additional indicators (10pts)" -> "Sum total score (0-100%)";
-    "Sum total score (0-100%)" -> "Format report";
-    "Format report" -> "End: Return safety report";
-}
-```
-
-## Instructions
-
-When the user provides a website URL, follow these steps:
-
-### 1. Extract and Normalize the Domain
-
-Extract the domain from the provided URL:
-- Remove protocol (http://, https://)
-- Remove www. prefix if present
-- Remove path, query parameters, and fragments
-- Handle both bare domains (example.com) and full URLs (https://www.example.com/path)
-
-### 2. Gather Domain Intelligence
-
-Collect data using these tools in parallel:
-
-**WHOIS Lookup:**
 ```bash
-whois [domain]
-```
-Extract: registrar, creation date, expiration date, registrant info (if available), nameservers
-
-**DNS Information:**
-```bash
-dig [domain] ANY +noall +answer
-dig [domain] A +short
-dig [domain] MX +short
-```
-Extract: A records (IP addresses), MX records (email servers), nameservers
-
-**Trustpilot Reviews:**
-Search for "[domain] trustpilot" using WebSearch and analyze:
-- Overall rating (out of 5 stars)
-- Number of reviews
-- Recent review sentiment
-- Common complaints or praise
-
-### 3. Calculate Trust Score
-
-Calculate a trust score (0-100%) based on these weighted factors:
-
-**Domain Age (25 points):**
-- 10+ years: 25 points
-- 5-10 years: 20 points
-- 2-5 years: 15 points
-- 1-2 years: 10 points
-- 6-12 months: 5 points
-- Less than 6 months: 0 points
-
-**WHOIS Information (20 points):**
-- Complete registrant info visible: 20 points
-- Partial info (privacy protection): 10 points
-- No info or suspicious: 0 points
-- Deduct 10 if expiring within 30 days
-
-**DNS Configuration (15 points):**
-- Valid A records: 5 points
-- MX records present: 5 points
-- Multiple nameservers: 5 points
-
-**Trustpilot Rating (30 points):**
-- 4.5-5.0 stars: 30 points
-- 4.0-4.4 stars: 25 points
-- 3.5-3.9 stars: 20 points
-- 3.0-3.4 stars: 15 points
-- 2.5-2.9 stars: 10 points
-- 2.0-2.4 stars: 5 points
-- Below 2.0 stars: 0 points
-- No reviews found: 15 points (neutral)
-
-**Additional Indicators (10 points):**
-- HTTPS available: 5 points
-- Known brand/established site: 5 points
-
-### 4. Format the Results
-
-Present the results in a clear, structured format:
-
-```
-# Website Safety Report: [domain]
-
-## Trust Score: [X]% - [RATING]
-
-[RATING] categories:
-- 80-100%: TRUSTED ✓
-- 60-79%: LIKELY SAFE (Proceed with Caution)
-- 40-59%: MODERATE RISK (Exercise Caution)
-- 20-39%: HIGH RISK (Not Recommended)
-- 0-19%: DANGEROUS (Avoid)
-
-## Detailed Analysis
-
-| Category | Details |
-|----------|---------|
-| Domain Age | [X years/months] - Registered on [date] |
-| Expiration | [date] ([X days remaining]) |
-| Registrar | [registrar name] |
-| Registrant | [info or "Hidden (Privacy Protected)"] |
-| IP Address | [primary IP] |
-| Location | [country/region if detectable] |
-| Email Server | [MX records or "None found"] |
-| Nameservers | [list of NS] |
-| Trustpilot Rating | [X.X stars] ([Y reviews]) or "No reviews found" |
-| HTTPS Support | [Yes/No] |
-
-## Security Indicators
-
-[List positive and negative indicators found]
-
-**Positive:**
-- [e.g., "Domain registered for 8 years"]
-- [e.g., "Strong Trustpilot rating (4.7/5)"]
-
-**Concerns:**
-- [e.g., "Registrant information hidden"]
-- [e.g., "Domain expiring soon"]
-
-## Recommendation
-
-[Provide a clear recommendation based on the trust score and analysis]
+node "${CLAUDE_SKILL_DIR}/scripts/check.mjs" <url or domain> [flags]
 ```
 
-### 5. Error Handling
+`${CLAUDE_SKILL_DIR}` is this skill's folder. Run it through Bash with `timeout: 180000`; a run takes
+10-60 seconds, mostly crt.sh. Progress goes to stderr, the summary to stdout. Pass the whole URL the
+user got (path included), not just the domain: where the link lands matters.
 
-If any lookup fails:
-- Note which information is unavailable
-- Continue with remaining checks
-- Adjust trust score calculation accordingly (use proportional scoring)
-- Mention data limitations in the report
+| Flag | Use it when |
+|---|---|
+| `<url or domain>` | Always. Short links (bit.ly) are followed; the checks run on where they land. |
+| `--brand X` | The user says what the site should be: "is this really PostNord?", "my bank is Danske Bank". A listed brand name, the real domain (`--brand postnord.dk`), or any brand name (looked up on Wikidata). Any other domain is then flagged as not theirs. |
+| `--no-page` | Only when the user does not want the page loaded at all. |
+| `--json` | You need a fact the summary leaves out (every form action, every resource host, raw dates). |
 
-### 6. Important Notes
+Optional keys, read from the environment; each adds a lookup and nothing breaks without them:
 
-- Some domains use privacy protection services (normal for personal sites)
-- New domains aren't necessarily unsafe (lack of history ≠ malicious)
-- Trustpilot absence doesn't mean untrustworthy (many legitimate sites have no reviews)
-- Consider context: small business sites may have less data than major brands
-- Always mention if the analysis is limited by missing data
+| Variable | Service | Get it |
+|---|---|---|
+| `GOOGLE_SAFE_BROWSING_KEY` | Google Safe Browsing (phishing, malware) | Free API key in Google Cloud; non-commercial use (Web Risk API for commercial) |
+| `VIRUSTOTAL_API_KEY` | VirusTotal domain verdicts from 70+ engines | Free community key, 4 requests a minute, non-commercial |
+| `URLHAUS_AUTH_KEY` | abuse.ch URLhaus (malware distribution) | Free at auth.abuse.ch |
+| `URLSCAN_API_KEY` | urlscan.io search (works without, lower quota) | Free account |
 
-## Example Usage
+Mention the missing keys only when the verdict is Unknown or Caution and a blocklist answer would settle it.
 
-User: "Is amazon.com safe?"
-User: "Check if suspicious-deals-2024.xyz is trustworthy"
-User: "Analyze the safety of https://www.example-shop.com/products"
+## What it checks
 
-## Tips
+| Group | Checks |
+|---|---|
+| Imitation | Typos (`paypa1`, `micros0ft`, `uspss`), homoglyphs and mixed alphabets (`pаypal` with a Cyrillic а, shown as `xn--`), the brand plus lure words (`netflix-trial`, `apple-support-login`), the brand on another TLD, the brand's domain or name as a subdomain (`paypal.com.verify.xyz`, `facebook.webmau.vn`), free names on shared hosts (`netflix-trial.vercel.app`) |
+| The page | Title and site name (a page calling itself Spotify on an unrelated domain), password, card, CPR and one-time-code fields, forms posting to other sites, data sent to Telegram bots or Discord webhooks, the brand's own favicon, files loaded from the brand's servers, a different page for scripts than for browsers (cloaking), pressure wording, and for webshops: bank-transfer-only or crypto payment, free-mail contact, no CVR/VAT or terms, 50-90% discounts, a Trustpilot badge for another site |
+| Blocklists | Quad9 and Cloudflare's security resolver (they refuse names on their threat feeds), the OpenPhish feed, urlscan.io verdicts, and with keys Google Safe Browsing, VirusTotal and URLhaus |
+| History | Registration date (RDAP, else whois), registry hold status, first certificate in Certificate Transparency, first Wayback Machine snapshot (a domain archived for years but registered last month changed hands), Tranco popularity rank, hosting network |
+| Reviews | Trustpilot page for the exact domain (never a search result for a similar name) |
 
-- When Trustpilot data is found via WebSearch, use WebFetch to extract the specific rating and review count
-- For well-known domains (google.com, microsoft.com, etc.), you can add bonus points
-- If WHOIS returns rate limiting errors, note this and proceed with other checks
-- DNS lookups are usually fast - run them in parallel with WHOIS
-- Consider domain extension (.com, .org vs. .xyz, .tk) as a minor factor
+## The verdict
+
+| Verdict | When |
+|---|---|
+| **Dangerous** | Any one hard red flag: on a blocklist; imitates a brand and is young, asks for credentials or card, calls itself that brand or wears its icon; presents itself as a brand on an unrelated domain while asking for a password or card; sends form input to a chat bot; not the site the user expected (`--brand`). Nothing else outweighs these. |
+| **Suspicious** | Two warnings, or one strong one (a lookalike name, registered this month, bank transfer only, a free page asking for a login) |
+| **Caution** | One warning |
+| **Trusted** | A brand's own listed domain, or one of the 100,000 most visited sites, with no warnings |
+| **Likely safe** | Old and visible enough (years of history, top-million rank) with no warnings |
+| **Unknown** | No red flags but too little history to vouch for it. Common for a new honest shop; say so rather than guessing |
+
+The score (0-100) is capped by the verdict. Lead with the verdict, never with the score.
+
+## Fill the gaps
+
+The summary ends with "Not available this run". Fill what matters:
+
+- **Trustpilot** often refuses scripts (HTTP 403). Open the exact URL it prints
+  (`https://www.trustpilot.com/review/<domain>`) with WebFetch and read the rating, the number of
+  reviews and the newest few. Never use a search result for another domain: lookalikes are
+  routinely matched to the real brand's page. A burst of five-star reviews within a few days, or
+  recent reviews saying "never received" or "scam", outweigh the average.
+- **Registration date** for TLDs without RDAP (.dk and others) comes from whois on port 43; if a
+  network blocks that, the certificate and Wayback dates stand in. Say which one you used.
+- **Company number**: when a shop states a CVR, open `https://datacvr.virk.dk/` search for it, or
+  WebSearch "CVR <number>", and check the name and address match the shop and the company is active.
+- **Unknown brand**: if the page claims a brand that is not in the list and `--brand` found nothing,
+  WebSearch for the brand's official site and compare the domain yourself.
+
+Never visit the page in a real browser or follow its links for the user. Do not submit anything.
+
+## Answer
+
+Keep it short and lead with the answer:
+
+```
+**<verdict>**: <one sentence why, naming the brand it imitates or the deciding fact>.
+
+<what to do: "Don't log in; the real site is paypal.com" / "Pay only by card so you can charge back" / "Fine to use">
+
+Red flags
+- <danger and warn lines, most serious first, in plain words>
+
+Good signs
+- <good lines worth knowing>
+
+<one line on anything that could not be checked, if it matters>
+```
+
+When it imitates a brand, always give the brand's real domain. When someone has already entered
+a password or card number, tell them to change the password on the real site, call their bank to
+block the card (in Denmark also contact MitID if they used it), and report the site: to the brand,
+to Google (safebrowsing.google.com/safebrowsing/report_phish) and in Denmark to
+the police or Forbrugerombudsmanden for fake shops.
+
+## Limits
+
+- A blocklist miss proves little: most phishing sites live a day or two and are not listed yet.
+  That is why imitation and page checks carry the verdict.
+- The brand list is curated. A rare brand is only caught through the page title, `--brand`, or your
+  own search.
+- The page is fetched once without running JavaScript; pages that build their form in script may
+  show no fields. Treat "no password field" on a lookalike as unknown, not as safe.
+- Some phishing kits show scanners an empty page or the real site. The cloaking check catches some
+  of these, not all.
