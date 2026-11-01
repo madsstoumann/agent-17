@@ -17,6 +17,12 @@ const MATRIX = [
 
 const esc = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
 const label = (t) => `${t.name}${t.version ? ` ${t.version}` : ''}`;
+const day = (iso) => String(iso || '').slice(0, 10);
+const versionCell = (t) => {
+  const v = t.version || (t.ids || []).join(', ') || '';
+  return t.latest && t.behind && t.behind !== 'current' ? `${v} (latest ${t.latest})` : v;
+};
+const changeCount = (c) => c && (c.added.length + c.removed.length + c.changed.length);
 const hostOf = (u) => { try { return new URL(u).host; } catch { return u; } };
 
 export function siteLine(r) {
@@ -27,7 +33,8 @@ export function siteLine(r) {
     return hits.length ? `${name}: ${hits.join(', ')}` : null;
   }).filter(Boolean);
   const rest = detected.filter((t) => !MATRIX.some(([, cats]) => cats.includes(t.category))).length;
-  return `${hostOf(r.finalUrl || r.url)} (${r.status}${r.challenge ? `, ${r.challenge}` : ''}): ${parts.join(' · ') || 'nothing recognised'}${rest ? ` · +${rest} more` : ''}`;
+  const changes = changeCount(r.changes) ? ` · since ${day(r.changes.since)}: ${[r.changes.added.length && `+${r.changes.added.length}`, r.changes.removed.length && (r.changes.weaker.length ? `${r.changes.removed.length} not seen (last run looked further)` : `−${r.changes.removed.length}`), r.changes.changed.length && `${r.changes.changed.length} version${r.changes.changed.length > 1 ? 's' : ''} changed`].filter(Boolean).join(' ')}` : '';
+  return `${hostOf(r.finalUrl || r.url)} (${r.status}${r.challenge ? `, ${r.challenge}` : ''}): ${parts.join(' · ') || 'nothing recognised'}${rest ? ` · +${rest} more` : ''}${changes}`;
 }
 
 function siteSection(r, level = '##') {
@@ -37,7 +44,12 @@ function siteSection(r, level = '##') {
   L.push(`- URL: ${r.url}${r.finalUrl && r.finalUrl !== r.url ? ` → ${r.finalUrl}` : ''} (HTTP ${r.status})`);
   if (r.redirects?.length) L.push(`- Redirects: ${r.redirects.map((h) => `${h.status} ${h.url}`).join(' → ')}`);
   if (r.title) L.push(`- Title: ${esc(r.title)}`);
-  L.push(`- Evidence: ${r.assetStats.scripts} scripts and ${r.assetStats.styles} stylesheets referenced, ${r.assetStats.fetched} same-site assets read${r.browser ? ', rendered in a headless browser' : ', raw HTML only (pass --browser for tags injected by JavaScript)'}`);
+  const how = r.autoBrowser ? `, rendered in a headless browser because ${r.autoBrowser}`
+    : r.browser ? ', rendered in a headless browser'
+      : r.browserHint ? `, raw HTML only, and ${r.browserHint}: install Playwright (npm i -g playwright && npx playwright install chromium) to let the script render it`
+        : ', raw HTML only (pass --browser for tags injected by JavaScript)';
+  L.push(`- Evidence: ${r.assetStats.scripts} scripts and ${r.assetStats.styles} stylesheets referenced, ${r.assetStats.fetched} same-site assets read${how}`);
+  if (r.pages?.length) L.push(`- Also read: ${r.pages.map((p) => `${p.url}${p.status >= 400 || p.challenge ? ` (${p.challenge || `HTTP ${p.status}`}, skipped)` : ''}`).join(', ')}`);
   L.push('');
   if (r.challenge) L.push(`> **Blocked:** the server answered with a ${r.challenge}, so only the protection layer (CDN, WAF) is visible below. This is not the site's stack.`, '');
   const detected = r.technologies.filter((t) => t.confidence === 'detected');
@@ -45,8 +57,25 @@ function siteSection(r, level = '##') {
   if (!detected.length) L.push('_No technology recognised with confidence._', '');
   else {
     L.push('| Category | Technology | Version / ID | Evidence |', '|---|---|---|---|');
-    for (const t of detected) L.push(`| ${t.categoryLabel} | ${esc(t.name)} | ${esc(t.version || (t.ids || []).join(', ') || '')} | ${esc(t.evidence.join('; '))} |`);
+    for (const t of detected) L.push(`| ${t.categoryLabel} | ${esc(t.name)}${t.pages ? ` <sub>(${esc(t.pages.join(', '))})</sub>` : ''} | ${esc(versionCell(t))} | ${esc(t.evidence.join('; '))} |`);
     L.push('');
+  }
+  const old = detected.filter((t) => t.behind && t.behind !== 'current');
+  if (old.length) {
+    L.push('Behind the latest release on npm (age only, not a vulnerability verdict):', '');
+    for (const t of old) L.push(`- ${esc(t.name)} ${t.version} → ${t.latest} (${t.behind} update available)`);
+    L.push('');
+  }
+  if (r.changes) {
+    const c = r.changes;
+    if (!changeCount(c)) L.push(`No change since the last run (${day(c.since)}).`, '');
+    else {
+      L.push(`Changes since the last run (${day(c.since)}):`, '');
+      for (const t of c.added) L.push(`- New: ${esc(label(t))}`);
+      for (const t of c.changed) L.push(`- Version: ${esc(t.name)} ${t.from} → ${t.to}`);
+      for (const t of c.removed) L.push(`- Not seen this time: ${esc(label(t))}${c.weaker.length ? ` (${c.weaker.join(' and ')}, which may be why)` : ''}`);
+      L.push('');
+    }
   }
   if (possible.length) {
     L.push('Possible (weak evidence only, verify before relying on it):', '');
@@ -62,7 +91,7 @@ export function markdown(results, { generatedAt = new Date().toISOString(), vers
   // Blocked sites only show their protection layer, so they stay out of the usage counts.
   const ok = results.filter((r) => !r.error && !r.challenge);
   L.push(results.length === 1 ? `# Tech stack: ${hostOf(results[0].finalUrl || results[0].url)}` : `# Tech stack: ${results.length} sites`, '');
-  L.push(`Generated ${generatedAt} by the \`check-tech-stack\` skill${version ? ` ${version}` : ''}. Detection is passive: one page per site plus the scripts and stylesheets it loads from its own domain. A missing technology is not proof it is absent.`, '');
+  L.push(`Generated ${generatedAt} by the \`check-tech-stack\` skill${version ? ` ${version}` : ''}. Detection is passive: one page per site (more with --pages) plus the scripts and stylesheets it loads from its own domain. A missing technology is not proof it is absent.`, '');
 
   if (results.length > 1) {
     L.push('## Comparison', '');

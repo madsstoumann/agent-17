@@ -4,7 +4,7 @@ description: Use when someone wants the full audit of a site and its code in one
 argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--yes] [--style serif|sans|editorial|modern] [--level error|warn|error,warn|all] [--console] [--out DIR]"
 allowed-tools: AskUserQuestion, Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.12.0"
+  version: "1.13.0"
 ---
 
 # Audit all
@@ -176,6 +176,7 @@ folder name.
 | audit-privacy | Follow audit-privacy's SKILL.md with `--out "<run>/audit-privacy"`, including the policy review it asks you to add to `report.md` | `report.md`, `report.json`, `banner.png`, `policy-*.txt` |
 | audit-infra | Follow audit-infra's SKILL.md with `--out "<run>/audit-infra"` | `report.md`, `report.json` |
 | audit-security | Follow audit-security's SKILL.md with `--out "<run>/audit-security-<repo>"`, including the triage and `report.md` it asks you to write. Semgrep runs automatically when installed | `findings.json`, `report.md` |
+| check-tech-stack | Whenever a site audit runs: `node "${CLAUDE_SKILL_DIR}/../check-tech-stack/scripts/check-tech-stack.mjs" <url> --out "<run>/check-tech-stack" --quiet`. It is not an audit and has no findings: `combine.mjs` puts a "Built with" line on the cover. If the skill is not installed next to this one, leave it out | `report.md`, `results.json` |
 | audit-solution-health | Follow audit-solution-health's SKILL.md in the repo, **without** `--dir` or `--out`: it keeps its manifest, state and report in its own folder (`<reports>/audit-solution-health/<repo>/`, or `.audit-solution-health/` with `--in-repo`), never in the run folder. Pass the repo to `combine.mjs --repo` and it copies the report in | `report.md` in its state folder |
 
 **With a level other than All,** pass the same `--level` to every sub-audit (audit-launch,
@@ -376,6 +377,7 @@ run" section.
 - `scripts/lib/markdown.mjs`: the small Markdown renderer (raw HTML in reports is escaped).
 - `scripts/lib/report.mjs`: finds reports, pulls headline numbers, builds the Markdown and HTML.
 - `scripts/lib/pdf.mjs`: finds a browser and prints to PDF.
+- `scripts/lib/stack.mjs`: the "Built with" line from check-tech-stack's `results.json`.
 - `scripts/lib/tasks.mjs`: checks `tasks.json`, orders agent tasks into rounds, writes `fix/`.
 - `scripts/lib/target-state.mjs`: target folders and run folders (kept in step with the copies in audit-launch and audit-security).
 - `scripts/lib/levels.mjs`: `--level` and the `--console` list, shared by every report-writing skill

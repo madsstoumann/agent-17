@@ -2,6 +2,18 @@
 
 All notable changes to the `check-tech-stack` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.1.0] - 2026-11-01
+
+### Added
+- Renders a page in the browser without `--browser` when its HTML shows little (an empty app shell, almost no text, or no CMS or framework recognised) and Playwright is installed; the report says why. `--no-browser` turns it off.
+- `--pages N` (max 10) also reads same-site pages the start page links to, other subdomains and sections first. Technologies found only there are marked with the page.
+- Changes since the last run: each host's result is kept in `<reports>/check-tech-stack/<host>/last.json`, and the report and summary line list what is new, what changed version and what was not seen (with a note when the last run looked further). `--no-history` skips it.
+- Library age: detected versions are compared with the latest release on npm ("latest 4.0.0, major update available"). `--offline` skips the lookup.
+- Signatures: Dynamicweb, Magnolia CMS, Umbraco Heartcore, Contentstack, Directus, Payload CMS, server-side Google Tag Manager, Cloudflare Zaraz, Sleeknote, Bloomreach Engagement and Discovery, Clerk.io, Hello Retail, Raptor, Vipps MobilePay, QuickPay, Frisbii (Reepay).
+
+### Changed
+- A single site's report goes to `<reports>/check-tech-stack/<host>/runs/<YYYYMMDD-HHMM>/`, next to its `last.json`, named after the host the site ended up on. Several sites still go to `batch-<n>-<YYYYMMDD-HHMM>/`.
+
 ## [2.0.0] - 2026-11-01
 
 ### Changed

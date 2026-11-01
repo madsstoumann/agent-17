@@ -127,6 +127,7 @@ export function detect(input) {
         categoryLabel: CATEGORIES[sig.cat],
         version,
         ...(ids.length ? { ids } : {}),
+        ...(sig.npm ? { npm: sig.npm } : {}),
         confidence: strong.length ? 'detected' : 'possible',
         evidence: shown.map((e) => `${e.detail}${e.weak ? ' (weak)' : ''}`),
       };
@@ -136,3 +137,29 @@ export function detect(input) {
 
 /** Every window path any signature asks about, for the browser pass. */
 export const GLOBAL_PATHS = [...new Set(SIGNATURES.flatMap((s) => s.globals || []))];
+
+const ORDER = Object.keys(CATEGORIES);
+const byCategory = (a, b) => ORDER.indexOf(a.category) - ORDER.indexOf(b.category) || a.name.localeCompare(b.name);
+
+/**
+ * Adds what other pages of the site showed to the start page's technologies. `extras` is
+ * [{ path, technologies }]. A technology the start page already has keeps its own entry (a
+ * "possible" one is replaced when another page shows it for sure); a new one is listed with
+ * `pages` and its evidence says where it was seen.
+ */
+export function mergePages(technologies, extras) {
+  const out = new Map(technologies.map((t) => [t.name, t]));
+  for (const { path, technologies: ts } of extras) {
+    for (const t of ts) {
+      const have = out.get(t.name);
+      if (have && !have.pages && !(have.confidence === 'possible' && t.confidence === 'detected')) continue;
+      if (have?.pages) {
+        if (!have.pages.includes(path)) have.pages.push(path);
+        if (have.confidence === 'possible' && t.confidence === 'detected') Object.assign(have, { confidence: 'detected', version: have.version || t.version, evidence: t.evidence.map((e) => `${e} (on ${path})`) });
+        continue;
+      }
+      out.set(t.name, { ...t, pages: [path], evidence: t.evidence.map((e) => `${e} (on ${path})`) });
+    }
+  }
+  return [...out.values()].sort(byCategory);
+}

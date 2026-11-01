@@ -7,7 +7,7 @@
  */
 import { challengeReason, pageUrls, sameSite, title } from './page.mjs';
 
-export const VERSION = '2.0.0';
+export const VERSION = '2.1.0';
 export const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const BASE_HEADERS = {
   'user-agent': UA,
@@ -66,16 +66,18 @@ export async function get(url, { timeout = 15000, maxBytes = 5_000_000, maxRedir
 
 /**
  * Everything the detector needs for one URL, without a browser.
- * Assets: same-site scripts first, then same-site stylesheets, up to maxAssets.
+ * Assets: same-site scripts first, then same-site stylesheets, up to maxAssets, leaving out
+ * the ones in `skip` (already read for another page of the same site) and adding the new ones to it.
  * Third-party scripts (tag managers, trackers) are not fetched: their URL is the
  * evidence, and their contents mention dozens of libraries the site does not use.
  */
-export async function collect(url, { timeout = 15000, maxAssets = 12, assetBytes = 2_000_000, log = () => {} } = {}) {
+export async function collect(url, { timeout = 15000, maxAssets = 12, assetBytes = 2_000_000, skip = new Set(), log = () => {} } = {}) {
   const page = await get(url, { timeout });
   const html = /html|xml/i.test(page.contentType) || /^\s*</.test(page.body) ? page.body : '';
   const { scripts, styles, other } = pageUrls(html, page.finalUrl);
-  const own = [...scripts, ...styles].filter((u) => sameSite(u, page.finalUrl));
+  const own = [...scripts, ...styles].filter((u) => sameSite(u, page.finalUrl) && !skip.has(u));
   const picked = own.slice(0, maxAssets);
+  for (const u of picked) skip.add(u);
   const assets = []; const errors = [];
   await Promise.all(picked.map(async (u) => {
     try {

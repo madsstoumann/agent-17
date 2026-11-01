@@ -259,7 +259,10 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 | Flag | What it does |
 |---|---|
 | `<url> …` / `--file PATH` | Sites to check, or a file with one URL per line. |
-| `--browser` | Also render each page in headless Chromium. |
+| `--browser` / `--no-browser` | Always render each page in headless Chromium / never (by default only a page whose HTML shows little, when Playwright is installed). |
+| `--pages N` | Also read up to N same-site pages linked from the start page (default 0, max 10). |
+| `--no-history` | Do not compare with the site's last run or save this one. |
+| `--offline` | Skip the npm lookup of each library's latest version. |
 | `--assets N` | Same-site scripts and stylesheets read per site (default 12). |
 | `--jobs N` / `--timeout MS` | Sites in parallel (4), per request (15000). |
 | `--out DIR` / `--insecure` / `--json` / `--quiet` | As for the other skills. |

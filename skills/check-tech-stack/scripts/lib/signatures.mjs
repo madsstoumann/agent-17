@@ -82,6 +82,11 @@ export const SIGNATURES = [
       /\/media\/[a-z0-9]{8}\/[^"'\s?]+\?(?:[^"'\s]*?&(?:amp;)?)?(?:rxy|cc)=[\d.]+,/i,
       weak(/\/media\/[a-z0-9]{8}\/[^"'\s]+\.(?:jpe?g|png|webp|svg|pdf)/i)] },
   { name: 'Umbraco Engage', cat: 'analytics', implies: ['Umbraco'], html: [/umbracoEngage\.analytics/], urls: [/\/(?:umbraco|App_Plugins)\/(?:Engage|UmbracoEngage)\//i] },
+  { name: 'Dynamicweb', cat: 'cms', implies: ['Microsoft ASP.NET'],
+    meta: { generator: /Dynamicweb ?(\d[\w.-]*)?/i },
+    cookies: [/^Dynamicweb$/i],
+    html: [/\/Admin\/Public\/GetImage\.ashx/i, /\/Files\/Templates\/Designs\//i, weak(/\/Files\/(?:Images|Files)\//)] },
+  { name: 'Magnolia CMS', cat: 'cms', implies: ['Java'], html: [/\/dam\/jcr:[0-9a-f]{8}-[0-9a-f-]{27}\//i, weak(/\/\.resources\//)] },
   { name: 'Sitecore', cat: 'cms', implies: ['Microsoft ASP.NET'],
     cookies: [/^SC_ANALYTICS_GLOBAL_COOKIE$/, /^sxa_site$/],
     html: [/__JSS_STATE__/, /\/-\/(?:jss)?media\//i, /\/sitecore\/(?:shell|api)\//i, /"sitecore"\s*:/i],
@@ -133,6 +138,10 @@ export const SIGNATURES = [
   { name: 'DatoCMS', cat: 'headless-cms', urls: [/www\.datocms-assets\.com/i], html: [/www\.datocms-assets\.com/i] },
   { name: 'Hygraph', cat: 'headless-cms', urls: [/media\.graph(?:assets|cms)\.com/i], html: [/media\.graph(?:assets|cms)\.com/i] },
   { name: 'Strapi', cat: 'headless-cms', headers: { 'x-powered-by': /Strapi/i }, html: [/\/uploads\/[\w-]+_[0-9a-f]{10}\.(?:jpe?g|png|webp)/i] },
+  { name: 'Umbraco Heartcore', cat: 'headless-cms', urls: [/media\.umbraco\.io\//i, /cdn\.umbraco\.io\//i], html: [/media\.umbraco\.io\//i] },
+  { name: 'Contentstack', cat: 'headless-cms', urls: [/(?:[a-z]+-)?(?:images|assets)\.contentstack\.(?:io|com)/i], html: [/(?:[a-z]+-)?(?:images|assets)\.contentstack\.(?:io|com)/i] },
+  { name: 'Directus', cat: 'headless-cms', headers: { 'x-powered-by': /^Directus/i }, html: [weak(/\/assets\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:[?"'])/i)] },
+  { name: 'Payload CMS', cat: 'headless-cms', headers: { 'x-powered-by': /Payload/i }, html: [weak(/\/api\/media\/file\//)] },
 
   // ---------------------------------------------------------------- e-commerce
   { name: 'Shopify', cat: 'ecommerce',
@@ -337,6 +346,11 @@ export const SIGNATURES = [
   { name: 'Tealium iQ', cat: 'tag-manager', urls: [/tags\.tiqcdn\.com/i, /\/utag(?:\.sync)?\.js/i], globals: ['utag'] },
   { name: 'Matomo Tag Manager', cat: 'tag-manager', urls: [weak(/\/js\/container_[A-Za-z0-9]{8}\.js/)] },
   { name: 'Segment', cat: 'tag-manager', urls: [/cdn\.segment\.(?:com|io)/i], globals: ['analytics.Integrations'] },
+  { name: 'Server-side Google Tag Manager', ids: true, cat: 'tag-manager',
+    // gtm.js or gtag.js served from the site's own (first-party) host instead of googletagmanager.com.
+    urls: [/^https?:\/\/(?!www\.googletagmanager\.com)[^/]+\/(?:gtm\.js\?id=(GTM-[A-Z0-9]+)|gtag\/js\?id=(?:G|AW)-)/i],
+    html: [/['"]https:\/\/(?!www\.googletagmanager\.com)[\w.-]+\/gtm\.js\?id=['"]/] },
+  { name: 'Cloudflare Zaraz', cat: 'tag-manager', implies: ['Cloudflare'], urls: [/\/cdn-cgi\/zaraz\//i], html: [/\/cdn-cgi\/zaraz\//i], globals: ['zaraz'] },
 
   // ---------------------------------------------------------------- analytics
   { name: 'Google Analytics 4', ids: true, cat: 'analytics', urls: [/googletagmanager\.com\/gtag\/js\?id=(G-[A-Z0-9]+)/i, /google-analytics\.com\/g\/collect/i, /analytics\.google\.com\/g\/collect/i], html: [/gtag\(\s*['"]config['"]\s*,\s*['"](G-[A-Z0-9]+)/], cookies: [/^_ga_[A-Z0-9]+$/] },
@@ -379,6 +393,12 @@ export const SIGNATURES = [
   { name: 'Salesforce Marketing Cloud / Pardot', cat: 'marketing', urls: [/pi\.pardot\.com/i, /\.exacttarget\.com/i, /cdn\.evgnet\.com/i] },
   { name: 'Marketo', cat: 'marketing', urls: [/munchkin\.marketo\.net/i, /\.mktoweb\.com/i], globals: ['Munchkin'] },
   { name: 'Klaviyo', cat: 'marketing', urls: [/static\.klaviyo\.com/i], globals: ['klaviyo'] },
+  { name: 'Sleeknote', cat: 'marketing', urls: [/sleeknote(?:customerscripts)?\.com/i] },
+  { name: 'Bloomreach Engagement', cat: 'marketing', urls: [/api(?:-cdn)?\.exponea\.com/i], globals: ['exponea'] },
+  { name: 'Clerk.io', cat: 'search', urls: [/(?:custom|cdn|api)\.clerk\.io/i] },
+  { name: 'Hello Retail', cat: 'search', urls: [/helloretail(?:cdn)?\.com/i] },
+  { name: 'Raptor', cat: 'search', urls: [/raptor-\d[\d.]*(?:\.min)?\.js/i, /raptor(?:static|smartadvisor)\.com/i] },
+  { name: 'Bloomreach Discovery', cat: 'search', urls: [/core\.dxpapi\.com/i] },
   { name: 'Mailchimp', cat: 'marketing', urls: [/chimpstatic\.com/i, /list-manage\.com/i] },
   { name: 'Criteo', cat: 'marketing', urls: [/static\.criteo\.net/i, /dynamic\.criteo\.com/i] },
   { name: 'Taboola', cat: 'marketing', urls: [/cdn\.taboola\.com/i] },
@@ -466,6 +486,9 @@ export const SIGNATURES = [
   { name: 'PayPal', cat: 'payments', urls: [/www\.paypal(?:objects)?\.com\/(?:sdk\/js|api\/checkout)/i] },
   { name: 'Klarna', cat: 'payments', urls: [/x\.klarnacdn\.net/i, /js\.klarna\.com/i] },
   { name: 'Nets Easy', cat: 'payments', urls: [/checkout\.dibspayment\.eu/i] },
+  { name: 'Vipps MobilePay', cat: 'payments', urls: [/(?:checkout|api)\.vipps\.no/i, /mobilepay\.(?:dk|fi)\/(?:checkout|online)/i, /vippsmobilepay\.com/i] },
+  { name: 'QuickPay', cat: 'payments', urls: [/(?:payment|api)\.quickpay\.net/i] },
+  { name: 'Frisbii (Reepay)', cat: 'payments', urls: [/(?:checkout|api)\.reepay\.com/i, /\.frisbii\.com/i] },
 
   // ---------------------------------------------------------------- misc
   { name: 'PWA (web app manifest)', cat: 'misc', html: [/<link[^>]+rel=["']manifest["']/i] },
