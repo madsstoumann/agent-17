@@ -1,35 +1,35 @@
 ---
 name: audit-all
-description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, accessibility, SEO and AI search (GEO), sustainability (carbon footprint), privacy and consent, domain and mail infrastructure, code security and dependency health. Runs launch-audit, a11y-audit (WCAG 2.2 / EN 301 549), seo-audit, eco-audit, privacy-audit and infra-audit on the live URL, security-audit and solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing launch-audit, a11y-audit, seo-audit, eco-audit, privacy-audit, infra-audit, security-audit or solution-health reports into one.
+description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, accessibility, SEO and AI search (GEO), sustainability (carbon footprint), privacy and consent, domain and mail infrastructure, code security and dependency health. Runs audit-launch, audit-a11y (WCAG 2.2 / EN 301 549), audit-seo, audit-eco, audit-privacy and audit-infra on the live URL, audit-security and solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security or solution-health reports into one.
 argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--yes] [--style serif|sans|editorial|modern] [--level error|warn|error,warn|all] [--console] [--out DIR]"
 allowed-tools: AskUserQuestion, Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.9.0"
+  version: "1.10.0"
 ---
 
 # Audit all
 
 One run folder, up to eight audits, one report. This skill does not check anything itself: it runs the
-sibling skills (launch-audit, a11y-audit, seo-audit, eco-audit, privacy-audit, infra-audit, security-audit, solution-health), each writing its own `report.md`
+sibling skills (audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security, solution-health), each writing its own `report.md`
 as usual, then you write a short `summary.md` and `scripts/combine.mjs` merges everything into a
 combined `report.md`, a self-contained `report.html` and a typeset `report.pdf`. You also write
 `tasks.json`, and `combine.mjs` turns it into a fix plan: `fix/TODO.md` and one prompt per task in
 `fix/tasks/`, ready for the audit-fix skill or for pasting into any session.
 
 `${CLAUDE_SKILL_DIR}` is this skill's folder. The sibling skills sit next to it when installed as
-the `skills` plugin (`${CLAUDE_SKILL_DIR}/../launch-audit/` and so on). If they are installed some
-other way, invoke them by name instead (`skills:launch-audit` in the plugin, `launch-audit` on its own).
+the `skills` plugin (`${CLAUDE_SKILL_DIR}/../audit-launch/` and so on). If they are installed some
+other way, invoke them by name instead (`skills:audit-launch` in the plugin, `audit-launch` on its own).
 
 ## 1. Work out the targets
 
-- **Site URL** for launch-audit, a11y-audit, seo-audit, eco-audit, privacy-audit and infra-audit.
+- **Site URL** for audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy and audit-infra.
   `--url URL` or a URL in the request wins. Otherwise look in each repo for the live URL:
   `package.json` `homepage`, a `CNAME` file, the site URL in `nuxt.config.*`, `next.config.*`,
   `astro.config.*` or `.env.production`, Umbraco `appsettings.Production.json`, then the README.
   The candidates you find are the defaults for the URL question in step 1a; confirm once, never
   more. `--no-site` (or "no site", "just the code") skips the site audits. Staging URLs are fine;
-  launch-audit works out the environment.
-- **Repos** for security-audit and solution-health. Default: the current directory when it is a
+  audit-launch works out the environment.
+- **Repos** for audit-security and solution-health. Default: the current directory when it is a
   repo root (has `.git`). The user can name several ("audit-all ~/code/shop-web ~/code/shop-api
   https://shop.example.dk"); each gets its own run of both.
 - **Audits.** Eight, by the names the user sees (flag name in brackets): Accessibility (`a11y`),
@@ -116,7 +116,7 @@ Launch, Privacy, Security") and mark those "(Recommended)" in the pickers instea
 
 Read the answers literally: what is ticked runs, what is not is skipped. If every audit ends up
 unticked, say so and stop. Repeat the final list in one line ("Running Infrastructure, Launch,
-Privacy, Security and Solution health on glyptoteket.dk") and carry on without asking again; later steps (solution-health's manifest, security-audit's triage)
+Privacy, Security and Solution health on glyptoteket.dk") and carry on without asking again; later steps (solution-health's manifest, audit-security's triage)
 may still ask their own questions.
 
 **Flags answer the questions,** so scripted runs and audit-fix never stop to ask. Only what is
@@ -154,7 +154,7 @@ the same for every audit skill, first match wins:
 Do not put the run folder inside a repo unless asked: security reports can describe live secrets.
 
 **What carries over is never in a run folder.** Each skill keeps it in its own target folder, named
-after the site host or repo folder: `<reports>/launch-audit/<host>/`, `<reports>/security-audit/<repo>/`,
+after the site host or repo folder: `<reports>/audit-launch/<host>/`, `<reports>/audit-security/<repo>/`,
 `<reports>/solution-health/<repo>/` and `<reports>/audit-all/<name>/`. That is where the manifests,
 triage verdicts, baselines and `notes.md` live, and each skill finds its own there whatever run
 folder the output goes to. Run folders are marked with an `.audit-run` file and are disposable.
@@ -162,34 +162,34 @@ folder the output goes to. Run folders are marked with an `.audit-run` file and 
 ## 3. Run the audits
 
 Run them one after another, each into its own sub-folder of the run folder. Folder names matter:
-`combine.mjs` finds reports by the prefix `launch-audit`, `a11y-audit`, `seo-audit`, `eco-audit`, `privacy-audit`, `infra-audit`,
-`security-audit` or `solution-health`,
+`combine.mjs` finds reports by the prefix `audit-launch`, `audit-a11y`, `audit-seo`, `audit-eco`, `audit-privacy`, `audit-infra`,
+`audit-security` or `solution-health`,
 optionally followed by `-<target>`. With one repo, plain names are fine; with several, add the repo
 folder name.
 
 | Audit | How | Writes |
 |---|---|---|
-| launch-audit | Follow launch-audit's SKILL.md with `--out "<run>/launch-audit"` (one folder per URL: `launch-audit-<host>`). Add `--skip privacy` when privacy-audit runs and `--skip tls` when infra-audit runs: those two own the cookie/tracker and TLS/DNS/email checks, so each finding appears once | `report.md`, `report.json` |
-| a11y-audit | Follow a11y-audit's SKILL.md with `--out "<run>/a11y-audit"` (one folder per URL: `a11y-audit-<host>`). Run it after launch-audit and pass `--from "<run>/launch-audit/report.json"` so it samples the pages the crawl found; pass `--repo <name>` when one of the repos renders the site | `report.md`, `report.json`, `tasks.json` |
-| seo-audit | Follow seo-audit's SKILL.md with `--out "<run>/seo-audit"` (pass `--production-host` and `--header` as for launch-audit) | `report.md`, `findings.json`, `pages.csv` |
-| eco-audit | Follow eco-audit's SKILL.md with `--out "<run>/eco-audit"`. Add `--grid` and `--views` only when the user gives a country or traffic | `report.md`, `findings.json` |
-| privacy-audit | Follow privacy-audit's SKILL.md with `--out "<run>/privacy-audit"`, including the policy review it asks you to add to `report.md` | `report.md`, `report.json`, `banner.png`, `policy-*.txt` |
-| infra-audit | Follow infra-audit's SKILL.md with `--out "<run>/infra-audit"` | `report.md`, `report.json` |
-| security-audit | Follow security-audit's SKILL.md with `--out "<run>/security-audit-<repo>"`, including the triage and `report.md` it asks you to write. Semgrep runs automatically when installed | `findings.json`, `report.md` |
+| audit-launch | Follow audit-launch's SKILL.md with `--out "<run>/audit-launch"` (one folder per URL: `audit-launch-<host>`). Add `--skip privacy` when audit-privacy runs and `--skip tls` when audit-infra runs: those two own the cookie/tracker and TLS/DNS/email checks, so each finding appears once | `report.md`, `report.json` |
+| audit-a11y | Follow audit-a11y's SKILL.md with `--out "<run>/audit-a11y"` (one folder per URL: `audit-a11y-<host>`). Run it after audit-launch and pass `--from "<run>/audit-launch/report.json"` so it samples the pages the crawl found; pass `--repo <name>` when one of the repos renders the site | `report.md`, `report.json`, `tasks.json` |
+| audit-seo | Follow audit-seo's SKILL.md with `--out "<run>/audit-seo"` (pass `--production-host` and `--header` as for audit-launch) | `report.md`, `findings.json`, `pages.csv` |
+| audit-eco | Follow audit-eco's SKILL.md with `--out "<run>/audit-eco"`. Add `--grid` and `--views` only when the user gives a country or traffic | `report.md`, `findings.json` |
+| audit-privacy | Follow audit-privacy's SKILL.md with `--out "<run>/audit-privacy"`, including the policy review it asks you to add to `report.md` | `report.md`, `report.json`, `banner.png`, `policy-*.txt` |
+| audit-infra | Follow audit-infra's SKILL.md with `--out "<run>/audit-infra"` | `report.md`, `report.json` |
+| audit-security | Follow audit-security's SKILL.md with `--out "<run>/audit-security-<repo>"`, including the triage and `report.md` it asks you to write. Semgrep runs automatically when installed | `findings.json`, `report.md` |
 | solution-health | Follow solution-health's SKILL.md in the repo, **without** `--dir` or `--out`: it keeps its manifest, state and report in its own folder (`<reports>/solution-health/<repo>/`, or `.solution-health/` with `--in-repo`), never in the run folder. Pass the repo to `combine.mjs --repo` and it copies the report in | `report.md` in its state folder |
 
-**With a level other than All,** pass the same `--level` to every sub-audit (launch-audit,
-a11y-audit, seo-audit, eco-audit, privacy-audit, infra-audit, security-audit's scan, and
-solution-health's `finalize.mjs`), and write security-audit's `report.md` and privacy-audit's
+**With a level other than All,** pass the same `--level` to every sub-audit (audit-launch,
+audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security's scan, and
+solution-health's `finalize.mjs`), and write audit-security's `report.md` and audit-privacy's
 policy review at that level too. Their `report.md` is what the combined report quotes, and their
 JSON and baselines stay complete whatever the level. Never pass `--console` to a sub-audit: the
 combined list comes from `combine.mjs`.
 
-launch-audit and security-audit compare with their last run of the same host or repo automatically,
-from their own target folders, and security-audit reuses its earlier triage verdicts: only new hits
+audit-launch and audit-security compare with their last run of the same host or repo automatically,
+from their own target folders, and audit-security reuses its earlier triage verdicts: only new hits
 need triage. Do not pass `--baseline` unless the user wants a specific run compared.
 
-Each skill's own rules still apply (report only, no fixes, launch-audit only on sites the user owns
+Each skill's own rules still apply (report only, no fixes, audit-launch only on sites the user owns
 or works on). Keep each skill's chat summary to a few lines: the combined report is the deliverable.
 If an audit cannot run (no Node 22 for Lighthouse, no network, no solution-health manifest
 yet and the user does not want to set one up), say so in the summary and carry on with the rest.
@@ -226,11 +226,11 @@ In order. Duplicates across the audits are merged.
 - **Fix first**: 3 to 7 items, most urgent first, across all audits. The trailing `[status · source]`
   sets the coloured mark: Blocker/Fail/High/Red, Warn/Medium/Amber, or Low/Info. Source is Launch,
   A11y, SEO, Eco, Privacy, Infra, Security or Health, comma-separated when several audits found the same thing.
-- **Merge duplicates.** The same problem often shows up twice: an exposed `.env` (launch-audit) and a
-  committed `.env` (security-audit), a weak CSP in headers and in `nuxt.config`, a vulnerable package
-  in both security-audit and solution-health, missing alt text or low contrast in both launch-audit's
-  Lighthouse section and a11y-audit, a canonical on the staging host (launch-audit on the start page,
-  seo-audit site-wide), uncompressed or uncached files (launch-audit and eco-audit). One item, both sources.
+- **Merge duplicates.** The same problem often shows up twice: an exposed `.env` (audit-launch) and a
+  committed `.env` (audit-security), a weak CSP in headers and in `nuxt.config`, a vulnerable package
+  in both audit-security and solution-health, missing alt text or low contrast in both audit-launch's
+  Lighthouse section and audit-a11y, a canonical on the staging host (audit-launch on the start page,
+  audit-seo site-wide), uncompressed or uncached files (audit-launch and audit-eco). One item, both sources.
 - **With a level**, "Fix first" lists only items at that level (errors are Blocker/Fail/High/Red,
   warnings Warn/Medium/Amber/Low). The verdict still weighs everything the audits found, and says
   in a few words that the report shows only errors (or warnings).
@@ -251,7 +251,7 @@ In order. Duplicates across the audits are merged.
 
 solution-health already writes its red and amber findings in this shape, and `combine.mjs --repo`
 copies them to `solution-health-<repo>/tasks.json` (ids `H1`, `H2`, …). Start from those: renumber
-them, merge each with the same fix from the other audits (a vulnerable package security-audit also
+them, merge each with the same fix from the other audits (a vulnerable package audit-security also
 found), and keep their owner, model and files unless you know better.
 
 ```json
@@ -272,7 +272,7 @@ found), and keep their owner, model and files unless you know better.
       "evidence": "config/payments.js:4 assigns the live key as a string literal.",
       "fix": "Use process.env.STRIPE_SECRET_KEY and fail fast when it is missing; add it to .env.example.",
       "verify": "No sk_live_ string in the working tree; the app starts with the variable set.",
-      "refs": ["security-audit-shop-web/report.md"]
+      "refs": ["audit-security-shop-web/report.md"]
     }
   ]
 }
@@ -282,29 +282,29 @@ found), and keep their owner, model and files unless you know better.
 |---|---|
 | `id` | `T1`, `T2`, … Stable within the run; `dependsOn` refers to these. When the previous run's `tasks.json` has the same problem, reuse its id and title so the two plans can be compared. |
 | `severity` | `blocker`, `high`, `medium` or `low`, the same call as in the reports. |
-| `owner` | `agent`, or `human` for anything an agent must not or cannot do: rotating secrets, DNS, CDN or hosting settings outside the repo, purging git history, product or legal calls. A security-audit rule with `owner: "human"` (platform credential files such as Umbraco Cloud's `umbraco-cloud.json`) is always a `human` task and never gets an agent task beside it: removing the file breaks the platform's deploys. While the repo is private it is a `low` review task ("Confirm umbraco-cloud.json is accepted risk": keep the repo private, review who has access, record the acceptance); only a public repo makes it a `blocker` (rotate in the Umbraco Cloud portal). Leave it out when its triage verdict is `accepted`. |
+| `owner` | `agent`, or `human` for anything an agent must not or cannot do: rotating secrets, DNS, CDN or hosting settings outside the repo, purging git history, product or legal calls. A audit-security rule with `owner: "human"` (platform credential files such as Umbraco Cloud's `umbraco-cloud.json`) is always a `human` task and never gets an agent task beside it: removing the file breaks the platform's deploys. While the repo is private it is a `low` review task ("Confirm umbraco-cloud.json is accepted risk": keep the repo private, review who has access, record the acceptance); only a public repo makes it a `blocker` (rotate in the Umbraco Cloud portal). Leave it out when its triage verdict is `accepted`. |
 | `model` | For agent tasks, the cheapest tier that will do it well: `haiku` for mechanical, local edits (a header in a config file, a meta tag, alt text, a patch bump with no code changes); `sonnet` for ordinary code changes, multi-file edits and minor upgrades; `opus` for security fixes that need data-flow reasoning (injection, XSS, auth, SSRF), and for big jobs (a framework major or EOL runtime upgrade, replacing a closing API). `fable` only when the user asks for it. Left out, security and blocker tasks get `opus`, the rest `sonnet`. |
 | `repo` | A key of `repos` (absolute path). Required for agent tasks. |
 | `files` | Paths relative to the repo. Tasks in one repo that share a file, or that list no files, never run at the same time, so list them when you know them. |
 | `evidence`, `fix` | From the reports: what is wrong where, and the fix. Quote code as code; never paste a secret, redact it. |
-| `verify` | How to prove it is fixed: a command, a test to add, or the launch-audit check that should pass on the next run. |
-| `sources` | `launch`, `a11y`, `seo`, `eco`, `privacy`, `infra`, `security`, `health`. `refs` (optional) points at the sub-report. seo-audit and eco-audit write a `findings.json` in this shape (severity, evidence, fix, verify, affected URLs): start from it, merge duplicates, and decide owner, repo and files. |
+| `verify` | How to prove it is fixed: a command, a test to add, or the audit-launch check that should pass on the next run. |
+| `sources` | `launch`, `a11y`, `seo`, `eco`, `privacy`, `infra`, `security`, `health`. `refs` (optional) points at the sub-report. audit-seo and audit-eco write a `findings.json` in this shape (severity, evidence, fix, verify, affected URLs): start from it, merge duplicates, and decide owner, repo and files. |
 
-privacy-audit and infra-audit put ready-made task candidates in their `report.json` (`tasks`):
+audit-privacy and audit-infra put ready-made task candidates in their `report.json` (`tasks`):
 copy them in, renumbered, and merge duplicates. Infra tasks are nearly always `owner: "human"` (DNS,
 registrar, mail provider). Privacy tasks become agent tasks when the repo holds the consent setup
 (GTM snippet, CMP config, a hard-coded pixel or font link in a template).
 
-Launch-audit findings are often fixed outside the code (CDN headers, DNS, redirects at the host).
+Launch audit findings are often fixed outside the code (CDN headers, DNS, redirects at the host).
 Make them agent tasks only when the repo holds the setting (`nuxt.config`, `web.config`,
 `next.config`, `vercel.json`, `staticwebapp.config.json`, middleware); otherwise `owner: "human"`.
-The same goes for seo-audit and eco-audit: titles, canonicals, image formats and lazy loading are
+The same goes for audit-seo and audit-eco: titles, canonicals, image formats and lazy loading are
 usually templates or components in the repo, while sitemap plugins, image CDN settings and
 content (descriptions, alt text, a hero video) are often CMS work for a person. Green hosting is
 always `owner: "human"`.
 
-a11y-audit writes a draft in the same shape, `<run>/a11y-audit/tasks.json` (ids `A1`, `A2`, …,
-`sources: ["a11y"]`). Copy its tasks in with new `T` ids, merging any that duplicate a launch-audit
+audit-a11y writes a draft in the same shape, `<run>/audit-a11y/tasks.json` (ids `A1`, `A2`, …,
+`sources: ["a11y"]`). Copy its tasks in with new `T` ids, merging any that duplicate a audit-launch
 item. They are agent tasks when the repo holds the templates or components (set `repo`, and `files`
 once you have found the component); content fixes made in a CMS (alt text on uploaded images, link
 text in articles) are `owner: "human"`.
@@ -366,7 +366,7 @@ To change only the fix plan's level, run it again with another `--level`. The su
 "Run it again after the fixes": create a new run folder with the same name and repeat. The
 questions in step 1a recommend the audits that ran last time; "same as last time" or `--yes`
 with the same `--only` skips them. Every audit
-compares with its last run by itself (launch-audit and security-audit from their target folders,
+compares with its last run by itself (audit-launch and audit-security from their target folders,
 solution-health from its state), and `--new` names the previous audit-all run for the "Since last
 run" section.
 
@@ -377,7 +377,7 @@ run" section.
 - `scripts/lib/report.mjs`: finds reports, pulls headline numbers, builds the Markdown and HTML.
 - `scripts/lib/pdf.mjs`: finds a browser and prints to PDF.
 - `scripts/lib/tasks.mjs`: checks `tasks.json`, orders agent tasks into rounds, writes `fix/`.
-- `scripts/lib/target-state.mjs`: target folders and run folders (kept in step with the copies in launch-audit and security-audit).
+- `scripts/lib/target-state.mjs`: target folders and run folders (kept in step with the copies in audit-launch and audit-security).
 - `scripts/lib/levels.mjs`: `--level` and the `--console` list, shared by every report-writing skill
   (identical copies; `scripts/test/levels.test.mjs` checks them).
 - `assets/report.css`: the A4 layout for both styles. `assets/fonts/`: Newsreader and IBM Plex

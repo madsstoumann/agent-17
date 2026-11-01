@@ -1,10 +1,10 @@
 ---
 name: tech-stack
-description: Use when someone asks what a website is built with or runs on — its CMS, framework, JavaScript libraries and versions, hosting, CDN, web server, analytics, tag manager, trackers, consent tool or other third-party services ("what's this site made with", "is it WordPress or Umbraco", "Wappalyzer this", "which analytics does X use", "compare the stacks of these competitors"). One URL or a list of URLs; reports evidence for every finding. Not for pre-launch audits (launch-audit) or security reviews (security-audit).
+description: Use when someone asks what a website is built with or runs on — its CMS, framework, JavaScript libraries and versions, hosting, CDN, web server, analytics, tag manager, trackers, consent tool or other third-party services ("what's this site made with", "is it WordPress or Umbraco", "Wappalyzer this", "which analytics does X use", "compare the stacks of these competitors"). One URL or a list of URLs; reports evidence for every finding. Not for pre-launch audits (audit-launch) or security reviews (audit-security).
 argument-hint: "<url> [<url> …] [--file urls.txt] [--browser] [--out DIR] [--json]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # Tech stack
@@ -70,7 +70,7 @@ Wording rules that keep it honest:
   through other routes); suggest the user runs it from a network the site allows, or asks the
   site's owner.
 - Versions come from the evidence shown. Do not guess a version, and do not call a version
-  vulnerable or out of support from memory: that is the `security-audit` skill (site mode) or a
+  vulnerable or out of support from memory: that is the `audit-security` skill (site mode) or a
   lookup the user can ask for.
 - IDs (GTM container, GA4 measurement ID, Meta Pixel ID) are public by nature, but list them
   only when they help answer the question.
@@ -78,9 +78,9 @@ Wording rules that keep it honest:
 ## Not this skill
 
 - Missing security headers, robots/sitemap, meta tags, cookies before consent, broken links:
-  `launch-audit`. The old `analyze-sites` script mixed those checks in; this skill only answers
+  `audit-launch`. The old `analyze-sites` script mixed those checks in; this skill only answers
   "what is it built with".
-- Vulnerable front-end library versions and leaked secrets: `security-audit`.
+- Vulnerable front-end library versions and leaked secrets: `audit-security`.
 - Whether a site is a scam: `is-website-safe`.
 
 ## Adding a technology
@@ -112,6 +112,6 @@ SPA that shows little → `--browser`; "save it in …" → `--out`.
 - `scripts/lib/detect.mjs`: matching, versions, implied technologies, confidence.
 - `scripts/lib/fetch.mjs`, `page.mjs`, `browser.mjs`, `report.mjs`: fetching, HTML parsing,
   the browser pass and the report.
-- `scripts/lib/out-dir.mjs`: the default report folder, shared logic with launch-audit,
-  security-audit and audit-all.
+- `scripts/lib/out-dir.mjs`: the default report folder, shared logic with audit-launch,
+  audit-security and audit-all.
 - `scripts/test/*.test.mjs`: `cd scripts && node --test test/*.test.mjs`.

@@ -4,33 +4,34 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseBlocks, renderBlocks, inline, joinLines, escapeHtml, plain } from './markdown.mjs';
 import { compactReport } from './compact.mjs';
+import { renameLegacy } from './target-state.mjs';
 
 export const KINDS = {
-  'launch-audit': {
+  'audit-launch': {
     title: 'Launch audit',
     standfirst: 'The site checked the way a launch reviewer would: PageSpeed, headers, TLS, crawlability and every page the crawler could reach.',
   },
-  'a11y-audit': {
+  'audit-a11y': {
     title: 'Accessibility audit',
     standfirst: 'A sample of pages checked against WCAG 2.2 AA and EN 301 549 with axe-core and HTML_CodeSniffer, a keyboard-only walk, and reflow at 320 px.',
   },
-  'seo-audit': {
+  'audit-seo': {
     title: 'SEO / GEO audit',
     standfirst: 'The whole site crawled the way a search engine sees it: indexing, sitemap and robots.txt, links and redirects, titles, canonical and hreflang, share previews and structured data.',
   },
-  'eco-audit': {
+  'audit-eco': {
     title: 'Sustainability audit',
     standfirst: 'Real page loads weighed byte by byte and turned into CO2e per page view with the Sustainable Web Design model, plus a green hosting check.',
   },
-  'privacy-audit': {
+  'audit-privacy': {
     title: 'Privacy audit',
     standfirst: 'Three new visitors in a real browser: one makes no choice, one rejects, one accepts. Every cookie, tracker and third country they reach, the consent banner itself, and the privacy policy.',
   },
-  'infra-audit': {
+  'audit-infra': {
     title: 'Infrastructure audit',
     standfirst: 'Everything below the page: domain registration, DNS and DNSSEC, mail authentication, the certificate on every address, the edge, and every subdomain in Certificate Transparency logs.',
   },
-  'security-audit': {
+  'audit-security': {
     title: 'Security audit',
     standfirst: 'The repository and its git history, scanned for secrets, injection, unsafe request handling and vulnerable dependencies, then triaged by hand.',
   },
@@ -41,16 +42,17 @@ export const KINDS = {
 };
 const ORDER = Object.keys(KINDS);
 
-/** Sub-folders named `<kind>` or `<kind>-<target>` that hold a report.md, in kind order then name order. */
+/** Sub-folders named `<kind>` or `<kind>-<target>` (or the old skill name, e.g. launch-audit/) that hold a report.md, in kind order then name order. */
 export function discoverReports(runDir) {
   const found = [];
   for (const name of fs.readdirSync(runDir).sort()) {
     const dir = path.join(runDir, name);
     const file = path.join(dir, 'report.md');
     if (!fs.statSync(dir).isDirectory() || !fs.existsSync(file)) continue;
-    const kind = ORDER.find((k) => name === k || name.startsWith(`${k}-`));
+    const known = renameLegacy(name); // launch-audit/, security-audit-<repo>/ in runs from before the rename
+    const kind = ORDER.find((k) => known === k || known.startsWith(`${k}-`));
     if (!kind) continue;
-    const target = name === kind ? null : name.slice(kind.length + 1);
+    const target = known === kind ? null : known.slice(kind.length + 1);
     found.push({ kind, target, folder: name, file, md: fs.readFileSync(file, 'utf8') });
   }
   return found.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind) || a.folder.localeCompare(b.folder));
@@ -87,14 +89,14 @@ export function headline(report) {
   const titleTarget = title && plain(title).split(/\s+[—–:-]\s+|:\s+/).slice(1).join(' ').trim();
   const h = { kind, target: report.target || titleTarget || null };
 
-  if (kind === 'launch-audit' || kind === 'privacy-audit' || kind === 'infra-audit') {
+  if (kind === 'audit-launch' || kind === 'audit-privacy' || kind === 'audit-infra') {
     const line = md.match(/\*\*Result:\*\*\s*(.+)/);
     h.counts = line ? countsIn(line[1], ['pass', 'warn', 'fail', 'info', 'skipped']) : {};
     h.figures = [[h.counts.fail, 'fail'], [h.counts.warn, 'warn']];
     h.result = line ? plain(line[1]) : null;
     const site = md.match(/\*\*Site:\*\*\s*(\S+)/);
     h.what = h.counts.pass !== undefined ? `${h.counts.pass} checks passed${site ? ` on ${plain(site[1])}` : ''}.` : null;
-  } else if (kind === 'a11y-audit') {
+  } else if (kind === 'audit-a11y') {
     const line = md.match(/\*\*Result:\*\*\s*(.+)/);
     const text = line ? line[1] : '';
     const n = (re) => { const m = text.match(re); return m ? Number(m[1]) : undefined; };
@@ -103,7 +105,7 @@ export function headline(report) {
     h.result = line ? plain(line[1]) : null;
     const verdict = md.match(/\*\*Verdict:\*\*\s*(.+)/);
     h.what = verdict ? plain(verdict[1]) : null;
-  } else if (kind === 'security-audit') {
+  } else if (kind === 'audit-security') {
     const verdict = md.match(/\*\*Verdict:\*\*\s*(.+)/);
     const blockers = section(/^blockers?$/i);
     const findings = section(/^findings$/i);
@@ -114,11 +116,11 @@ export function headline(report) {
     h.figures = [[nBlockers, nBlockers === 1 ? 'blocker' : 'blockers'], [nFindings, nFindings === 1 ? 'finding' : 'findings']];
     h.result = verdict ? plain(verdict[1]) : `${nBlockers} blockers, ${nFindings} findings`;
     h.what = verdict ? plain(verdict[1]) : null;
-  } else if (kind === 'seo-audit' || kind === 'eco-audit') {
+  } else if (kind === 'audit-seo' || kind === 'audit-eco') {
     const line = md.match(/\*\*Result:\*\*\s*(.+)/);
     h.counts = line ? countsIn(line[1], ['fail', 'warn', 'pass', 'info', 'skipped']) : {};
     h.figures = [[h.counts.fail, 'fail'], [h.counts.warn, 'warn']];
-    if (kind === 'seo-audit') {
+    if (kind === 'audit-seo') {
       const crawled = md.match(/\*\*Crawled:\*\*\s*(\d+) HTML pages/);
       h.result = line ? plain(line[1]) : null;
       h.what = crawled ? `${crawled[1]} pages crawled.` : null;
@@ -139,7 +141,7 @@ export function headline(report) {
   return h;
 }
 
-const SITE_KINDS = new Set(['launch-audit', 'a11y-audit', 'seo-audit', 'eco-audit', 'privacy-audit', 'infra-audit']);
+const SITE_KINDS = new Set(['audit-launch', 'audit-a11y', 'audit-seo', 'audit-eco', 'audit-privacy', 'audit-infra']);
 const hostOf = (s) => { const m = String(s || '').trim().toLowerCase().match(/^(?:[a-z]+:\/\/)?([a-z0-9.-]+\.[a-z]{2,})(?:[:/]|$)/); return m ? m[1].replace(/^www\./, '') : null; };
 const baseDomain = (host) => { const l = host.split('.'); return l.slice(/^(co|com|net|org|gov|ac|edu)\.[a-z]{2}$/.test(l.slice(-2).join('.')) ? -3 : -2).join('.'); };
 

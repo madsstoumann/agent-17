@@ -16,7 +16,7 @@ const sample = (skill) => fs.readFileSync(path.join(SKILLS, skill, 'references',
 
 const SECURITY = `# Security audit: shop-web
 
-2026-10-30 · code mode · security-audit 1.1.0
+2026-10-30 · code mode · audit-security 1.1.0
 
 **Verdict:** 1 blocker: a live Stripe key in git history.
 
@@ -83,32 +83,32 @@ test('plain strips Markdown and emoji', () => {
   assert.equal(plain('### 🔴 **left-pad**@1.3.0 _(package)_'), '### left-pad@1.3.0 (package)');
 });
 
-test('headline: launch-audit, solution-health and security-audit figures', () => {
-  const la = headline({ kind: 'launch-audit', target: null, md: sample('launch-audit') });
+test('headline: audit-launch, solution-health and audit-security figures', () => {
+  const la = headline({ kind: 'audit-launch', target: null, md: sample('audit-launch') });
   assert.deepEqual(la.counts, { pass: 47, warn: 17, fail: 1, info: 54, skipped: 1 });
   assert.match(la.target, /ondigitalocean\.app/);
   const sh = headline({ kind: 'solution-health', target: 'shop-web', md: sample('solution-health') });
   assert.equal(sh.counts.red, 14);
   assert.equal(sh.counts.amber, 3);
   assert.match(sh.what, /^Action needed: left-pad@1\.3\.0/);
-  const sa = headline({ kind: 'security-audit', target: null, md: SECURITY });
+  const sa = headline({ kind: 'audit-security', target: null, md: SECURITY });
   assert.deepEqual(sa.counts, { blockers: 1, findings: 2 });
   assert.equal(sa.target, 'shop-web');
 });
 
-test('headline: seo-audit and eco-audit figures', () => {
-  const seo = headline({ kind: 'seo-audit', target: null, md: sample('seo-audit') });
+test('headline: audit-seo and audit-eco figures', () => {
+  const seo = headline({ kind: 'audit-seo', target: null, md: sample('audit-seo') });
   assert.equal(typeof seo.counts.fail, 'number');
   assert.equal(typeof seo.counts.warn, 'number');
   assert.match(seo.what, /^\d+ pages crawled\.$/);
-  const eco = headline({ kind: 'eco-audit', target: null, md: sample('eco-audit') });
+  const eco = headline({ kind: 'audit-eco', target: null, md: sample('audit-eco') });
   assert.equal(typeof eco.counts.warn, 'number');
   assert.match(eco.result, /^[\d.]+ g CO2e per view \(A\+\) · \d+ fail/);
   assert.match(eco.what, /^Start page [\d.]+ g CO2e per view, rating A\+\.$/);
 });
 
-test('headline: privacy-audit and infra-audit use the Result line', () => {
-  for (const kind of ['privacy-audit', 'infra-audit']) {
+test('headline: audit-privacy and audit-infra use the Result line', () => {
+  for (const kind of ['audit-privacy', 'audit-infra']) {
     const md = `# X audit — shop.dk\n\n**Site:** https://shop.dk/  ·  **Date:** 2026-10-30\n\n**Result:** 9 pass · 3 warn · 1 fail · 3 info · 0 skipped\n\n## 1. Section\n`;
     const h = headline({ kind, target: null, md });
     assert.deepEqual(h.counts, { pass: 9, warn: 3, fail: 1, info: 3, skipped: 0 });
@@ -176,17 +176,17 @@ test('combine: run folder -> report.md and report.html (no PDF), solution-health
   const run = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-all-test-'));
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'shop-web-'));
   try {
-    fs.mkdirSync(path.join(run, 'launch-audit'));
-    fs.writeFileSync(path.join(run, 'launch-audit', 'report.md'), sample('launch-audit'));
-    fs.mkdirSync(path.join(run, 'security-audit-shop-web'));
-    fs.writeFileSync(path.join(run, 'security-audit-shop-web', 'report.md'), SECURITY);
+    fs.mkdirSync(path.join(run, 'audit-launch'));
+    fs.writeFileSync(path.join(run, 'audit-launch', 'report.md'), sample('audit-launch'));
+    fs.mkdirSync(path.join(run, 'audit-security-shop-web'));
+    fs.writeFileSync(path.join(run, 'audit-security-shop-web', 'report.md'), SECURITY);
     fs.mkdirSync(path.join(repo, '.solution-health'));
     fs.writeFileSync(path.join(repo, '.solution-health', 'report.md'), sample('solution-health'));
     fs.writeFileSync(path.join(repo, '.solution-health', 'tasks.json'), '{"tasks":[]}');
     fs.writeFileSync(path.join(run, 'summary.md'), SUMMARY);
     const logs = [];
     const out = await combine({ dir: run, style: 'sans', repos: [repo], pdf: false }, { now: new Date('2026-10-30T09:00:00Z'), log: (m) => logs.push(m) });
-    assert.deepEqual(out.reports, ['launch-audit', 'security-audit-shop-web', `solution-health-${path.basename(repo)}`]);
+    assert.deepEqual(out.reports, ['audit-launch', 'audit-security-shop-web', `solution-health-${path.basename(repo)}`]);
     assert.ok(fs.existsSync(path.join(run, `solution-health-${path.basename(repo)}`, 'tasks.json')), 'solution-health draft tasks copied too');
     const md = fs.readFileSync(out.md, 'utf8');
     assert.match(md, /^# Ready to launch, with two things to fix first/);
@@ -248,8 +248,8 @@ test('newRunFolder: one target folder per subject, runs under runs/, previous ru
     assert.equal(b.previous, a.dir);
 
     fs.writeFileSync(path.join(a.target, 'notes.md'), '# Decisions\n\nCSP inline scripts accepted until the Nuxt 4 upgrade.\n');
-    fs.mkdirSync(path.join(b.dir, 'launch-audit'));
-    fs.writeFileSync(path.join(b.dir, 'launch-audit', 'report.md'), '# Launch audit — shop.example.dk\n\n## Scoreboard\n\nok\n');
+    fs.mkdirSync(path.join(b.dir, 'audit-launch'));
+    fs.writeFileSync(path.join(b.dir, 'audit-launch', 'report.md'), '# Launch audit — shop.example.dk\n\n## Scoreboard\n\nok\n');
     fs.writeFileSync(path.join(b.dir, 'summary.md'), '---\ntitle: Fine\n---\n\n## Verdict\n\nShip it.\n');
     const out = await combine({ dir: b.dir, style: 'serif', repos: [], pdf: false }, { log: () => {} });
     const md = fs.readFileSync(out.md, 'utf8');
@@ -259,22 +259,22 @@ test('newRunFolder: one target folder per subject, runs under runs/, previous ru
   }
 });
 
-test('headline: a11y-audit figures and verdict', () => {
-  const h = headline({ kind: 'a11y-audit', target: null, md: sample('a11y-audit') });
+test('headline: audit-a11y figures and verdict', () => {
+  const h = headline({ kind: 'audit-a11y', target: null, md: sample('audit-a11y') });
   assert.deepEqual(h.counts, { criteria: 7, issues: 7, review: 2, pages: 1 });
   assert.deepEqual(h.figures, [[7, 'criteria failed'], [7, 'issues']]);
   assert.match(h.what, /keyboard user can get stuck/);
   assert.equal(h.target, 'shop.example.dk');
 });
 
-test('discoverReports: a11y-audit sits after launch-audit', () => {
+test('discoverReports: audit-a11y sits after audit-launch', () => {
   const run = fs.mkdtempSync(path.join(os.tmpdir(), 'aa-a11y-'));
   try {
-    for (const [dir, md] of [['security-audit', SECURITY], ['a11y-audit', sample('a11y-audit')], ['launch-audit', sample('launch-audit')]]) {
+    for (const [dir, md] of [['audit-security', SECURITY], ['audit-a11y', sample('audit-a11y')], ['audit-launch', sample('audit-launch')]]) {
       fs.mkdirSync(path.join(run, dir));
       fs.writeFileSync(path.join(run, dir, 'report.md'), md);
     }
-    assert.deepEqual(discoverReports(run).map((r) => r.kind), ['launch-audit', 'a11y-audit', 'security-audit']);
+    assert.deepEqual(discoverReports(run).map((r) => r.kind), ['audit-launch', 'audit-a11y', 'audit-security']);
   } finally { fs.rmSync(run, { recursive: true, force: true }); }
 });
 
@@ -291,7 +291,7 @@ test('clipSentences: whole sentences, else a clause, never mid-word', () => {
 });
 
 test('combinedHtml: one report has no contents page; a long cover is dense and its tiles clipped', () => {
-  const security = { kind: 'security-audit', target: 'web', folder: 'security-audit-web', md: SECURITY.replace('1 blocker: a live Stripe key in git history.', `Not ready. ${'Very long verdict text. '.repeat(20)}`) };
+  const security = { kind: 'audit-security', target: 'web', folder: 'audit-security-web', md: SECURITY.replace('1 blocker: a live Stripe key in git history.', `Not ready. ${'Very long verdict text. '.repeat(20)}`) };
   const args = { summary: parseSummary(SUMMARY), date: new Date('2026-10-30T09:00:00Z'), version: VERSION, css: '', style: 'serif' };
   const one = combinedHtml({ ...args, reports: [security], heads: [headline(security)] });
   assert.equal(one.includes('class="toc"'), false);
@@ -318,12 +318,12 @@ test('pdfDestPages: named destinations mapped to page numbers through the page t
 });
 
 test('siteMismatches: a site audit run on another domain than the subject is flagged', () => {
-  const infra = { kind: 'infra-audit', target: null, folder: 'infra-audit', md: '# Infrastructure audit — helm-live.euwest01.umbraco.io\n\n**Result:** 3 pass · 2 warn · 0 fail\n' };
-  const launch = { kind: 'launch-audit', target: null, folder: 'launch-audit', md: '# Launch audit — www.helmsecurity.ai\n\n**Result:** 3 pass · 0 warn · 0 fail\n' };
-  const security = { kind: 'security-audit', target: 'helm', folder: 'security-audit-helm', md: SECURITY };
+  const infra = { kind: 'audit-infra', target: null, folder: 'audit-infra', md: '# Infrastructure audit — helm-live.euwest01.umbraco.io\n\n**Result:** 3 pass · 2 warn · 0 fail\n' };
+  const launch = { kind: 'audit-launch', target: null, folder: 'audit-launch', md: '# Launch audit — www.helmsecurity.ai\n\n**Result:** 3 pass · 0 warn · 0 fail\n' };
+  const security = { kind: 'audit-security', target: 'helm', folder: 'audit-security-helm', md: SECURITY };
   const reports = [launch, infra, security];
   const heads = reports.map(headline);
-  assert.deepEqual(siteMismatches(reports, heads, 'helmsecurity.ai').map((m) => [m.kind, m.target]), [['infra-audit', 'helm-live.euwest01.umbraco.io']]);
+  assert.deepEqual(siteMismatches(reports, heads, 'helmsecurity.ai').map((m) => [m.kind, m.target]), [['audit-infra', 'helm-live.euwest01.umbraco.io']]);
   assert.deepEqual(siteMismatches(reports, heads, 'Helm'), [], 'a subject that is not a host name is not compared');
   const html = combinedHtml({ summary: parseSummary(SUMMARY.replace('shop.example.dk', 'helmsecurity.ai')), reports, heads, date: new Date(), version: VERSION, css: '', style: 'sans' });
   assert.match(html, /class="mismatch">.*Infrastructure audit checked helm-live\.euwest01\.umbraco\.io, not helmsecurity\.ai/);

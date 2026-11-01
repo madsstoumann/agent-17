@@ -1,4 +1,4 @@
-// HTML -> PDF with headless Chrome or Chromium, the same browser launch-audit already uses.
+// HTML -> PDF with headless Chrome or Chromium, the same browser audit-launch already uses.
 // No npm dependencies: it finds a browser on disk and runs it with --print-to-pdf.
 import fs from 'node:fs';
 import os from 'node:os';

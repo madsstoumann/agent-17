@@ -15,7 +15,7 @@ The repository is a plugin marketplace. It has one plugin, `skills`, which holds
 
 Or from your shell: `claude plugin install skills --marketplace madsstoumann/agent-17`.
 
-The skills show up as `/skills:launch-audit`, `/skills:validate-schema` and so on, and Claude also picks them up on its own when a task matches. To get updates automatically, open `/plugin`, go to **Marketplaces**, select `agent-17` and choose **Enable auto-update**. Otherwise run `claude plugin update skills@agent-17` now and then.
+The skills show up as `/skills:audit-launch`, `/skills:validate-schema` and so on, and Claude also picks them up on its own when a task matches. To get updates automatically, open `/plugin`, go to **Marketplaces**, select `agent-17` and choose **Enable auto-update**. Otherwise run `claude plugin update skills@agent-17` now and then.
 
 ### claude.ai and the Claude desktop app
 
@@ -29,9 +29,13 @@ A plugin added on claude.ai is saved to your account, so it also loads in Cowork
 
 Copy its folder into `~/.claude/skills/` (Claude Code), or zip the folder and upload it under Customize > Skills (claude.ai).
 
+### Renamed skills (November 2026)
+
+Every audit skill now starts with `audit`: `launch-audit` is `audit-launch`, and likewise `audit-a11y`, `audit-seo`, `audit-eco`, `audit-privacy`, `audit-infra` and `audit-security`. Run them as `/skills:audit-launch` and so on. If you copied or uploaded one of the old folders by hand, remove that copy. Reports go to `<reports>/audit-launch/…`; the first run under the new name moves the old `<reports>/launch-audit/` folder across, so notes.md, triage and baselines carry over. The old `A11Y_AUDIT_CACHE` and `*_AUDIT_DEBUG` variables still work next to the new `AUDIT_A11Y_CACHE` and `AUDIT_*_DEBUG`.
+
 ## Setup for the audit skills
 
-None of this is required; each item makes launch-audit (and audit-all) more complete.
+None of this is required; each item makes audit-launch (and audit-all) more complete.
 
 ### Environment variables
 
@@ -41,7 +45,7 @@ Set them in your shell profile (`~/.zshrc` on a Mac, then open a new terminal), 
 | Variable | What it does |
 |---|---|
 | `PSI_API_KEY` | Runs Lighthouse through the PageSpeed Insights API: real-user field data (CrUX), the same numbers as pagespeed.web.dev, and a fallback when a firewall blocks local Lighthouse. Without it Lighthouse runs locally with Chrome (lab data only). |
-| `AUDIT_HEADERS` | Extra headers sent to the audited site by launch-audit, Lighthouse and a11y-audit, one `Name: value` per line. Used for the firewall bypass below. |
+| `AUDIT_HEADERS` | Extra headers sent to the audited site by audit-launch, Lighthouse and audit-a11y, one `Name: value` per line. Used for the firewall bypass below. |
 | `AUDIT_OUT_DIR` | Where reports go. Default: your Downloads folder, else `~/audit-reports/`. |
 
 ```bash
@@ -57,14 +61,14 @@ export AUDIT_HEADERS="x-audit-bypass: <your value>"     # quotes needed: the val
 4. Edit the key: under **API restrictions**, restrict it to the PageSpeed Insights API.
 5. Set it as `PSI_API_KEY`. It is free; without a key the shared quota usually answers 429.
 
-### Let launch-audit past a Vercel firewall
+### Let audit-launch past a Vercel firewall
 
 Vercel's Bot Protection can show headless Chrome a "Vercel Security Checkpoint" that a person's browser
 passes without noticing. Lighthouse then fails, and the report says "blocked by Vercel bot challenge".
 For a site you run, add a rule that lets requests with a secret header through:
 
 1. Make a value: `openssl rand -hex 24`.
-2. In the Vercel project: **Firewall > ⋯ > Configure > Add New… > Rule**. Name it "launch-audit bypass".
+2. In the Vercel project: **Firewall > ⋯ > Configure > Add New… > Rule**. Name it "audit-launch bypass".
 3. **If** `Request Header` `x-audit-bypass` **Equals** your value, **Then** **Bypass**.
 4. **Save Rule**, then **Review Changes > Publish**. It applies at once, no redeploy.
 5. Locally: `export AUDIT_HEADERS="x-audit-bypass: <your value>"` (or pass `--header` for one run).
@@ -151,7 +155,7 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 | `--max-parallel N` | Agents running at the same time (default 4). |
 | `--dry-run` | Show the plan, run nothing. |
 
-### launch-audit
+### audit-launch
 
 | Flag | What it does |
 |---|---|
@@ -169,18 +173,18 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 | `--strict` | Exit code 3 when anything fails (CI). |
 | `--json` / `--quiet` | report.json on stdout / no progress output. |
 
-### a11y-audit
+### audit-a11y
 
 | Flag | What it does |
 |---|---|
 | `--wcag A\|AA\|AAA` | WCAG target (default AA). `--level A`, `AA` or `AAA` still works. |
 | `--pages N` | Pages to audit, start page included (default 10). |
-| `--from FILE` / `--urls FILE` | Take the pages from a launch-audit `report.json`, or exactly the URLs in a file. |
+| `--from FILE` / `--urls FILE` | Take the pages from a audit-launch `report.json`, or exactly the URLs in a file. |
 | `--keyboard N` / `--max-tabs N` | Keyboard walk on the first N pages (default 3, 0 to skip), Tab presses per walk (200). |
 | `--repo NAME[=PATH]` | The repo that renders the site, so tasks become agent tasks. |
 | `--chrome PATH` / `--timeout MS` | Browser to use, page load timeout (30000). |
 
-### seo-audit
+### audit-seo
 
 | Flag | What it does |
 |---|---|
@@ -192,7 +196,7 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 | `--no-remote` / `--ignore-robots` | Skip validator.schema.org / crawl paths robots.txt disallows. |
 | `--concurrency N` / `--timeout MS` / `--quiet` | Parallel requests (6), per request (15000), no progress output. |
 
-### eco-audit
+### audit-eco
 
 | Flag | What it does |
 |---|---|
@@ -204,7 +208,7 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 | `--no-remote` | Skip the Green Web Foundation lookup. |
 | `--chrome PATH` / `--timeout MS` / `--quiet` | Browser, page load timeout (45000), no progress output. |
 
-### privacy-audit
+### audit-privacy
 
 | Flag | What it does |
 |---|---|
@@ -214,7 +218,7 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 | `--no-policy` | Do not open the privacy and cookie policy pages. |
 | `--chrome PATH` | Browser to use. |
 
-### infra-audit
+### audit-infra
 
 | Flag | What it does |
 |---|---|
@@ -225,7 +229,7 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 | `--no-legacy` | Skip the TLS 1.0/1.1 probe. |
 | `--platform-ok` | Audit a hosting platform's own domain anyway (`*.umbraco.io` and the like). |
 
-### security-audit
+### audit-security
 
 | Flag | What it does |
 |---|---|

@@ -39,7 +39,7 @@ test('compactReport drops reference sections, folds clean sections and detail su
 });
 
 test('every sample report keeps its sections with something to fix', () => {
-  for (const skill of ['launch-audit', 'a11y-audit', 'seo-audit', 'eco-audit', 'solution-health']) {
+  for (const skill of ['audit-launch', 'audit-a11y', 'audit-seo', 'audit-eco', 'solution-health']) {
     const full = splitReport(fs.readFileSync(path.join(SKILLS, skill, 'references', 'sample-report.md'), 'utf8'));
     const c = compactReport(full);
     assert.ok(c.sections.length > 0, skill);

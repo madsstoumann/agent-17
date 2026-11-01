@@ -9,7 +9,7 @@ import { parseLevel, levelOf, levelOfWord, shows, byLevel, countLevels, levelNot
 const SKILLS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 test('every report-writing skill carries the same levels.mjs', () => {
-  const copies = ['launch-audit', 'a11y-audit', 'seo-audit', 'eco-audit', 'privacy-audit', 'infra-audit', 'security-audit', 'solution-health', 'audit-all']
+  const copies = ['audit-launch', 'audit-a11y', 'audit-seo', 'audit-eco', 'audit-privacy', 'audit-infra', 'audit-security', 'solution-health', 'audit-all']
     .map((s) => path.join(SKILLS, s, 'scripts', 'lib', 'levels.mjs'))
     .filter((f) => fs.existsSync(f));
   assert.ok(copies.length >= 1);
@@ -58,8 +58,8 @@ test('consoleList: one aligned line per issue, errors first, counts in the title
     { level: 'info', source: 'ops', id: 'x', title: 'Note' },
     { level: null, title: 'a pass' },
   ];
-  const all = consoleList({ title: 'launch-audit x.dk', items }).split('\n');
-  assert.equal(all[0], 'launch-audit x.dk — 1 error · 1 warning · 1 info');
+  const all = consoleList({ title: 'audit-launch x.dk', items }).split('\n');
+  assert.equal(all[0], 'audit-launch x.dk — 1 error · 1 warning · 1 info');
   assert.equal(all[1], 'ERROR  exposed  env  .env is served · /.env 200');
   assert.equal(all[2], 'WARN   headers  csp  CSP allows unsafe-inline · script-src');
   assert.equal(all[3], 'INFO   ops      x    Note');
