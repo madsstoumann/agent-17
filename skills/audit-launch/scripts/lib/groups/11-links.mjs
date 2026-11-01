@@ -6,7 +6,8 @@
 import { result } from '../registry.mjs';
 import { crawlSite, checkLinks, recheckPages } from '../crawl.mjs';
 import { sampleSitemapUrls } from '../robots.mjs';
-import { w3cValidate, schemaValidate } from '../services.mjs';
+import { w3cValidate } from '../services.mjs';
+import { schemaValidate, schemaLink } from '../schema.mjs';
 import { fetchImageMeta } from '../images.mjs';
 import { hostOf, sameUrlModuloSlash } from '../http.mjs';
 import { isStagingHost } from '../cli.mjs';
@@ -42,7 +43,7 @@ export default {
     } else {
       out.push(result('links.w3c', 'skip', 'W3C HTML validator', 'no HTML to validate', { link: w3cLink }));
     }
-    const sdoLink = `https://validator.schema.org/#url=${encodeURIComponent(finalUrl)}`;
+    const sdoLink = schemaLink(finalUrl);
     if (remote || page.html) {
       let sc = await schemaValidate(http, remote ? { url: finalUrl } : { html: page.html });
       if ((!sc.ok || sc.raw?.fetchError) && page.html) sc = { ...(await schemaValidate(http, { html: page.html })), fellBack: true };

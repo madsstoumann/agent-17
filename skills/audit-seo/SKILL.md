@@ -1,10 +1,10 @@
 ---
 name: audit-seo
-description: Use when someone wants an SEO or content audit of a whole website, not just the start page — titles and meta descriptions (missing, too long, duplicated), Open Graph and share previews, structured data (JSON-LD that does not parse, validator.schema.org errors), sitemap and robots.txt consistency (noindex, redirecting, blocked or missing URLs, orphan pages), canonical and hreflang problems, broken internal and external links and redirect chains, plus GEO (AI search readiness): llms.txt and llms-full.txt, AI crawler rules in robots.txt (OAI-SearchBot, ClaudeBot, GPTBot, PerplexityBot, Google-Extended…), Content-Signal and ai.txt, and Organization/WebSite entity markup for answer engines. Also for "why is this page not indexed", re-checking after SEO fixes, or comparing with the last run. Any stack, public or local URLs.
-argument-hint: "<url> [--pages N] [--sitemap-sample N] [--external-links N] [--schema-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
+description: Use when someone wants an SEO or content audit of a whole website, not just the start page — titles and meta descriptions (missing, too long, duplicated), Open Graph and share previews, structured data (JSON-LD that does not parse, validator.schema.org errors, Google rich-result required and recommended properties, JSON-LD that only JavaScript adds — pages are rendered in headless Chrome to find it), sitemap and robots.txt consistency (noindex, redirecting, blocked or missing URLs, orphan pages), canonical and hreflang problems, broken internal and external links and redirect chains, plus GEO (AI search readiness): llms.txt and llms-full.txt, AI crawler rules in robots.txt (OAI-SearchBot, ClaudeBot, GPTBot, PerplexityBot, Google-Extended…), Content-Signal and ai.txt, and Organization/WebSite entity markup for answer engines. Also for validating the schema.org / JSON-LD markup of a single URL or a local HTML file (`--schema-only`), "why is this page not indexed", re-checking after SEO fixes, or comparing with the last run. Any stack, public or local URLs.
+argument-hint: "<url | file.html> [--schema-only] [--pages N] [--sitemap-sample N] [--external-links N] [--schema-pages N] [--render-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "2.1.0"
+  version: "2.2.0"
 ---
 
 # SEO audit
@@ -39,6 +39,9 @@ the findings; non-zero means the script failed (read the last stderr lines).
 | `--sitemap-sample N` (default 50) | Sitemap URLs the crawl did not reach, fetched to check status, noindex and canonical. |
 | `--external-links N` (default 150) | Outbound links to check. `0` to skip. 403/429/999 answers are bot walls, reported as "verify by hand". |
 | `--schema-pages N` (default 8) | Pages sent to validator.schema.org, one per distinct JSON-LD type set. Private hosts get their HTML posted instead. `0` or `--no-remote` skips it. |
+| `--render-pages N` (default 8) | Pages rendered in headless Chrome after the crawl: the start page, then pages whose served HTML has no JSON-LD, one per section. JSON-LD that appears only after JavaScript runs is adopted for every structured-data check, posted to the validator as the rendered DOM, and reported as "JSON-LD added by JavaScript" (Google sees it; Bing, social scrapers and most AI crawlers do not). Needs Chrome, Chromium or Edge (found automatically, or `CHROME_PATH`); without one the row is skipped. `0` turns it off. |
+| `--schema-only` | The user only wants the structured data of one page checked ("validate the schema on …", "is my JSON-LD valid?"). Fetches that URL alone, renders it, validates it and runs the Google rich-result rules, and lists every validator error and warning on its own line. No crawl, robots, sitemap or GEO. |
+| `<file.html>` instead of a URL | A local HTML file: the same as `--schema-only` on the file (rendered from `file://`, its HTML posted to the validator). |
 | `--production-host www.example.com` | Auditing staging: canonicals, sitemap URLs and hreflang on the future live host are then not "another host". |
 | `--header "Name: value"` | The site is behind a WAF that challenges scripts (Vercel Firewall, Cloudflare) and the owner added a bypass rule for a secret header. Sent to the site's host only. Also `AUDIT_HEADERS`. |
 | `--ignore-robots` | The user wants disallowed paths crawled too (they are still reported). |
@@ -59,6 +62,22 @@ so nothing is left in the reports folder except the target folder's `last-report
 the user wants "just the list", "in the terminal" or "no report". Show the list as it is, in a code
 block, with a sentence of context; there is no report path to quote. `--console --report` writes
 the report as well.
+
+### Structured data only
+
+For "validate the schema.org markup on this page" or "check the JSON-LD in my index.html", run
+`seo.mjs <url> --schema-only --console` (or `seo.mjs ./index.html --console`) and show the list.
+Errors are validator.schema.org errors (invalid markup: search engines ignore it); warnings are its
+warnings, missing Google-required properties (the page cannot get that rich result) and JSON-LD
+added only by JavaScript; info is properties Google recommends. Drop `--console` for a report.md.
+A `--schema-only` run keeps its own baseline (`last-schema-report.json`), so it never disturbs
+the full audit's "Since last run".
+
+Google's Rich Results Test has no public API, so its required and recommended properties are
+checked locally (`lib/rich.mjs`) for Product, Offer prices, Review, AggregateRating, Article,
+BreadcrumbList, Event, FAQPage, JobPosting, LocalBusiness, Organization, Recipe,
+SoftwareApplication, VideoObject and Course. Say so, and point to the Rich Results Test link in
+the fix text for the final word; Search Console's enhancement reports show what Google picked up.
 
 ## Folders and re-runs
 
@@ -88,7 +107,10 @@ Honesty rules:
 - On dev or staging, noindex and `Disallow: /` are expected (the report says so at the top);
   list them as "before launch", not as bugs.
 - "Thin pages" counts text in the served HTML. A page that renders its text with JavaScript shows
-  up there too; say so if the site is an SPA.
+  up there too; say so if the site is an SPA. JSON-LD is different: the Chrome pass finds JSON-LD
+  that JavaScript adds on the pages it renders (`--render-pages`), not on every crawled page.
+- FAQPage and HowTo markup are fine to keep, but Google limits FAQ rich results to government and
+  health sites and no longer shows HowTo; do not promise them.
 - Duplicate titles across language versions are fine when hreflang ties them together.
 - The crawl is a sample when the cap was hit. Say "in the 150 pages crawled", not "on the site".
 - GEO rows are about readiness, not results. Blocking an AI *search* crawler (OAI-SearchBot,
@@ -113,6 +135,8 @@ plugin, canonical tag). Redirects and robots.txt may be hosting settings rather 
 SEO audit of https://stage.example.dk — production will be https://www.example.dk
 Why are half our pages not in Google? https://www.example.dk
 Check the structured data and share previews across https://shop.example.dk
+Validate the schema.org markup on https://shop.example.dk/products/mug   (--schema-only)
+Is the JSON-LD in ./dist/index.html valid? Will Google show product stars?   (local file)
 Is https://www.example.dk ready for AI search? Do we have an llms.txt?
 Crawl 500 pages of https://www.example.dk and give me the duplicate titles as a spreadsheet   (pages.csv)
 Run the SEO audit again after the fixes
@@ -123,7 +147,9 @@ Run the SEO audit again after the fixes
 - `scripts/seo.mjs` — the runner (`--help` lists every flag).
 - `scripts/lib/crawl.mjs` — the crawl and the per-page record; `lib/checks.mjs` — every check;
   `lib/report.mjs` — report.md, findings.json, pages.csv; `lib/schema.mjs` — validator.schema.org
-  (the service the validate-schema skill uses); `lib/robotsmatch.mjs` — robots.txt matching;
+  (identical copy in audit-launch; a test in each skill checks it); `lib/rich.mjs` — Google
+  rich-result rules; `lib/render.mjs` — headless Chrome over the DevTools protocol (no
+  `--user-data-dir`: it hangs); `lib/robotsmatch.mjs` — robots.txt matching;
   `lib/geo.mjs` — llms.txt, ai.txt, AI crawlers and entity markup.
 - `scripts/lib/http.mjs`, `html.mjs`, `robots.mjs`, `redirects.mjs` — copies of audit-launch's;
   `target-state.mjs` — the shared target-folder layout; keep the copies in step.

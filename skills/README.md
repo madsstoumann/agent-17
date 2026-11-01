@@ -58,7 +58,7 @@ Skills install separately, so audit-launch, audit-security, audit-a11y and audit
 
 ## Levels and the console list
 
-Every skill that writes a report takes the same two flags (validate-schema follows the same rules in its instructions):
+Every skill that writes a report takes the same two flags:
 
 - `--level error|warn|info`, or a comma list such as `error,warn`, or `all` (the default). One scale for all skills: **error** is fail, blocker, critical, high or red; **warning** is warn, medium, moderate, low or amber; **info** is info, review items and unknown. Passing and skipped checks show only with `all`.
 - `--console` prints a compact list instead of writing `report.md`, one line per issue, errors first:

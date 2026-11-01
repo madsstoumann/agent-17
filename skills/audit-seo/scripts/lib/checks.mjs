@@ -8,6 +8,7 @@
 import { hostOf, sameUrlModuloSlash, stripWww } from './http.mjs';
 import { isAllowed } from './robotsmatch.mjs';
 import { normalise } from './crawl.mjs';
+import { RICH_TEST, DOCS, prop } from './rich.mjs';
 
 export const AREAS = [
   ['indexing', 'Indexing and crawl'],
@@ -40,7 +41,7 @@ const AREA_OF = {
   'seo.canonical-missing': 'canonical', 'seo.canonical-relative': 'canonical', 'seo.canonical-target': 'canonical', 'seo.canonical-host': 'canonical', 'seo.canonicalised': 'canonical',
   'seo.hreflang-codes': 'canonical', 'seo.hreflang-self': 'canonical', 'seo.hreflang-x-default': 'canonical', 'seo.hreflang-return': 'canonical', 'seo.hreflang-target': 'canonical', 'seo.hreflang-lang': 'canonical',
   'seo.og-missing': 'social', 'seo.og-image': 'social', 'seo.og-url': 'social', 'seo.twitter-card': 'social',
-  'seo.jsonld-parse': 'schema', 'seo.jsonld-coverage': 'schema', 'seo.schema-validator': 'schema',
+  'seo.jsonld-parse': 'schema', 'seo.jsonld-coverage': 'schema', 'seo.schema-validator': 'schema', 'seo.jsonld-client-side': 'schema', 'seo.rich-required': 'schema', 'seo.rich-recommended': 'schema', 'seo.rich-notes': 'schema',
   'seo.ai-crawlers': 'geo', 'seo.content-signal': 'geo', 'seo.llms-txt': 'geo', 'seo.llms-full': 'geo', 'seo.ai-txt': 'geo', 'seo.entity-markup': 'geo',
 };
 
@@ -88,7 +89,7 @@ export const looksSchemeless = (url) => { try { return /^\/?(?:[^/]*\/)*?(?:www\
  *   { finalUrl, hosts, productionHost, pages, inlinks, blocked, truncated, robots: { status, parsed, error },
  *     sitemap: { urls, sources, truncated, declared }, external: [{ url, status, ok, blocked, error }] | null,
  *     ogImages: [{ url, status, contentType }] | null, schema: [{ url, types, ok, errors, warnings, nodes, error }] | null,
- *     sitemapSampled, sitemapMissing }
+ *     sitemapSampled, sitemapMissing, render, detailed } (render and detailed: see schemaChecks)
  */
 export function runChecks(input) {
   const { finalUrl, pages, inlinks = new Map(), blocked = new Map(), robots = {}, sitemap = { urls: [], sources: [], declared: [] } } = input;
@@ -303,7 +304,18 @@ export function runChecks(input) {
   const noCard = idx.filter((p) => !p.twitter?.card);
   if (noCard.length) out.push(result('seo.twitter-card', 'info', 'twitter:card', `${plural(noCard.length, 'indexable page')} without twitter:card (X falls back to Open Graph, but shows a small card)`, { fix: 'Add <meta name="twitter:card" content="summary_large_image"> for a large preview on X.', urls: noCard.map((p) => ({ url: p.url })) }));
 
-  // ---------------------------------------------------------------- structured data
+  out.push(...schemaChecks(input, { html, idx }));
+  return out;
+}
+
+/**
+ * The structured-data rows. Also the whole check list for --schema-only and a local file.
+ *   input.schema:   validator results per page, or null when it did not run
+ *   input.render:   { ran, error, pages: [{ url, ok, added, error }] } from the Chrome pass, or null
+ *   input.detailed: list every validator error and warning as its own line (one page, --schema-only)
+ */
+export function schemaChecks(input, { html = htmlPages(input.pages || []), idx = html.filter(indexable) } = {}) {
+  const out = [];
   const broken = html.filter((p) => p.jsonLd?.some((j) => j.error));
   out.push(broken.length
     ? result('seo.jsonld-parse', 'fail', 'JSON-LD that does not parse', `${plural(broken.length, 'page')} with a JSON-LD block that is not valid JSON`, { fix: 'Search engines ignore a block that does not parse. Usually an unescaped quote or a trailing comma from a template; build it with JSON.stringify.', urls: broken.map((p) => ({ url: p.url, note: p.jsonLd.find((j) => j.error).error })) })
@@ -312,18 +324,81 @@ export function runChecks(input) {
   const typeCount = new Map();
   for (const p of html) for (const t of new Set((p.jsonLd || []).flatMap((j) => j.types))) typeCount.set(t, (typeCount.get(t) || 0) + 1);
   const typeList = [...typeCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([t, n]) => `${t} ×${n}`).join(', ');
-  out.push(result('seo.jsonld-coverage', none.length === idx.length && idx.length ? 'warn' : 'info', 'Structured data coverage', none.length === idx.length ? 'no JSON-LD on any indexable page' : `${idx.length - none.length} of ${idx.length} indexable pages carry JSON-LD: ${typeList}`, { fix: none.length ? 'At least Organization (or LocalBusiness) and WebSite on the start page, BreadcrumbList on inner pages, and Article, Product, Event or FAQPage where the content is one.' : '', urls: none.length === idx.length ? [] : none.map((p) => ({ url: p.url, note: 'no JSON-LD' })) }));
+  out.push(result('seo.jsonld-coverage', none.length === idx.length && idx.length ? 'warn' : 'info', 'Structured data coverage', none.length === idx.length ? `no JSON-LD on any indexable page${input.render?.ran ? ', also after rendering in Chrome' : ''}` : `${idx.length - none.length} of ${idx.length} indexable pages carry JSON-LD: ${typeList}`, { fix: none.length ? 'At least Organization (or LocalBusiness) and WebSite on the start page, BreadcrumbList on inner pages, and Article, Product, Event or FAQPage where the content is one.' : '', urls: none.length === idx.length ? [] : none.map((p) => ({ url: p.url, note: 'no JSON-LD' })) }));
+
+  const r = input.render;
+  if (r?.ran) {
+    const gained = r.pages.filter((x) => x.ok && x.added > 0);
+    const rendered = r.pages.filter((x) => x.ok).length;
+    const failedRender = r.pages.filter((x) => !x.ok);
+    if (gained.length) out.push(result('seo.jsonld-client-side', 'warn', 'JSON-LD added by JavaScript', `${plural(gained.length, 'page')} of ${rendered} rendered in Chrome ${gained.length === 1 ? "adds" : "add"} JSON-LD only after JavaScript runs`, { fix: 'Google renders JavaScript and sees it (later than the HTML), but Bing, social scrapers and most AI crawlers read the served HTML only. Render the JSON-LD on the server (SSR or in the page template).', urls: gained.map((x) => ({ url: x.url, note: `${plural(x.added, 'block')} added on the client` })) }));
+    else if (rendered) out.push(result('seo.jsonld-client-side', 'pass', 'JSON-LD added by JavaScript', `${plural(rendered, 'page')} rendered in Chrome: no JSON-LD beyond what the served HTML has`));
+    else out.push(result('seo.jsonld-client-side', 'skip', 'JSON-LD added by JavaScript', `Chrome could not render the pages: ${failedRender[0]?.error || 'unknown error'}`));
+  } else if (r) out.push(result('seo.jsonld-client-side', 'skip', 'JSON-LD added by JavaScript', `not checked: ${r.error || 'rendering is off (--render-pages 0)'}`));
+
   if (input.schema) {
     const failed = input.schema.filter((s) => !s.ok);
     const withErr = input.schema.filter((s) => s.ok && s.errors);
     const withWarn = input.schema.filter((s) => s.ok && !s.errors && s.warnings);
-    const detail = (s) => s.nodes.flatMap((n) => n.errors.map((e) => `${n.types[0] || '?'}: ${e.type}${e.property ? ` ${e.property}` : ''}`)).slice(0, 3).join('; ');
-    if (withErr.length) out.push(result('seo.schema-validator', 'fail', 'schema.org validator', `${plural(withErr.length, 'page')} of ${input.schema.length} validated have errors`, { fix: 'Fix the errors validator.schema.org reports (open the page in https://validator.schema.org/ for the full list); invalid markup is ignored by search engines.', urls: withErr.map((s) => ({ url: s.url, note: `${s.errors} errors: ${detail(s)}` })) }));
-    else if (input.schema.length - failed.length) out.push(result('seo.schema-validator', withWarn.length ? 'info' : 'pass', 'schema.org validator', `${input.schema.length - failed.length} pages validated, no errors${withWarn.length ? `, ${withWarn.length} with warnings` : ''}`, { urls: withWarn.map((s) => ({ url: s.url, note: `${s.warnings} warnings` })) }));
+    const issue = (n, e) => `${n.types[0] || '?'}${e.property ? ` ${e.property}` : ''}: ${e.type}${e.args?.length ? ` (${e.args.join(', ')})` : ''}`;
+    const detail = (s) => s.nodes.flatMap((n) => n.errors.map((e) => issue(n, e))).slice(0, 3).join('; ');
+    const each = (list, kind) => list.flatMap((s) => s.nodes.flatMap((n) => n[kind].map((e) => ({ url: s.url, note: `${kind === 'errors' ? 'ERROR' : 'WARN'} ${issue(n, e)}` }))));
+    const rendered = (s) => (s.rendered ? ' (rendered DOM posted)' : '');
+    if (withErr.length) out.push(result('seo.schema-validator', 'fail', 'schema.org validator', `${plural(withErr.length, 'page')} of ${input.schema.length} validated have errors`, { fix: 'Fix the errors validator.schema.org reports (open the page in https://validator.schema.org/ for the full list); invalid markup is ignored by search engines.', urls: input.detailed ? [...each(withErr, 'errors'), ...each(withErr, 'warnings')] : withErr.map((s) => ({ url: s.url, note: `${s.errors} errors: ${detail(s)}${rendered(s)}` })) }));
+    else if (input.schema.length - failed.length) out.push(result('seo.schema-validator', withWarn.length ? 'info' : 'pass', 'schema.org validator', `${input.schema.length - failed.length} pages validated, no errors${withWarn.length ? `, ${withWarn.length} with warnings` : ''}`, { urls: input.detailed ? each(withWarn, 'warnings') : withWarn.map((s) => ({ url: s.url, note: `${s.warnings} warnings${rendered(s)}` })) }));
     else out.push(result('seo.schema-validator', 'skip', 'schema.org validator', failed.length ? `validator unreachable: ${failed[0].error}` : 'no page with structured data to validate'));
   } else out.push(result('seo.schema-validator', 'skip', 'schema.org validator', 'not run (--no-remote or --schema-pages 0)'));
-
+  out.push(...richChecks(html, input.detailed));
   return out;
+}
+
+/**
+ * Google rich-result rules (rich.mjs) over every page's JSON-LD: a missing required property
+ * makes the page ineligible for that rich result (warn); missing recommended ones only thin it (info).
+ */
+function richChecks(html, detailed) {
+  const out = [];
+  const withTypes = html.filter((p) => p.richTypes?.length);
+  if (!withTypes.length) return out;
+  const pick = (key) => html.flatMap((p) => (p.rich || []).filter((r) => r[key]?.length).map((r) => ({ p, r })));
+  const line = (r, key) => `${r.type}: ${r[key].map(prop).join(', ')}`;
+  const urls = (hits, key, tag) => (detailed
+    ? hits.flatMap(({ p, r }) => r[key].map((x) => ({ url: p.url, note: `${tag} ${r.type} ${prop(x)}: ${key === 'required' ? 'required by Google for the rich result' : 'recommended by Google'}` })))
+    : [...new Map(hits.map(({ p }) => [p.url, p])).values()].map((p) => ({ url: p.url, note: (p.rich || []).filter((r) => r[key]?.length).map((r) => line(r, key)).join('; ') })));
+  const req = pick('required');
+  const reqPages = new Set(req.map((x) => x.p.url));
+  const types = [...new Set(withTypes.flatMap((p) => p.richTypes))].join(', ');
+  out.push(req.length
+    ? result('seo.rich-required', 'warn', 'Google rich results: required properties', `${plural(reqPages.size, 'page')} of ${withTypes.length} with rich-result markup miss a property Google requires (${[...new Set(req.map((x) => x.r.type))].join(', ')})`, { fix: `Without the required properties Google will not show the rich result (stars, price, dates, breadcrumbs). Add them, then confirm with the Rich Results Test (${RICH_TEST(req[0].p.url)}). Rules: ${DOCS}`, urls: urls(req, 'required', 'WARN') })
+    : result('seo.rich-required', 'pass', 'Google rich results: required properties', `${plural(withTypes.length, 'page')} with ${types} markup carry every property Google requires`));
+  const rec = pick('recommended');
+  if (rec.length) out.push(result('seo.rich-recommended', 'info', 'Google rich results: recommended properties', `${plural(new Set(rec.map((x) => x.p.url)).size, 'page')} could add properties Google recommends (${[...new Set(rec.map((x) => x.r.type))].join(', ')})`, { fix: 'Recommended properties make a richer result (images, ratings, availability) and help AI answers describe the page.', urls: urls(rec, 'recommended', 'INFO') }));
+  const notes = html.flatMap((p) => (p.rich || []).filter((r) => r.note).map((r) => ({ url: p.url, note: `${r.type}: ${r.note}` })));
+  const byNote = [...new Map(notes.map((n) => [n.note, n])).values()];
+  if (byNote.length) out.push(result('seo.rich-notes', 'info', 'Google rich results: limited types', byNote.map((n) => n.note).join(' '), { urls: notes }));
+  return out;
+}
+
+/**
+ * Pages to render in Chrome, as a fallback for JSON-LD the served HTML lacks: the start page
+ * first, then indexable pages without JSON-LD, one per first path segment, up to `n`.
+ */
+export function pickRenderPages(pages, startUrl, n) {
+  if (n <= 0) return [];
+  const html = htmlPages(pages);
+  const picked = [];
+  const start = html.find((p) => p.url === startUrl) || html[0];
+  if (start) picked.push(start.url);
+  const seen = new Set();
+  for (const p of html.filter(indexable)) {
+    if (picked.length >= n) break;
+    if (picked.includes(p.url) || p.jsonLd?.length) continue;
+    let key;
+    try { key = new URL(p.url).pathname.split('/').filter(Boolean)[0] || '/'; } catch { key = p.url; }
+    if (seen.has(key)) continue;
+    seen.add(key); picked.push(p.url);
+  }
+  return picked.slice(0, n);
 }
 
 /** One page per template for the validator: distinct JSON-LD type sets first, then distinct first path segments. */

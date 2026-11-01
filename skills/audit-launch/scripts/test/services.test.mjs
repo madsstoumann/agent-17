@@ -4,10 +4,11 @@ import { readFileSync, existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import os from 'node:os';
 import {
-  stripJsonGuard, groupW3cMessages, w3cValidate, schemaValidate, observatoryScan, summariseObservatory,
+  stripJsonGuard, groupW3cMessages, w3cValidate, observatoryScan, summariseObservatory,
   hstsPreloadStatus, sslLabsAnalyze, securityHeadersApi, parseSecurityHeadersPage, securityHeadersScrape,
   buildScrapeArgs, findChrome, postBody,
 } from '../lib/services.mjs';
+import { schemaValidate } from '../lib/schema.mjs';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/services/${name}`, import.meta.url), 'utf8');
 const w3cFixture = JSON.parse(fixture('w3c.json'));
@@ -400,4 +401,11 @@ test('postBody sends a body through fetch with the audit headers and returns the
   assert.equal(down.status, 0);
   assert.equal(down.ok, false);
   assert.match(down.error, /ECONNREFUSED/);
+});
+
+test('schema.mjs is identical to audit-seo\'s copy', () => {
+  const here = new URL('.', import.meta.url);
+  const mine = readFileSync(new URL('../lib/schema.mjs', here), 'utf8');
+  const theirs = new URL('../../../audit-seo/scripts/lib/schema.mjs', here);
+  if (existsSync(theirs)) assert.equal(readFileSync(theirs, 'utf8'), mine);
 });

@@ -42,7 +42,8 @@ export function renderMarkdown(report, { levels } = {}) {
   out.push(`**Site:** ${site.finalUrl} · **Date:** ${report.date} · **Tool:** audit-seo ${report.version}`, '');
   out.push(`**Result:** ${resultLine(counts)}`, '');
   if (filtered) out.push(levelNote(levels, { hidden: report.rows.length - rows.length }), '');
-  out.push(`**Crawled:** ${stats.html} HTML pages and ${stats.other} other URLs (${stats.redirects} redirects, ${stats.errors} errors) by following links${stats.truncated ? ` (stopped at the --pages cap of ${stats.maxPages}; the site has more)` : ''}${stats.sitemapMissing ? `, plus ${stats.sitemapSampled} of ${stats.sitemapMissing} sitemap URLs the links did not reach` : ''}. ${stats.indexable} pages are indexable.`, '');
+  if (report.mode === 'schema') out.push(`**Checked:** structured data on this one page only (${/^file:|^\//.test(site.finalUrl) || !/^https?:/.test(site.finalUrl) ? 'a local file' : '--schema-only'}); nothing was crawled. Run without --schema-only for the full SEO audit.`, '');
+  else out.push(`**Crawled:** ${stats.html} HTML pages and ${stats.other} other URLs (${stats.redirects} redirects, ${stats.errors} errors) by following links${stats.truncated ? ` (stopped at the --pages cap of ${stats.maxPages}; the site has more)` : ''}${stats.sitemapMissing ? `, plus ${stats.sitemapSampled} of ${stats.sitemapMissing} sitemap URLs the links did not reach` : ''}. ${stats.indexable} pages are indexable.`, '');
   if (env.note) out.push(`> ${env.note}`, '');
   if (report.notes) out.push('## Notes', '', report.notes.trim(), '');
   if (report.diff && !report.diff.error) out.push(...diffMarkdown(report.diff, { from: report.diff.from, date: report.diff.date }));
@@ -78,7 +79,8 @@ export function renderMarkdown(report, { levels } = {}) {
   out.push('## Not covered', '');
   out.push('- Rankings, search volume, backlinks and Search Console data: none of that is visible from outside. Check Search Console for coverage and Core Web Vitals field data.');
   out.push('- Speed, Core Web Vitals and the start page\'s launch basics are in audit-launch; accessibility in audit-a11y.');
-  out.push('- Pages that build their content with JavaScript are read as served (no rendering), as most crawlers first see them. AI crawlers mostly do not run JavaScript at all, so thin served HTML hides the page from AI answers too.');
+  out.push('- Pages are read as served, as most crawlers first see them; only the start page and a few pages without JSON-LD are rendered in Chrome (--render-pages), to find JSON-LD that JavaScript adds. Text that JavaScript builds still counts as missing: AI crawlers mostly do not run JavaScript, so thin served HTML hides the page from AI answers too.');
+  out.push('- Google\'s Rich Results Test itself (it has no public API): its required and recommended properties are checked locally for the common result types; the Search Console enhancement reports show what Google actually picked up.');
   out.push('- Whether AI engines actually cite the site: that needs prompts run against each engine over time, not a crawl.');
   out.push('');
   out.push('Files: `report.json` (every row and page), `findings.json` (the fix list with every affected URL), `pages.csv` (one row per crawled URL).', '');
@@ -129,14 +131,25 @@ export function pagesCsv(pages, inlinks) {
 export function renderStdout(report, paths, { levels } = {}) {
   const counts = countStatuses(report.rows);
   const rows = report.rows.filter((r) => shows(levels, r));
-  const out = [`audit-seo ${report.version} — ${report.site.finalUrl}`, `Result: ${resultLine(counts)}`, `Crawled ${report.stats.html} pages (${report.stats.indexable} indexable)${report.stats.truncated ? ', capped' : ''}; ${report.stats.sitemapSampled} extra sitemap URLs`, ''];
+  const scope = report.mode === 'schema' ? 'Structured data on one page only' : `Crawled ${report.stats.html} pages (${report.stats.indexable} indexable)${report.stats.truncated ? ', capped' : ''}; ${report.stats.sitemapSampled} extra sitemap URLs`;
+  const out = [`audit-seo ${report.version} — ${report.site.finalUrl}`, `Result: ${resultLine(counts)}`, scope, ''];
   for (const r of sorted(rows.filter((x) => x.status === 'fail' || x.status === 'warn'))) out.push(`${r.status.toUpperCase().padEnd(4)} ${r.title}: ${r.evidence}`);
   for (const r of rows.filter((x) => x.status === 'skip')) out.push(`SKIP ${r.title}: ${r.evidence}`);
   out.push('', `report.md     ${paths.md}`, `findings.json ${paths.findings}`);
   return out.join('\n');
 }
 
-/** The --console items: one per row with a level (fail, warn, info). */
+/**
+ * The --console items: one per row with a level (fail, warn, info). For --schema-only and a local
+ * file, one per validator error and warning instead, so the list reads like the validator's.
+ */
 export function consoleItems(report) {
+  if (report.mode === 'schema') {
+    return sorted(report.rows).flatMap((r) => {
+      const each = r.urls.filter((u) => /^(ERROR|WARN|INFO) /.test(u.note || ''));
+      if (!each.length) return [{ level: levelOf(r), source: r.area, id: r.id.replace(/^seo\./, ''), title: r.title, where: cell(r.evidence, 140) }];
+      return each.map((u) => ({ level: { ERROR: 'error', WARN: 'warn', INFO: 'info' }[u.note.split(' ')[0]], source: r.area, id: r.id.replace(/^seo\./, ''), title: u.note.replace(/^(ERROR|WARN|INFO) /, '') }));
+    });
+  }
   return sorted(report.rows).map((r) => ({ level: levelOf(r), source: r.area, id: r.id.replace(/^seo\./, ''), title: r.title, where: `${cell(r.evidence, 140)}${r.urls.length ? ` (${r.urls.length} page${r.urls.length === 1 ? '' : 's'})` : ''}` }));
 }

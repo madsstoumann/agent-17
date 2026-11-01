@@ -15,7 +15,7 @@ The repository is a plugin marketplace. It has one plugin, `skills`, which holds
 
 Or from your shell: `claude plugin install skills --marketplace madsstoumann/agent-17`.
 
-The skills show up as `/skills:audit-launch`, `/skills:validate-schema` and so on, and Claude also picks them up on its own when a task matches. To get updates automatically, open `/plugin`, go to **Marketplaces**, select `agent-17` and choose **Enable auto-update**. Otherwise run `claude plugin update skills@agent-17` now and then.
+The skills show up as `/skills:audit-launch`, `/skills:audit-seo` and so on, and Claude also picks them up on its own when a task matches. To get updates automatically, open `/plugin`, go to **Marketplaces**, select `agent-17` and choose **Enable auto-update**. Otherwise run `claude plugin update skills@agent-17` now and then.
 
 ### claude.ai and the Claude desktop app
 
@@ -182,8 +182,12 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 
 ### audit-seo
 
+Give it a URL for the site-wide audit, or a local HTML file to check that file's structured data only.
+
 | Flag | What it does |
 |---|---|
+| `--schema-only` | Structured data on the given page only: validator.schema.org, Google rich-result rules, JSON-LD added by JavaScript, every issue on its own line. No crawl. Implied for a local file. |
+| `--render-pages N` | Pages rendered in headless Chrome to find JSON-LD that JavaScript adds (default 8, 0 to skip). Uses `CHROME_PATH` or finds Chrome. |
 | `--pages N` | Pages to crawl (default 150). |
 | `--sitemap-sample N` | Extra sitemap URLs the crawl did not reach (default 50). |
 | `--external-links N` | External links to check (default 150, 0 to skip). |
@@ -260,9 +264,9 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 | `--jobs N` / `--timeout MS` | Sites in parallel (4), per request (15000). |
 | `--out DIR` / `--insecure` / `--json` / `--quiet` | As for the other skills. |
 
-### validate-schema, is-website-safe, node-toolchain-check
+### is-website-safe, node-toolchain-check
 
-No flags: give validate-schema a URL or HTML file (it understands "errors only" and "just the list"), is-website-safe a domain, and node-toolchain-check nothing.
+No flags: give is-website-safe a domain, and node-toolchain-check nothing. To validate one page's schema.org markup, run audit-seo with `--schema-only`, or on a local HTML file.
 
 ## Adding a skill
 
