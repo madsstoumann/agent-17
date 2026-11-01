@@ -4,7 +4,7 @@ description: Periodic health check of a solution's dependencies and external int
 argument-hint: "[--root PATH] [--in-repo | --dir PATH] [--transitive] [--offline] [--skip packages,runtimes,apis] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(npm:*), Bash(dotnet:*), Read, Write, Edit, WebFetch, WebSearch
 metadata:
-  version: "2.4.0"
+  version: "2.4.1"
 ---
 
 # Solution health check

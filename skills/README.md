@@ -29,7 +29,7 @@ Changes that touch only the changelog or other repo housekeeping do not bump the
 
 ## Report folders
 
-Skills that write report files (a11y-audit, audit-all, eco-audit, infra-audit, launch-audit, privacy-audit, seo-audit, security-audit, solution-health, tech-stack) use the same default folder, so reports from one machine end up in one place. First match wins:
+Skills that write report files (audit-a11y, audit-all, audit-eco, audit-infra, audit-launch, audit-privacy, audit-seo, audit-security, solution-health, tech-stack) use the same default folder, so reports from one machine end up in one place. First match wins:
 
 1. `--out` when the user names a folder,
 2. `$AUDIT_OUT_DIR`,
@@ -54,7 +54,7 @@ Nothing that should carry over between runs lives in a timestamped folder. Each 
 - When a target folder is new, a skill looks once for its earlier results in the old layouts (timestamped folders, audit-all run folders) by their content, not by folder name.
 - solution-health's state folder is `<folder>/solution-health/<solution>/` itself (manifest.json, state.json, snapshots/, notes.md), because each run updates the state in place; `--in-repo` keeps it in the solution for teams that commit it.
 
-Skills install separately, so launch-audit, security-audit, a11y-audit and audit-all each carry a copy of `scripts/lib/target-state.mjs` (security-audit's tests check the copies are identical), and each carries its own `reportsRoot()` (see `security-audit/scripts/scan.mjs`); keep them in step. A new skill that writes reports should use the same layout.
+Skills install separately, so audit-launch, audit-security, audit-a11y and audit-all each carry a copy of `scripts/lib/target-state.mjs` (audit-security's tests check the copies are identical), and each carries its own `reportsRoot()` (see `audit-security/scripts/scan.mjs`); keep them in step. A new skill that writes reports should use the same layout.
 
 ## Levels and the console list
 
@@ -64,7 +64,7 @@ Every skill that writes a report takes the same two flags (validate-schema follo
 - `--console` prints a compact list instead of writing `report.md`, one line per issue, errors first:
 
   ```
-  launch-audit shop.example.dk — 2 errors · 5 warnings · 3 info — showing errors only
+  audit-launch shop.example.dk — 2 errors · 5 warnings · 3 info — showing errors only
   ERROR  exposed  secret-files  Secret files · /.env served (200)
   ERROR  crawl    meta-robots   Meta robots · noindex, nofollow
   ```

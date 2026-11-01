@@ -2,6 +2,11 @@
 
 All notable changes to the `solution-health` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.4.1] - 2026-11-01
+
+### Changed
+- Comments refer to the renamed audit skills (audit-launch, audit-privacy, audit-security). No behaviour change.
+
 ## [2.4.0] - 2026-11-01
 
 ### Added

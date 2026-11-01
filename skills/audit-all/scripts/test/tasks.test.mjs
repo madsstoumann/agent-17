@@ -25,7 +25,7 @@ test('validateTasks: defaults, sorting by severity, human tasks have no model', 
   assert.deepEqual(plan.tasks.map((t) => t.id), ['T1', 'T2', 'T5', 'T3', 'T4']);
   assert.equal(plan.tasks.find((t) => t.id === 'T1').model, null);
   assert.equal(plan.tasks.find((t) => t.id === 'T2').model, 'opus', 'security blocker defaults to opus');
-  const plain = validateTasks({ tasks: [{ title: 'x', fix: 'y', repo: 'r', sources: ['launch-audit'] }] }).plan.tasks[0];
+  const plain = validateTasks({ tasks: [{ title: 'x', fix: 'y', repo: 'r', sources: ['audit-launch'] }] }).plan.tasks[0];
   assert.equal(plain.model, 'sonnet');
   assert.equal(plain.id, 'T1');
   assert.deepEqual(plain.sources, ['launch'], 'skill names map to short sources');
@@ -63,7 +63,7 @@ test('taskPrompt and todoMarkdown', () => {
   assert.equal(files.get('T1'), '01-rotate-the-stripe-secret-key.md');
   const t2 = taskPrompt(plan.tasks.find((t) => t.id === 'T2'), { plan, date, runDir: '/r' });
   assert.match(t2, /^# T2: Remove the key from config/);
-  assert.match(t2, /Model: opus · Severity: blocker · Found by: security-audit · Repo: `shop-web` \(`\/code\/shop-web`\)/);
+  assert.match(t2, /Model: opus · Severity: blocker · Found by: audit-security · Repo: `shop-web` \(`\/code\/shop-web`\)/);
   assert.match(t2, /## Done when\n\ngrep finds no sk_live/);
   assert.match(t2, /A person does T1 \(Rotate the Stripe secret key\) first/);
   const t5 = taskPrompt(plan.tasks.find((t) => t.id === 'T5'), { plan, date, runDir: '/r' });
@@ -108,8 +108,8 @@ test('writeFixPlan: no tasks.json, bad JSON, and a good plan', () => {
 test('combine writes the fix plan next to the report', async () => {
   const run = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-all-fixrun-'));
   try {
-    fs.mkdirSync(path.join(run, 'security-audit'));
-    fs.writeFileSync(path.join(run, 'security-audit', 'report.md'), '# Security audit: shop-web\n\n**Verdict:** fine.\n');
+    fs.mkdirSync(path.join(run, 'audit-security'));
+    fs.writeFileSync(path.join(run, 'audit-security', 'report.md'), '# Security audit: shop-web\n\n**Verdict:** fine.\n');
     fs.writeFileSync(path.join(run, 'tasks.json'), JSON.stringify(PLAN));
     const out = await combine({ dir: run, style: 'serif', repos: [], pdf: false }, { log: () => {} });
     assert.equal(out.todo, path.join(run, 'fix', 'TODO.md'));
@@ -119,9 +119,9 @@ test('combine writes the fix plan next to the report', async () => {
   }
 });
 
-test('validateTasks: a11y-audit drafts are valid sources', () => {
+test('validateTasks: audit-a11y drafts are valid sources', () => {
   const { plan, errors } = validateTasks({ tasks: [
-    { id: 'T1', title: 'No visible focus indicator (WCAG 2.4.7)', severity: 'high', sources: ['a11y-audit'], repo: 'shop-web', fix: 'Add a :focus-visible style.' },
+    { id: 'T1', title: 'No visible focus indicator (WCAG 2.4.7)', severity: 'high', sources: ['audit-a11y'], repo: 'shop-web', fix: 'Add a :focus-visible style.' },
     { id: 'T2', title: 'Alt text on uploaded images', severity: 'high', owner: 'human', sources: ['a11y', 'launch'], fix: 'Write alt text in the CMS.' },
   ] });
   assert.deepEqual(errors, []);
@@ -133,8 +133,8 @@ test('--level filters fix/TODO.md and the prompts, never tasks.json; --console p
   const { parseLevel } = await import('../lib/levels.mjs');
   const run = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-all-levels-'));
   try {
-    fs.mkdirSync(path.join(run, 'security-audit'));
-    fs.writeFileSync(path.join(run, 'security-audit', 'report.md'), '# Security audit: shop-web\n\n**Verdict:** fine.\n');
+    fs.mkdirSync(path.join(run, 'audit-security'));
+    fs.writeFileSync(path.join(run, 'audit-security', 'report.md'), '# Security audit: shop-web\n\n**Verdict:** fine.\n');
     fs.writeFileSync(path.join(run, 'tasks.json'), JSON.stringify(PLAN));
     const out = await combine({ dir: run, style: 'serif', repos: [], pdf: false, levels: parseLevel('error'), console: true }, { log: () => {} });
     assert.equal(out.md, null);

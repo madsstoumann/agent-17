@@ -2,6 +2,13 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.10.0] - 2026-11-01
+
+### Changed
+- The sub-audits are now called audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra and audit-security, and a run folder holds `audit-launch/`, `audit-security-<repo>/` and so on.
+- combine.mjs still reads run folders written before the rename (`launch-audit/`, `security-audit-<repo>/`), and tasks.json sources accept both the old and new skill names.
+- target-state.mjs moves `<reports>/<old name>/` target folders to the new name on first use (same file in every audit skill).
+
 ## [1.9.0] - 2026-11-01
 
 ### Added

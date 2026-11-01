@@ -1,0 +1,213 @@
+#!/usr/bin/env node
+// audit-infra: domain, DNS, mail authentication, TLS per endpoint, edge and subdomains of a site.
+// Passive: DNS over HTTPS, ordinary TLS handshakes, one GET of the home page, and the public
+// RDAP, crt.sh and hstspreload.org APIs. Writes report.md and report.json, prints a summary.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parseLevel, shows, levelNote, consoleList, scratchDir, removeScratch } from './lib/levels.mjs';
+import { createResolver, apexOf, undot } from './lib/dns.mjs';
+import { SECTIONS, domainChecks, emailChecks, tlsChecks, edgeChecks, ctChecks } from './lib/checks.mjs';
+import { DKIM_SELECTORS } from './lib/email.mjs';
+import { result, countStatuses, prepareRun, finishRun, consoleItems, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, settle, GLYPH } from './lib/common.mjs';
+
+export const VERSION = '2.0.0';
+const UA = `Mozilla/5.0 (compatible; audit-infra/${VERSION})`;
+
+const USAGE = `audit-infra ${VERSION}: domain, DNS, email, TLS and subdomain audit
+
+Usage: node scan.mjs <url or host> [options]
+
+  --out DIR              Run folder (default <reports>/audit-infra/<host>/runs/<YYYYMMDD-HHMM>/)
+  --baseline FILE        Compare with this report.json (default: the last run for this host)
+  --email-domain D       Mail domain when it is not the site's registrable domain
+  --dkim-selector S      Your provider's DKIM selector (repeatable; added to the common ones)
+  --only G,...           Groups: domain email tls edge ct
+  --skip G,...           Skip groups
+  --no-ct                Skip the Certificate Transparency subdomain sweep (crt.sh)
+  --max-subdomains N     Subdomains to probe from CT (default 30)
+  --no-legacy            Skip the TLS 1.0/1.1 acceptance probe
+  --header "Name: value" Sent with the one GET of the home page (WAF bypass rule); also AUDIT_HEADERS
+  --platform-ok          Audit the platform's own domain anyway when the host is a hosting platform's address
+  --level LIST           What report.md and the summary show: error, warn, info, a comma list
+                         (error,warn), or all (default). report.json always keeps every result.
+  --console              Print a compact list of issues instead of writing report.md; the run folder is
+                         not kept in the reports folder (last-report.json is). Add --report to get both.
+  -h, --help
+`;
+
+export function parseArgs(argv, env = process.env) {
+  const a = { target: null, out: null, emailDomain: null, selectors: [], only: null, skip: [], ct: true, maxSubdomains: 30, legacy: true, headers: {} };
+  const list = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean);
+  for (let i = 0; i < argv.length; i++) {
+    const k = argv[i];
+    const next = () => { const v = argv[++i]; if (v === undefined) throw new Error(`${k} needs a value`); return v; };
+    if (k === '-h' || k === '--help') a.help = true;
+    else if (k === '--out') a.out = next();
+    else if (k === '--baseline') a.baseline = next();
+    else if (k === '--email-domain') a.emailDomain = undot(next());
+    else if (k === '--dkim-selector') a.selectors.push(...list(next()));
+    else if (k === '--only') a.only = list(next());
+    else if (k === '--skip') a.skip.push(...list(next()));
+    else if (k === '--no-ct') a.ct = false;
+    else if (k === '--max-subdomains') a.maxSubdomains = Math.max(0, Number(next()) || 0);
+    else if (k === '--no-legacy') a.legacy = false;
+    else if (k === '--header') addHeader(a.headers, next());
+    else if (k === '--platform-ok') a.platformOk = true;
+    else if (k === '--level') a.levels = parseLevel(next());
+    else if (k === '--console') a.console = true;
+    else if (k === '--report') a.report = true;
+    else if (k.startsWith('-')) throw new Error(`Unknown option ${k}`);
+    else if (!a.target) a.target = k;
+    else throw new Error(`Unexpected argument ${k}`);
+  }
+  a.levels ||= parseLevel('all');
+  for (const line of String(env.AUDIT_HEADERS || '').split('\n')) if (line.trim()) addHeader(a.headers, line);
+  return a;
+}
+
+function addHeader(headers, line) {
+  const i = line.indexOf(':');
+  if (i < 1) throw new Error(`--header needs "Name: value", got "${line}"`);
+  headers[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim();
+}
+
+/** "https://www.Example.dk/path" | "example.dk" -> { host, url } */
+export function parseTarget(t) {
+  const s = String(t || '').trim();
+  if (!s) throw new Error('Give a URL or a host name');
+  const u = new URL(/^[a-z]+:\/\//i.test(s) ? s : `https://${s}`);
+  return { host: u.hostname.toLowerCase(), url: u.href };
+}
+
+// Hosting platforms that hand out sub-domains of their own domain (a staging or default address). For
+// such a host the "registrable domain" is the platform's: its registration, DNS, mail and subdomains
+// say nothing about the site. umbraco.io is Umbraco Cloud's.
+const PLATFORMS = ['umbraco.io', 'azurewebsites.net', 'azurestaticapps.net', 'azurefd.net', 'cloudapp.azure.com', 'trafficmanager.net', 'vercel.app',
+  'netlify.app', 'pages.dev', 'workers.dev', 'herokuapp.com', 'ondigitalocean.app', 'onrender.com', 'fly.dev', 'web.app', 'firebaseapp.com',
+  'github.io', 'gitlab.io', 'appspot.com', 'cloudfront.net', 'amazonaws.com', 'elasticbeanstalk.com', 'railway.app', 'surge.sh', 'wpengine.com',
+  'kinsta.cloud', 'pantheonsite.io', 'myshopify.com', 'wixsite.com', 'webflow.io', 'squarespace.com', 'hubspotpagebuilder.com'];
+/** The hosting platform's domain when host is one of its addresses ("x.euwest01.umbraco.io" -> "umbraco.io"), else null. */
+export const platformOf = (host) => PLATFORMS.find((p) => host === p || host.endsWith(`.${p}`)) || null;
+
+export const siblingOf = (host, apex) => (host === apex ? `www.${apex}` : host === `www.${apex}` ? apex : null);
+
+const GROUPS = [
+  ['domain', domainChecks, 60000],
+  ['email', emailChecks, 90000],
+  ['tls', tlsChecks, 90000],
+  ['edge', edgeChecks, 45000],
+  ['ct', ctChecks, 180000],
+];
+
+export async function run(args, deps = {}) {
+  const { host, url } = parseTarget(args.target);
+  // A platform address (x.umbraco.io): only the endpoint itself (tls, edge) belongs to the site, and
+  // the platform's domain must not stand in for the site's (CAA, HSTS preload, www sibling).
+  const platform = args.platformOk ? null : platformOf(host);
+  const apex = platform ? host : apexOf(host);
+  const now = deps.now || new Date();
+  const ctx = {
+    host, url, apex, sibling: platform ? null : siblingOf(host, apex), emailDomain: args.emailDomain || apex,
+    resolver: deps.resolver || createResolver({ fetch: deps.fetch }), fetch: deps.fetch || globalThis.fetch, connect: deps.connect,
+    now, ua: UA, siteHeaders: args.headers || {}, legacy: args.legacy !== false, maxSubdomains: args.maxSubdomains ?? 30,
+    dkimSelectors: [...new Set([...(args.selectors || []), ...DKIM_SELECTORS])], customSelectors: Boolean(args.selectors?.length),
+    shared: {},
+  };
+  const want = (g) => (args.only ? args.only.includes(g) : true) && !(args.skip || []).includes(g) && !(g === 'ct' && args.ct === false) && !(platform && ['domain', 'email', 'ct'].includes(g));
+  const runGroup = async ([id, fn, budget]) => {
+    if (!want(id)) return [];
+    const t = Date.now();
+    const rows = await settle(fn(ctx), budget, (e) => [result(`${id === 'domain' ? 'dns' : id}.error`, 'skip', `${SECTIONS.find((s) => s.id === id).title} did not finish`, e.message)]);
+    log(`${id}: ${rows.length} checks in ${((Date.now() - t) / 1000).toFixed(1)}s`);
+    return rows;
+  };
+  // domain first (CAA and addresses feed tls and ct), edge before ct (HSTS feeds the no-https verdict).
+  const results = [...await runGroup(GROUPS[0])];
+  if (platform) results.push(result('dns.platform', 'warn', 'Hosting platform address', `${host} is an address on ${platform}, a hosting platform: its domain, DNS, mail and subdomains are the platform's, so those checks were skipped`, { fix: `Run audit-infra on the site's own domain (the live URL), not the platform address. Use --platform-ok only to audit ${platform} itself.` }));
+  const [email, tls, edge] = await Promise.all([runGroup(GROUPS[1]), runGroup(GROUPS[2]), runGroup(GROUPS[3])]);
+  results.push(...email, ...tls, ...edge, ...await runGroup(GROUPS[4]));
+  markIntercepted(results);
+  const counts = countStatuses(results);
+  return { tool: 'audit-infra', version: VERSION, generatedAt: now.toISOString(), target: { url, host, apex, emailDomain: ctx.emailDomain, sibling: ctx.sibling, ...(platform ? { platform } : {}) }, counts, results };
+}
+
+/** With TLS inspection on the network, certificate rows describe the proxy: turn them into skips. */
+export function markIntercepted(results) {
+  if (!results.some((r) => r.id === 'tls.interception')) return results;
+  for (const r of results) {
+    if (!/^tls\.(chain|expiry|consistency|san|key|protocol|alpn|ocsp-stapling|legacy|caa-match)$/.test(r.id) || r.status === 'skip') continue;
+    r.evidence = `not checked from this network (TLS is re-signed on the way, see "Certificate not in CT logs"); seen: ${r.evidence}`;
+    r.status = 'skip';
+    r.fix = '';
+    delete r.blocker;
+  }
+  return results;
+}
+
+export function renderMarkdown(report, { levels } = {}) {
+  const { target: t, counts } = report;
+  const filtered = Boolean(levels && !levels.all);
+  // --level: only rows at the chosen levels; the counts and report.json keep everything.
+  const results = report.results.filter((r) => shows(levels, r));
+  const out = [`# Infrastructure audit — ${t.host}`, ''];
+  if (t.platform) out.push(`> **Not the site's own domain.** ${t.host} is a ${t.platform} address, so only TLS and the edge were checked. Run audit-infra again on the live domain.`, '');
+  out.push(`**Site:** ${t.url}  ·  **Domain:** ${t.platform ? `${t.platform} (hosting platform, not checked)` : t.apex}${t.emailDomain !== t.apex ? `  ·  **Mail domain:** ${t.emailDomain}` : ''}  ·  **Date:** ${report.generatedAt.slice(0, 16).replace('T', ' ')} UTC  ·  **Tool:** audit-infra ${report.version}`, '');
+  out.push(resultLine(counts), '');
+  if (filtered) out.push(levelNote(levels, { hidden: report.results.length - results.length }), '');
+  out.push(...fixFirst(results));
+  const warns = results.filter((r) => r.status === 'warn');
+  if (warns.length) {
+    out.push('## Should fix', '');
+    for (const r of warns) out.push(`- ⚠️ **${r.title}** — ${r.evidence}${r.fix ? ` → ${r.fix}` : ''}`);
+    out.push('');
+  }
+  out.push(...carryOverSections(report));
+  out.push(...sectionTables(results, SECTIONS, { hideEmpty: filtered }));
+  out.push('## Not checked here', '', 'Redirects (http→https, www/apex), compression, cache headers, HTTP version, security headers, cookies and exposed files are checked by audit-launch (`redirects`, `caching`, `headers`, `exposed`). This audit only reads public DNS, certificates and registry data: no port scans, no load, no login.', '');
+  return out.join('\n');
+}
+
+export function renderStdout(report, files, { levels } = {}) {
+  const { target: t, counts } = report;
+  const results = report.results.filter((r) => shows(levels, r));
+  const lines = [`audit-infra ${t.host} (domain ${t.apex}, mail ${t.emailDomain})`, resultLine(counts).replace(/\*/g, '')];
+  for (const s of ['fail', 'warn']) for (const r of results.filter((x) => x.status === s)) lines.push(`${GLYPH[s]} ${r.id} ${r.title}: ${r.evidence.slice(0, 220)}`);
+  for (const r of results.filter((x) => x.status === 'skip')) lines.push(`${GLYPH.skip} ${r.id}: ${r.evidence.slice(0, 160)}`);
+  lines.push('', `report: ${files.md}`, `json:   ${files.json}`);
+  return lines.join('\n');
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.help || !args.target) { process.stdout.write(USAGE); process.exit(args.help ? 0 : 2); }
+  const { host } = parseTarget(args.target);
+  // --console alone: the run's files go to a scratch folder that is removed at the end.
+  const scratch = args.console && !args.report ? scratchDir('audit-infra') : null;
+  const { state, dir, baselineFile, notes } = prepareRun({ skill: 'audit-infra', host, out: scratch || args.out, baseline: args.baseline });
+  log(`audit-infra ${VERSION}: ${host} -> ${dir}`);
+  const report = await run(args);
+  report.tasks = taskCandidates(report.results, { source: 'infra', ref: `${path.basename(dir)}/report.md` });
+  const files = { md: path.join(dir, 'report.md'), json: path.join(dir, 'report.json') };
+  if (notes) report.notes = notes;
+  if (baselineFile) {
+    try {
+      const prev = JSON.parse(fs.readFileSync(baselineFile, 'utf8'));
+      report.diff = { from: baselineFile, date: prev.generatedAt, ...diffRows(prev.results, report.results) };
+    } catch (e) {
+      report.diff = { from: baselineFile, error: e.message, fixed: [], regressed: [], changed: [] };
+    }
+  }
+  fs.writeFileSync(files.md, renderMarkdown(report, { levels: args.levels }));
+  writeJson(files.json, report);
+  finishRun(state, report);
+  const head = args.console
+    ? `${consoleList({ title: `audit-infra ${report.target.host}`, items: consoleItems(report.results), levels: args.levels })}${args.report ? `\nreport: ${files.md}` : ''}`
+    : renderStdout(report, files, { levels: args.levels });
+  removeScratch(scratch);
+  process.stdout.write(`${head}\nstate:      ${state}\ncompared:   ${baselineFile || 'nothing (first run for this host)'}${notes ? '\nnotes:      notes.md included in the report' : ''}\n`);
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((e) => { log(`audit-infra: ${e.message}`); process.exit(1); });
+}

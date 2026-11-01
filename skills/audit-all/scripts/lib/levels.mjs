@@ -141,7 +141,7 @@ export function consoleList({ title = '', items = [], levels, max = 500 } = {}) 
 /**
  * --console without --report: the run's files go to a scratch folder in the system temp folder,
  * so no report.md or run folder is left in the reports folder. The skill removes it when it is
- * done; privacy-audit and security-audit keep it for the files Claude reads afterwards (policy
+ * done; audit-privacy and audit-security keep it for the files Claude reads afterwards (policy
  * text, findings.json) and leave it to the system's temp cleanup. The target folder
  * (last-report.json, notes.md) is still written, so the next run can compare.
  */

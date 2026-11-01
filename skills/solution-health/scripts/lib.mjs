@@ -62,7 +62,7 @@ export function defaultStateDir(root, { reports = reportsRoot(), readFile = read
 
 export const LEGACY_DIR = '.solution-health';
 
-/** The marker audit skills leave in each run folder (see target-state.mjs in launch-audit). */
+/** The marker audit skills leave in each run folder (see target-state.mjs in audit-launch). */
 export const RUN_MARKER = '.audit-run';
 
 /** True when `dir` is an audit run folder or inside one: a place that is gone by the next run. */

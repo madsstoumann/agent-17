@@ -1,5 +1,5 @@
 /**
- * Where reports go when no --out is given. Same order as launch-audit, security-audit and
+ * Where reports go when no --out is given. Same order as audit-launch, audit-security and
  * audit-all, so every skill's reports end up side by side.
  */
 import fs from 'node:fs';
