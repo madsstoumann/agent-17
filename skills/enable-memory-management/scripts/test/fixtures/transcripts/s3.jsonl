@@ -1,0 +1,4 @@
+{"type":"user","timestamp":"2026-10-03T08:00:00Z","message":{"role":"user","content":"<wake><message trust=\"principal\">Status?</message></wake>"},"sessionId":"s3"}
+{"type":"assistant","timestamp":"2026-10-03T08:00:05Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"x","name":"Bash","input":{"command":"git -C /repo log | head; python3 scripts/run.py --stop"}}]},"sessionId":"s3"}
+{"type":"assistant","timestamp":"2026-10-03T08:01:00Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"x","name":"Read","input":{"file_path":"/repo/AGENTS.md"}}]},"sessionId":"s3"}
+{"type":"assistant","isSidechain":true,"timestamp":"2026-10-03T08:02:00Z","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm run secret-subagent-only"}}]},"sessionId":"s3"}

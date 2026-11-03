@@ -1,0 +1,5 @@
+{"type":"user","timestamp":"2026-10-01T08:00:00Z","message":{"role":"user","content":"Deploy the site please"},"sessionId":"s1"}
+{"type":"assistant","timestamp":"2026-10-01T08:00:05Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"x","name":"Bash","input":{"command":"cd /repo && python3 scripts/run.py --restart && git status"}}]},"sessionId":"s1"}
+{"type":"user","timestamp":"2026-10-01T08:00:06Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x","content":"ok"}]},"sessionId":"s1"}
+{"type":"assistant","timestamp":"2026-10-01T08:01:00Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"x","name":"Read","input":{"file_path":"/repo/AGENTS.md"}}]},"sessionId":"s1"}
+{"type":"user","timestamp":"2026-10-01T08:02:00Z","message":{"role":"user","content":"No, don't restart it on a Friday"},"sessionId":"s1"}

@@ -1,0 +1,3 @@
+# Demo project
+
+@AGENTS.md
