@@ -10,4 +10,5 @@ All notable changes to the `enable-memory-management` skill. Format follows [Kee
 - `snapshot.mjs` snapshots a store with a sha256 manifest, diffs and restores it, and checks a file's hash before a write.
 - The dreaming method (`references/dreaming.md`), the store format, the in-band rules block, and templates for a project's `memory-dream` skill and `STEERING.md`.
 - `README.md`: running the skill in Claude Code, and setting it up with Claude Managed Agents (a memory store attached to the working sessions, a weekly memory-dreamer deployment with the store read-only, reviewing and applying its proposals, undo through memory versions, and Dreams).
+- When several files share a moved file's name, the folder nearest the old path wins (`page` → `page-grid`); a tie is reported as missing, not guessed.
 - `sessions-export.mjs` saves a Managed Agents agent's recent sessions as event files (GET requests only), and `transcripts.mjs` reads Managed Agents session events (`user.message`, `agent.tool_use`) as well as Claude Code transcripts.

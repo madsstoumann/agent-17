@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { audit, parseArgs } from '../audit.mjs';
 import { parseFrontmatter, meta, wikiLinks, mdLinks, codePaths, prosePaths, boldBullets, shellBlocks } from '../lib/markdown.mjs';
-import { planStatus } from '../lib/checks.mjs';
+import { planStatus, makeContext, resolveRef } from '../lib/checks.mjs';
 import { stepsFor, renderReport } from '../lib/report.mjs';
 import { projectSlug, imports } from '../lib/discover.mjs';
 
@@ -146,4 +146,15 @@ test('shared helpers are identical to the other skills\' copies', () => {
     if (!fs.existsSync(theirs)) continue;
     assert.equal(fs.readFileSync(path.join(here, '..', 'lib', file), 'utf8'), fs.readFileSync(theirs, 'utf8'), file);
   }
+});
+
+test('resolveRef: of several files with the same name, the nearest folder wins, and a tie is not a guess', () => {
+  const files = ['content/card-preset/media.json', 'content/folder/media.json', 'content/page-grid/media.json', 'a/x/notes.md', 'a/y/notes.md', 'b/w/k.md', 'b/w2/k.md', 'site-outputs.json'];
+  const ctx = makeContext({ root: '/nowhere', files, instr: { loaded: [], rules: [] }, skills: [] });
+  assert.deepEqual(resolveRef(ctx, 'content/page/media.json', 'docs/a.md'), { moved: 'content/page-grid/media.json' });
+  assert.deepEqual(resolveRef(ctx, 'content/site-preset/site-outputs.json', 'docs/a.md'), { moved: 'site-outputs.json' });
+  assert.deepEqual(resolveRef(ctx, 'b/w/old/k.md', 'docs/a.md'), { moved: 'b/w/k.md' });
+  const tie = resolveRef(ctx, 'a/z/notes.md', 'docs/a.md');
+  assert.equal(tie.missing, true);
+  assert.equal(tie.moved, undefined);
 });

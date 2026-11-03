@@ -81,9 +81,19 @@ export function resolveRef(ctx, ref, fromRel, { kind = 'code', external = false 
   const base = posix.basename(clean);
   const same = ctx.byBase.get(base) || [];
   if (same.length && same.length <= 3) {
+    // Rank the files that share the name: a folder of the same name counts 2, a folder that
+    // extends or shortens one (`page` and `page-grid`) counts 1. A tie is not a guess.
     const want = clean.split('/');
-    const score = (p) => p.split('/').filter((s) => want.includes(s)).length;
-    return { moved: [...same].sort((a, b) => score(b) - score(a))[0] };
+    const dirs = want.slice(0, -1);
+    const score = (p) => {
+      const segs = p.split('/');
+      let n = segs.filter((s) => want.includes(s)).length * 2;
+      for (const s of segs.slice(0, -1)) if (!dirs.includes(s) && dirs.some((d) => d.length > 2 && s.length > 2 && (s.startsWith(d) || d.startsWith(s)))) n += 1;
+      return n;
+    };
+    const ranked = same.map((p) => [p, score(p)]).sort((x, y) => y[1] - x[1]);
+    if (ranked.length > 1 && ranked[0][1] === ranked[1][1]) return { missing: true, candidates: ranked.map(([p]) => p) };
+    return { moved: ranked[0][0] };
   }
   return { missing: true };
 }
