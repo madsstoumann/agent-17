@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { audit, parseArgs } from '../audit.mjs';
-import { parseFrontmatter, meta, wikiLinks, mdLinks, codePaths, boldBullets, shellBlocks } from '../lib/markdown.mjs';
+import { parseFrontmatter, meta, wikiLinks, mdLinks, codePaths, prosePaths, boldBullets, shellBlocks } from '../lib/markdown.mjs';
 import { planStatus } from '../lib/checks.mjs';
 import { stepsFor, renderReport } from '../lib/report.mjs';
 import { projectSlug, imports } from '../lib/discover.mjs';
@@ -38,6 +38,7 @@ test('markdown helpers: frontmatter, links, paths, bullets, shell blocks', () =>
   assert.deepEqual(wikiLinks('see [[a]], [[b|label]] and [[a]]'), ['a', 'b']);
   assert.deepEqual(mdLinks('[x](docs/a.md#top) [y](https://e.com) [z](#here)\n```\n[q](in-fence.md)\n```'), ['docs/a.md']);
   assert.deepEqual(codePaths('`scripts/a.py` `src/b.ts:12` `docs/*.md` `content/x(.da).json` `PLAN.md` `npm run build` `<id>.json`'), ['scripts/a.py', 'src/b.ts', 'PLAN.md']);
+  assert.deepEqual(prosePaths('See docs/plans/a.md §4, and (scripts/b.py). Not `docs/c.md`, not https://x.com/d/e.md, not [l](docs/f.md), not docs/folder/.'), ['docs/plans/a.md', 'scripts/b.py']);
   const b = boldBullets('- **One.** text\n  more\n- **Two.** x\n\nafter');
   assert.deepEqual(b.map((x) => x.title), ['One.', 'Two.']);
   assert.match(b[0].text, /more/);
@@ -79,6 +80,7 @@ test('instructions: budget, moved paths, long rules, procedures', () => {
 test('docs: moved and missing paths, built plans, orphans; archives and placeholders stay quiet', () => {
   const r = run();
   assert.deepEqual(find(r, 'D2', 'FEATURE')[0].detail.missing, ['scripts/gone.py']);
+  assert.deepEqual(find(r, 'D1', 'FEATURE')[0].detail.moved, [['scripts/run.py', '../scripts/run.py']], 'a link relative to the wrong folder gets the path from the doc');
   assert.deepEqual(find(r, 'D3').map((x) => x.where), ['docs/plans/built-plan.md']);
   assert.deepEqual(find(r, 'D4').map((x) => x.where), ['docs/ORPHAN.md']);
   assert.equal(r.docs.plans.find((p) => p.path.endsWith('open-plan.md')).status, 'open');

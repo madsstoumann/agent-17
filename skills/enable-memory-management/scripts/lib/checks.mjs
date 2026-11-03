@@ -5,7 +5,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseFrontmatter, meta, wikiLinks, mdLinks, codePaths, sections, boldBullets, shellBlocks, shingles, jaccard, tokens } from './markdown.mjs';
+import { parseFrontmatter, meta, wikiLinks, mdLinks, codePaths, prosePaths, sections, boldBullets, shellBlocks, shingles, jaccard, tokens } from './markdown.mjs';
 import { readText, rel } from './discover.mjs';
 
 export const DEFAULTS = {
@@ -97,11 +97,13 @@ export function deadRefs(ctx, text, fromRel, { external = false } = {}) {
     if (seen.has(ref)) return;
     seen.add(ref);
     const r = resolveRef(ctx, ref, fromRel, { kind, external });
-    if (r?.moved) moved.push([ref, r.moved]);
+    // A markdown link is relative to its file, so the fix is the path from there; a path in backticks is from the root.
+    if (r?.moved) moved.push([ref, kind === 'link' && fromRel ? posix.relative(posix.dirname(fromRel), r.moved) : r.moved]);
     else if (r?.missing) missing.push(ref);
   };
   if (!external) for (const l of mdLinks(text)) check(l, 'link');
   for (const p of codePaths(text)) check(p, 'code');
+  for (const p of prosePaths(text)) check(p, 'code');
   return { moved, missing };
 }
 

@@ -85,6 +85,20 @@ export function codePaths(text) {
   return [...out];
 }
 
+/**
+ * Paths written in plain prose, outside backticks and links: "see docs/plans/x.md §4". Only spans with
+ * a folder and a known extension; URLs are removed first.
+ */
+export function prosePaths(text) {
+  const t = withoutFences(text).replace(/`[^`\n]*`/g, ' ').replace(/\]\([^)]*\)/g, '] ').replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, ' ');
+  const out = new Set();
+  for (const m of t.matchAll(/(?:^|[\s(\[,;"'])((?:\.{1,2}\/)?[A-Za-z0-9_][\w.-]*(?:\/[\w.-]+)+)(?=[\s),.;:'"\]§]|$)/gm)) {
+    const s = m[1].replace(/^\.\//, '').replace(/[.]+$/, '');
+    if (PATH_EXT.test(s)) out.add(s);
+  }
+  return [...out];
+}
+
 /** Headings with their line number and the number of lines and bytes until the next heading of the same or higher level. */
 export function sections(text, maxLevel = 3) {
   const lines = withoutFences(text).split('\n');
