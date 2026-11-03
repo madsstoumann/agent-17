@@ -282,6 +282,23 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 
 Optional keys, each adding one lookup: `GOOGLE_SAFE_BROWSING_KEY` (Google Safe Browsing), `VIRUSTOTAL_API_KEY`, `URLHAUS_AUTH_KEY` (abuse.ch) and `URLSCAN_API_KEY` (works without, lower quota). All have free tiers; see the skill for where to get them.
 
+### enable-memory-management
+
+| Flag | What it does |
+|---|---|
+| `--root DIR` | The project (default: the current folder). |
+| `--memory DIR` | The memory folder. Default: Claude Code's auto memory for the project (`autoMemoryDirectory` if set). Pass it for a team store, `/mnt/memory/<store>` or `/memories`. |
+| `--transcripts DIR` / `none` | Session transcripts to count (default: Claude Code's for the project), or skip them. Also reads exported event pages (`.json`). |
+| `--since YYYY-MM-DD` | Only sessions on or after this date. |
+| `--exclude a/,b/**` | Leave vendored or generated markdown out of the docs checks. |
+| `--audit-only` | Measure and summarise; no question, no changes. |
+| `--dream` | The dreaming pass: sessions since the last dream against the memory, numbered proposals with quotes and counts, applied only when accepted. |
+| `--lint` | Errors and warnings for instructions, memory and skills, no files written, exit 1 on an error (for a hook or CI). |
+| `--level`, `--console`, `--out`, `--state`, `--no-baseline` | As above. |
+| `--budget-lines N` / `--index-bytes N` | Change the budgets (200 lines always loaded; 25,000 bytes for `MEMORY.md`). |
+
+`snapshot.mjs` (run by the skill) takes `--memory DIR`, `--diff`, `--list`, `--sha FILE`, `--check FILE --expect SHA` and `--restore STAMP --yes`.
+
 ### check-node-toolchain
 
 No flags.

@@ -36,6 +36,14 @@ Checks describe or look something up. They give no verdict on the code and take 
 | [check-tech-stack](check-tech-stack/SKILL.md) | Tells what one or more websites are built with: CMS, framework, libraries and versions, hosting, CDN, analytics, tag manager, consent tool, with evidence for each finding, library versions against npm and what changed since the last run. | `/skills:check-tech-stack https://example.com https://competitor.com`, or `--pages 5` to read more pages · [flags](../README.md#check-tech-stack) |
 | [check-node-toolchain](check-node-toolchain/SKILL.md) | Reports what is outdated in your local Node setup (nvm, Node versions, global npm packages, brew-installed pnpm/yarn/bun/deno, a stray system Node) and upgrades only what you approve. | `/skills:check-node-toolchain` · [flags](../README.md#check-node-toolchain) |
 
+### Agents
+
+Skills about how agents themselves work in a project: what they load, remember and learn.
+
+| Skill | What it does | How to use it |
+| --- | --- | --- |
+| [enable-memory-management](enable-memory-management/SKILL.md) | Measures a project's agent memory (always-loaded CLAUDE.md / AGENTS.md, `.claude/rules`, skills, docs, the memory store and past sessions), then after one approval sets up frontmatter and a lean index, in-band memory rules, snapshots with hash-before-write, a slimmer CLAUDE.md, skills for repeated procedures and a weekly dreaming pass that proposes memory changes for a person to accept. | `/skills:enable-memory-management` in the project, `--audit-only` to just measure, `--dream` for a review pass · [flags](../README.md#enable-memory-management) |
+
 ### Other
 
 | Skill | What it does | How to use it |

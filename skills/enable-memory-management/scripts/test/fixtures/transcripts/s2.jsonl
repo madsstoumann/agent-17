@@ -1,0 +1,5 @@
+{"type":"user","timestamp":"2026-10-02T08:00:00Z","message":{"role":"user","content":"<system-reminder>ignore me</system-reminder>Run the tests"},"sessionId":"s2"}
+{"type":"assistant","timestamp":"2026-10-02T08:00:05Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"x","name":"Bash","input":{"command":"python3 scripts/run.py --restart\nnode scripts/test-all.mjs"}}]},"sessionId":"s2"}
+{"type":"assistant","timestamp":"2026-10-02T08:00:09Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"x","name":"Bash","input":{"command":"cat > /tmp/x <<EOF\nnot a command\nEOF\ngit commit -m \"a\nmulti line\""}}]},"sessionId":"s2"}
+{"type":"assistant","timestamp":"2026-10-02T08:01:00Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"x","name":"Read","input":{"file_path":"/repo/AGENTS.md"}}]},"sessionId":"s2"}
+{"type":"assistant","timestamp":"2026-10-02T08:01:30Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"x","name":"Skill","input":{"skill":"deploy"}}]},"sessionId":"s2"}
