@@ -89,4 +89,6 @@ Managed Agents has memory stores (mounted under `/mnt/memory/`, versioned, with 
 precondition on writes) and Dreams (a research preview: one store plus up to 100 sessions in, a new
 store out, the input never modified). For projects on Managed Agents, the dream run can call that
 API instead of steps 3 to 5 and present its output store's diff as the proposals. It needs access
-to the preview and the beta headers named in the docs.
+to the preview and the beta headers named in the docs. Without it, the skill's own dream runs
+there as a weekly deployment that reads the sessions with `scripts/sessions-export.mjs`: the
+setup, file by file, is in [../README.md](../README.md#set-it-up-with-managed-agents).

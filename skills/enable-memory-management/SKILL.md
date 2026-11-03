@@ -110,7 +110,9 @@ something a session saw, never something the dream run does.
 
 Weekly is enough for most projects. In Claude Code, a routine (`/schedule`) or a cloud trigger
 that runs `/skills:enable-memory-management --dream` in the project; in a hosted project, a
-scheduled task in its own thread. The scheduled run only writes the proposal report and says where
+scheduled task in its own thread; in Claude Managed Agents, a scheduled deployment of a
+memory-dreamer agent with the store mounted read-only ([README.md](README.md#set-it-up-with-managed-agents)
+has the files and commands). The scheduled run only writes the proposal report and says where
 it is; applying always waits for a person.
 
 ## Rules

@@ -288,7 +288,7 @@ Optional keys, each adding one lookup: `GOOGLE_SAFE_BROWSING_KEY` (Google Safe B
 |---|---|
 | `--root DIR` | The project (default: the current folder). |
 | `--memory DIR` | The memory folder. Default: Claude Code's auto memory for the project (`autoMemoryDirectory` if set). Pass it for a team store, `/mnt/memory/<store>` or `/memories`. |
-| `--transcripts DIR` / `none` | Session transcripts to count (default: Claude Code's for the project), or skip them. Also reads exported event pages (`.json`). |
+| `--transcripts DIR` / `none` | Session transcripts to count (default: Claude Code's for the project), or skip them. Also reads exported event pages and Managed Agents session events (`.json`, `.jsonl`). |
 | `--since YYYY-MM-DD` | Only sessions on or after this date. |
 | `--exclude a/,b/**` | Leave vendored or generated markdown out of the docs checks. |
 | `--audit-only` | Measure and summarise; no question, no changes. |
@@ -297,7 +297,7 @@ Optional keys, each adding one lookup: `GOOGLE_SAFE_BROWSING_KEY` (Google Safe B
 | `--level`, `--console`, `--out`, `--state`, `--no-baseline` | As above. |
 | `--budget-lines N` / `--index-bytes N` | Change the budgets (200 lines always loaded; 25,000 bytes for `MEMORY.md`). |
 
-`snapshot.mjs` (run by the skill) takes `--memory DIR`, `--diff`, `--list`, `--sha FILE`, `--check FILE --expect SHA` and `--restore STAMP --yes`.
+`snapshot.mjs` (run by the skill) takes `--memory DIR`, `--diff`, `--list`, `--sha FILE`, `--check FILE --expect SHA` and `--restore STAMP --yes`. `sessions-export.mjs` takes `--agent AGENT_ID --out DIR [--since YYYY-MM-DD] [--max N]` and reads `ANTHROPIC_API_KEY`: it saves a Managed Agents agent's recent sessions for a dream run. Running the skill with Claude Managed Agents (a memory store and a weekly dreamer deployment): [its README](skills/enable-memory-management/README.md#set-it-up-with-managed-agents).
 
 ### check-node-toolchain
 

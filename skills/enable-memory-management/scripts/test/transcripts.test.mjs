@@ -55,3 +55,27 @@ test('exported event pages (a JSON array of { data: { user|assistant } }) read t
   assert.deepEqual([...s.commands], ['python3 scripts/catch-up.py']);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('Managed Agents session events (a list page or JSON lines) read the same way', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'emm-managed-'));
+  const events = [
+    { id: 'sevt_1', type: 'user.message', content: [{ type: 'text', text: "Don't deploy on Fridays" }], processed_at: '2026-11-02T09:00:00Z' },
+    { id: 'sevt_2', type: 'agent.message', content: [{ type: 'text', text: 'Understood.' }], processed_at: '2026-11-02T09:00:05Z' },
+    { id: 'sevt_3', type: 'agent.tool_use', name: 'bash', input: { command: 'cd /workspace && npm run build' }, processed_at: '2026-11-02T09:00:10Z' },
+    { id: 'sevt_4', type: 'agent.tool_use', name: 'read', input: { file_path: '/workspace/AGENTS.md' }, processed_at: '2026-11-02T09:00:12Z' },
+    { id: 'sevt_5', type: 'span.model_request_end', model_usage: { input_tokens: 10 }, processed_at: '2026-11-02T09:00:13Z' },
+  ];
+  fs.writeFileSync(path.join(dir, 'sesn_page.json'), JSON.stringify({ data: events, next_page: null }, null, 2));
+  fs.writeFileSync(path.join(dir, 'sesn_lines.jsonl'), events.map((e) => JSON.stringify(e)).join('\n'));
+  const sessions = readSessions(dir);
+  assert.equal(sessions.length, 2);
+  for (const s of sessions) {
+    assert.deepEqual(s.prompts.map((p) => p.text), ["Don't deploy on Fridays"]);
+    assert.equal(s.corrections.length, 1);
+    assert.deepEqual([...s.commands], ['npm run build']);
+    assert.deepEqual([...s.reads], ['/workspace/AGENTS.md']);
+    assert.equal(s.start, '2026-11-02T09:00:00Z');
+    assert.equal(s.end, '2026-11-02T09:00:13Z');
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+});

@@ -42,7 +42,7 @@ Skills about how agents themselves work in a project: what they load, remember a
 
 | Skill | What it does | How to use it |
 | --- | --- | --- |
-| [enable-memory-management](enable-memory-management/SKILL.md) | Measures a project's agent memory (always-loaded CLAUDE.md / AGENTS.md, `.claude/rules`, skills, docs, the memory store and past sessions), then after one approval sets up frontmatter and a lean index, in-band memory rules, snapshots with hash-before-write, a slimmer CLAUDE.md, skills for repeated procedures and a weekly dreaming pass that proposes memory changes for a person to accept. | `/skills:enable-memory-management` in the project, `--audit-only` to just measure, `--dream` for a review pass · [flags](../README.md#enable-memory-management) |
+| [enable-memory-management](enable-memory-management/SKILL.md) | Measures a project's agent memory (always-loaded CLAUDE.md / AGENTS.md, `.claude/rules`, skills, docs, the memory store and past sessions), then after one approval sets up frontmatter and a lean index, in-band memory rules, snapshots with hash-before-write, a slimmer CLAUDE.md, skills for repeated procedures and a weekly dreaming pass that proposes memory changes for a person to accept. | `/skills:enable-memory-management` in the project, `--audit-only` to just measure, `--dream` for a review pass · [flags](../README.md#enable-memory-management) · [with Managed Agents](enable-memory-management/README.md#set-it-up-with-managed-agents) |
 
 ### Other
 

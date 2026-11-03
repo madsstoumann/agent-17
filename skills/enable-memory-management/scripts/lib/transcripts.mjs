@@ -5,7 +5,10 @@
  * habit from a one-off.
  *
  * Also reads exported event pages (JSON arrays or JSON lines of { user|assistant: {...} } or
- * { data: {...} }), so cloud sessions read through an events API can be counted the same way.
+ * { data: {...} }), so cloud sessions read through an events API can be counted the same way, and
+ * Managed Agents session events (`user.message`, `agent.tool_use`; a JSON array, JSON lines, or a
+ * list page { data: [...] }) as `ant beta:sessions:events list` or GET /v1/sessions/{id}/events
+ * return them.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -72,18 +75,45 @@ function unwrap(o) {
   return null;
 }
 
-/** Reads one transcript (a .jsonl file or a JSON array file) into { id, start, end, prompts, corrections, commands, reads, skills }. */
+/** A Managed Agents session event (`user.message`, `agent.tool_use`) as { type, message, timestamp }, or null. */
+function managedEvent(ev) {
+  if (!ev || typeof ev.type !== 'string' || !ev.type.includes('.')) return null;
+  const timestamp = ev.processed_at || null;
+  if (ev.type === 'user.message') return { type: 'user', message: { content: ev.content }, timestamp };
+  if (ev.type === 'agent.tool_use') {
+    const name = { bash: 'Bash', read: 'Read', write: 'Write', edit: 'Edit' }[ev.name] || ev.name;
+    const input = { ...(ev.input || {}) };
+    if (!input.file_path && input.path) input.file_path = input.path;
+    return { type: 'assistant', message: { content: [{ type: 'tool_use', name, input }] }, timestamp };
+  }
+  return { skip: true, timestamp };
+}
+
+/** Reads one transcript (a .jsonl file, a JSON array file, or a list page { data: [...] }) into { id, start, end, prompts, corrections, commands, reads, skills }. */
 export function readSession(file) {
   const raw = fs.readFileSync(file, 'utf8');
-  let events;
+  let events = null;
   const trimmed = raw.trim();
-  if (trimmed.startsWith('[')) { try { events = JSON.parse(trimmed); } catch { events = []; } } else {
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    try {
+      const whole = JSON.parse(trimmed);
+      if (Array.isArray(whole)) events = whole;
+      else if (Array.isArray(whole?.data)) events = whole.data;
+      else events = [whole];
+    } catch { events = trimmed.startsWith('[') ? [] : null; }
+  }
+  if (!events) {
     events = [];
     for (const l of raw.split('\n')) { if (!l.trim()) continue; try { events.push(JSON.parse(l)); } catch { /* partial line */ } }
   }
   const s = { id: path.basename(file).replace(/\.(jsonl|json)$/, ''), file, start: null, end: null, prompts: [], corrections: [], commands: new Set(), reads: new Set(), skills: new Set() };
   for (const ev of events) {
-    const e = unwrap(ev);
+    const m = managedEvent(ev);
+    if (m?.skip) {
+      if (m.timestamp) { if (!s.start || m.timestamp < s.start) s.start = m.timestamp; if (!s.end || m.timestamp > s.end) s.end = m.timestamp; }
+      continue;
+    }
+    const e = m || unwrap(ev);
     if (!e || e.isSidechain) continue;
     const t = e.timestamp || ev.timestamp || null;
     if (t) { if (!s.start || t < s.start) s.start = t; if (!s.end || t > s.end) s.end = t; }
