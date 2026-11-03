@@ -6,6 +6,8 @@ Each folder is one skill: a `SKILL.md` plus whatever scripts, references and tem
 
 Install the plugin as described in the [root README](../README.md#install-the-skills), then run a skill as `/skills:<name>`, or just ask in your own words and Claude picks the skill. Every flag is listed under [Parameters](../README.md#parameters).
 
+To have the audits run by themselves on pull requests, preview deploys or a schedule, see [Running the audits automatically](audits.md).
+
 **Keep this list current.** A pull request that adds, removes or renames a skill, or changes what it does or how it is called, updates the tables below in the same PR.
 
 ### Audits
