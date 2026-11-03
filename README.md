@@ -97,6 +97,10 @@ package lists cut to five rows). Flags skip the questions:
 /skills:audit-all --no-site --only security,health
 ```
 
+## Running audits automatically
+
+To run the audits on pull requests, after preview deploys or on a schedule (GitHub Actions, `claude -p`, or the plain Node scripts without Claude), see [skills/audits.md](skills/audits.md).
+
 ## Fixing what an audit finds
 
 audit-all writes a fix plan next to its report: `fix/TODO.md` and one prompt per task in `fix/tasks/`,
@@ -247,7 +251,7 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 | Flag | What it does |
 |---|---|
 | `--root PATH` | The solution to check (default: the current folder). |
-| `--in-repo` / `--dir PATH` | Keep state in the repo (`.solution-health/`), or in a folder of your choice. |
+| `--in-repo` / `--dir PATH` | Keep state in the repo (`.audit-solution-health/`), or in a folder of your choice. |
 | `--transitive` | Also check packages further down the dependency tree. |
 | `--offline` / `--no-enrich` | No network lookups / skip the extra package health data. |
 | `--skip packages,runtimes,apis` | Leave out a check. |
