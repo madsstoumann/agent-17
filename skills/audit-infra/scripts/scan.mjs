@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // audit-infra: domain, DNS, mail authentication, TLS per endpoint, edge and subdomains of a site.
 // Passive: DNS over HTTPS, ordinary TLS handshakes, one GET of the home page, and the public
-// RDAP, crt.sh and hstspreload.org APIs. Writes report.md and report.json, prints a summary.
+// RDAP, crt.sh and hstspreload.org APIs (Chromium preload list as fallback). Writes report.md and report.json, prints a summary.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

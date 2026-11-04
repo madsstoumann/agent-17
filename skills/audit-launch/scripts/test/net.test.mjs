@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import {
   tlsInfo, certSummary, doh, parseDohAnswer, dnsRecords, dnssecStatus,
-  evaluateSpf, evaluateDmarc, dkimProbe, hstsPreloadEligibility,
+  evaluateSpf, evaluateDmarc, dkimProbe,
 } from '../lib/net.mjs';
 
 // ---------------------------------------------------------------- certSummary
@@ -427,19 +427,4 @@ test('dkimProbe: TXT at <selector>._domainkey.<domain>, absent selectors ignored
   assert.deepEqual(Object.keys(r.errors), ['selector1']);
   const custom = await dkimProbe('example.com', { selectors: ['google'], resolver });
   assert.equal(custom.found.length, 1);
-});
-
-// ---------------------------------------------------------------- HSTS preload eligibility
-
-test('hstsPreloadEligibility: the three preload requirements, from a parsed object or a raw header', () => {
-  assert.deepEqual(hstsPreloadEligibility({ maxAge: 31536000, includeSubDomains: true, preload: true }), { eligible: true, issues: [] });
-  const weak = hstsPreloadEligibility({ maxAge: 300, includeSubDomains: false, preload: false });
-  assert.equal(weak.eligible, false);
-  assert.equal(weak.issues.length, 3);
-  assert.match(weak.issues[0], /max-age/);
-  assert.match(weak.issues[1], /includeSubDomains/);
-  assert.match(weak.issues[2], /preload/);
-  assert.deepEqual(hstsPreloadEligibility('max-age=63072000; includeSubDomains; preload'), { eligible: true, issues: [] });
-  assert.match(hstsPreloadEligibility({}).issues[0], /max-age/);
-  assert.match(hstsPreloadEligibility('').issues[0], /no strict-transport-security|max-age/i);
 });

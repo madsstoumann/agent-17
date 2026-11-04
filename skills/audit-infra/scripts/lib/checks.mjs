@@ -4,7 +4,8 @@ import { result, pLimit, settle } from './common.mjs';
 import { parseMx, parseCaa, parseSoa, undot } from './dns.mjs';
 import { handshake, sanCovers, daysLeft, caaAllows } from './tls.mjs';
 import { spfTree, judgeSpf, dmarc, dkim, mtaSts, stsCovers } from './email.mjs';
-import { rdap, crtSh, preloadStatus, normSerial } from './services.mjs';
+import { rdap, crtSh, normSerial } from './services.mjs';
+import { preloadLookup, preloadVerdict, parseHstsHeader } from './hsts-preload.mjs';
 
 export const SECTIONS = [
   { id: 'domain', title: 'Domain & DNS', prefixes: ['domain', 'dns'] },
@@ -294,15 +295,15 @@ export async function edgeChecks(ctx) {
   const h3 = /\bh3\b/.test(altSvc) || /alpn="?[^"\s]*h3/.test(httpsRr);
   out.push(result('edge.http3', h3 ? 'pass' : 'info', 'HTTP/3', h3 ? `advertised (${[altSvc && `Alt-Svc ${altSvc.slice(0, 60)}`, httpsRr && 'HTTPS DNS record'].filter(Boolean).join('; ')})` : 'not advertised (no h3 in Alt-Svc or an HTTPS DNS record)', { fix: h3 ? '' : 'Optional: most CDNs enable HTTP/3 with a toggle; it helps on mobile networks.' }));
 
-  // HSTS preload: the header from audit-launch's headers group decides eligibility; here the list status and what preloading would break.
+  // HSTS preload: list status for the apex (hstspreload.org, Chromium list as fallback), the
+  // header's eligibility, and (in the subdomain section) what preloading would break.
   const hsts = h['strict-transport-security'] || '';
-  const pre = await preloadStatus(ctx.apex, { fetch: ctx.fetch });
-  ctx.shared.hsts = { header: hsts, preload: pre.ok ? pre.status : null, includeSubDomains: /includesubdomains/i.test(hsts) };
-  if (!pre.ok) out.push(result('hsts.preload-list', 'skip', 'HSTS preload list', `hstspreload.org: ${pre.error}`));
-  else {
-    const eligible = /max-age=(\d+)/i.test(hsts) && Number(/max-age=(\d+)/i.exec(hsts)[1]) >= 31536000 && /includesubdomains/i.test(hsts) && /preload/i.test(hsts);
-    out.push(result('hsts.preload-list', 'info', 'HSTS preload list', `${ctx.apex}: ${pre.status}${hsts ? `; header on ${ctx.host}: \`${hsts}\`` : `; no HSTS header on ${ctx.host}`}${pre.status !== 'preloaded' ? (eligible ? ' (header is eligible)' : ' (header not eligible: needs max-age ≥ 31536000, includeSubDomains, preload)') : ''}`, { fix: pre.status === 'preloaded' ? '' : 'Preload only when every subdomain serves https; see the subdomain section for any that do not. Submit the apex at hstspreload.org.', link: `https://hstspreload.org/?domain=${ctx.apex}` }));
-  }
+  const pre = await preloadLookup(ctx.apex, { apex: ctx.apex, fetch: ctx.fetch });
+  ctx.shared.hsts = { header: hsts, preload: pre.ok ? pre.status : null, includeSubDomains: Boolean(parseHstsHeader(hsts)?.includeSubDomains) };
+  const v = preloadVerdict({ host: ctx.apex, header: hsts, lookup: pre });
+  const where = ctx.host !== ctx.apex ? ` (header from ${ctx.host})` : '';
+  const fix = v.fix && pre.status !== 'preloaded' ? `${v.fix} See the subdomain section for any that do not serve https.` : v.fix;
+  out.push(result('hsts.preload-list', v.status, 'HSTS preload list', `${ctx.apex}: ${v.text}${where}`, { fix, link: `https://hstspreload.org/?domain=${ctx.apex}` }));
   return out;
 }
 

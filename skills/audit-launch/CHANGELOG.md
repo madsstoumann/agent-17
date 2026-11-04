@@ -2,6 +2,13 @@
 
 All notable changes to the `audit-launch` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.2.0] - 2026-11-04
+
+### Changed
+- `hsts.preload` now verifies the real preload list, not just the header: hstspreload.org's status for the host (subdomains covered by a preloaded parent show "via <apex>") and its preloadable check for the apex. When hstspreload.org does not answer, the Chromium source list (the one every browser builds from) is read instead.
+- The row is a pass when the host is preloaded and the header still meets the rules, a warning when it is preloaded but the header dropped max-age ≥ 1 year, includeSubDomains or preload (or a pending submission has errors), info when it is not listed, and skipped when no list answered. It used to be info whatever the result, with a "submit" fix even for preloaded domains.
+- The lookup lives in `scripts/lib/hsts-preload.mjs`, an identical copy of audit-infra's, so both skills give the same verdict. audit-all still runs it once (`--skip tls` on audit-launch when audit-infra runs).
+
 ## [2.1.1] - 2026-11-01
 
 ### Changed

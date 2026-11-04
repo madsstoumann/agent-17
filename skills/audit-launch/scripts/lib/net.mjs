@@ -1,7 +1,6 @@
 /**
  * Network probes for a launch audit: the TLS certificate, DNS through the system
- * resolver with DNS-over-HTTPS as fallback, DNSSEC, SPF / DMARC / DKIM, and HSTS
- * preload eligibility.
+ * resolver with DNS-over-HTTPS as fallback, DNSSEC and SPF / DMARC / DKIM.
  *
  * Zero dependencies. Node >= 22. Async functions never throw. The async probes take
  * an injectable `connect` / `fetch` / `resolver` / `doh` so tests can run offline.
@@ -358,34 +357,4 @@ export async function dkimProbe(domain, { selectors = DKIM_SELECTORS, resolver =
     }
   }));
   return { found: results.filter(Boolean), errors };
-}
-
-// ---------------------------------------------------------------- HSTS
-
-function parseHstsHeader(header) {
-  const out = { maxAge: null, includeSubDomains: false, preload: false };
-  for (const part of String(header).split(';')) {
-    const [k, v = ''] = part.split('=');
-    const key = k.trim().toLowerCase();
-    if (key === 'max-age') { const n = Number(v.trim().replace(/^"|"$/g, '')); if (Number.isFinite(n)) out.maxAge = n; }
-    else if (key === 'includesubdomains') out.includeSubDomains = true;
-    else if (key === 'preload') out.preload = true;
-  }
-  return out;
-}
-
-/**
- * hstsPreloadEligibility({ maxAge, includeSubDomains, preload } | rawHeader) -> { eligible, issues: string[] }
- *
- * hstspreload.org's requirements: max-age of at least a year, includeSubDomains, preload.
- */
-export function hstsPreloadEligibility(hsts) {
-  if (typeof hsts === 'string' && !hsts.trim()) return { eligible: false, issues: ['no Strict-Transport-Security header'] };
-  const { maxAge, includeSubDomains, preload } = typeof hsts === 'string' ? parseHstsHeader(hsts) : (hsts || {});
-  const issues = [];
-  if (maxAge == null || !Number.isFinite(Number(maxAge))) issues.push('no max-age');
-  else if (Number(maxAge) < 31536000) issues.push(`max-age ${maxAge} is below 31536000 (one year)`);
-  if (!includeSubDomains) issues.push('missing includeSubDomains');
-  if (!preload) issues.push('missing preload');
-  return { eligible: issues.length === 0, issues };
 }
