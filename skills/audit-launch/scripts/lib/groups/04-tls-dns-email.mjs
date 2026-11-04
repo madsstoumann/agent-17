@@ -5,9 +5,8 @@
  * --email-domain), which is rarely the audited host on staging.
  */
 import { result } from '../registry.mjs';
-import { tlsInfo, certSummary, dnsRecords, dnssecStatus, evaluateSpf, evaluateDmarc, dkimProbe, hstsPreloadEligibility } from '../net.mjs';
-import { parseHsts } from '../headers.mjs';
-import { hstsPreloadStatus } from '../services.mjs';
+import { tlsInfo, certSummary, dnsRecords, dnssecStatus, evaluateSpf, evaluateDmarc, dkimProbe } from '../net.mjs';
+import { preloadLookup, preloadVerdict } from '../hsts-preload.mjs';
 import net from 'node:net';
 import { isPlatformHost } from '../cli.mjs';
 
@@ -83,15 +82,11 @@ export default {
       out.push(result('email.dkim', 'info', `DKIM (${emailDomain})`, dk.found.length ? `selectors found: ${dk.found.map((f) => f.selector).join(', ')}` : 'no common selector found (google, selector1/2, default, k1, mail…) — DKIM may still exist under another selector', { fix: dk.found.length ? '' : 'Confirm the mail provider\'s DKIM selector is published; send a test mail and check the headers.' }));
     }
 
-    // --- HSTS preload
-    const hsts = parseHsts(page.headers['strict-transport-security']);
-    const elig = hsts ? hstsPreloadEligibility(hsts) : { eligible: false, issues: ['no Strict-Transport-Security header'] };
-    let status = '';
-    if (remote) {
-      const ps = await hstsPreloadStatus(http, hostname);
-      if (ps.ok) status = ` · hstspreload.org: ${ps.status}${ps.preloadedDomain && ps.preloadedDomain !== hostname ? ` (via ${ps.preloadedDomain})` : ''}${ps.errors?.length ? `; not preloadable: ${ps.errors.map((x) => x.summary || x.message || JSON.stringify(x)).join('; ')}` : ''}`;
-    }
-    out.push(result('hsts.preload', 'info', 'HSTS preload', `${elig.eligible ? 'header is preload-eligible' : `header not preload-eligible: ${elig.issues.join(', ')}`}${status}`, { fix: elig.eligible ? 'Optional: submit at hstspreload.org once every subdomain is https-only.' : 'Preload needs max-age ≥ 31536000, includeSubDomains and preload — only if every subdomain is https-only.', link: `https://hstspreload.org/?domain=${encodeURIComponent(ctx.apexHost)}` }));
+    // --- HSTS preload: header requirements plus the real list (hstspreload.org, Chromium list as fallback)
+    const header = page.headers['strict-transport-security'];
+    const lookup = remote ? await preloadLookup(hostname, { apex: ctx.apexHost, fetch: ctx.fetch }) : { ok: false, error: '--no-remote' };
+    const v = preloadVerdict({ host: hostname, header, lookup });
+    out.push(result('hsts.preload', v.status, 'HSTS preload', v.text, { fix: v.fix, link: `https://hstspreload.org/?domain=${encodeURIComponent(ctx.apexHost)}`, data: { status: lookup.status, source: lookup.source, preloadedDomain: lookup.preloadedDomain, errors: lookup.errors, warnings: lookup.warnings } }));
     return out;
   },
 };

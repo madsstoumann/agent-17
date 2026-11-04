@@ -59,7 +59,7 @@ On **dev/staging** (`--env dev|staging`, or guessed from the hostname), findings
 | `email.spf` | `v=spf1` on the email domain | 0 records: warn with MX, info without; > 1 fail; `-all`/`~all` pass; `?all`/`+all` warn; > 10 lookups warn | One record ending `-all` (or `~all`). |
 | `email.dmarc` | `_dmarc.<domain>` | missing: fail with MX, warn without; `p=none` warn | `v=DMARC1; p=quarantine; rua=mailto:…` |
 | `email.dkim` | Common selectors | info | Confirm the provider's selector. |
-| `hsts.preload` | Header eligibility + list status | info | Only preload when every subdomain is https-only. |
+| `hsts.preload` | Is the host on the browsers' HSTS preload list (hstspreload.org status for the host, its preloadable check for the apex; the Chromium source list when hstspreload.org does not answer), and does the header still meet the list's rules (max-age ≥ 31536000, includeSubDomains, preload)? | preloaded + header ok: pass · preloaded but the header dropped a requirement: warn · pending with preloadable errors: warn · pending or not listed: info · no list answered (or `--no-remote`): skip | Only preload when every subdomain is https-only; removal takes months. Once listed, keep the header as it is. |
 
 ## 5. exposed
 

@@ -1,5 +1,5 @@
-// Public, read-only lookups: RDAP (domain registration), crt.sh (Certificate Transparency) and
-// hstspreload.org. Each returns { ok, ... } or { ok: false, error } and never throws.
+// Public, read-only lookups: RDAP (domain registration) and crt.sh (Certificate Transparency);
+// hstspreload.org is in hsts-preload.mjs. Each returns { ok, ... } or { ok: false, error } and never throws.
 
 async function getJson(fetchImpl, url, timeout) {
   // rdap.org answers 403 to clients without a user agent.
@@ -69,12 +69,3 @@ export function parseCrtSh(rows, domain, now = new Date()) {
 
 export const normSerial = (s) => String(s || '').toLowerCase().replace(/[^0-9a-f]/g, '').replace(/^0+/, '');
 
-/** hstspreload.org status: 'preloaded' | 'pending' | 'unknown' | 'rejected' … */
-export async function preloadStatus(domain, { fetch: fetchImpl = globalThis.fetch, timeout = 15000 } = {}) {
-  try {
-    const j = await getJson(fetchImpl, `https://hstspreload.org/api/v2/status?domain=${encodeURIComponent(domain)}`, timeout);
-    return { ok: true, status: j.status || 'unknown', includeSubDomains: j.include_subdomains ?? null };
-  } catch (e) {
-    return { ok: false, error: e.cause?.code || e.message };
-  }
-}

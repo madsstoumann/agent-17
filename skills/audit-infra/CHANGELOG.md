@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-infra` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.2.0] - 2026-11-04
+
+### Changed
+- `hsts.preload-list` uses `scripts/lib/hsts-preload.mjs`, shared with audit-launch: hstspreload.org's status and preloadable checks for the apex, the Chromium source list when hstspreload.org does not answer, and the same verdict as audit-launch (pass when preloaded and the header still qualifies, warn when preloaded but the header dropped a requirement or a pending submission has errors, info when not listed).
+
 ## [2.1.0] - 2026-11-01
 
 ### Removed

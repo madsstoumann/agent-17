@@ -3,7 +3,7 @@
 **Site:** https://akqa-dk-ioi-nuxt-dev-yij8m.ondigitalocean.app/  ·  **Environment:** dev (from --env)  ·  **Date:** 2026-09-24 08:00 UTC  ·  **Tool:** audit-launch 1.0.0 · Lighthouse local 13.5.0
 **Production host:** ioi.dk
 
-**Result:** 47 pass · 17 warn · 1 fail · 54 info · 1 skipped
+**Result:** 48 pass · 17 warn · 1 fail · 53 info · 1 skipped
 
 ## Before production
 
@@ -82,7 +82,7 @@ Expected on dev; each must be reversed on the live site.
 | ✅ | SPF (ioi.dk) | v=spf1 include:spf.protection.outlook.com include:amazonses.com include:servers.mcsv.net include:spf.mandrillapp.com include:mail.zendesk.com include:message.teamtailor.com ip4:62.116.222.29 -all (-all, 6 DNS lookups) |  |
 | ✅ | DMARC (ioi.dk) | p=reject, reports to mailto:ekpcn8zx@ag.eu.dmarcian.com, mailto:dmarc_agg@vali.email |  |
 | ℹ️ | DKIM (ioi.dk) | selectors found: selector1, k1 |  |
-| ℹ️ | HSTS preload | header is preload-eligible · hstspreload.org: preloaded (via app) [↗](https://hstspreload.org/?domain=akqa-dk-ioi-nuxt-dev-yij8m.ondigitalocean.app) | Optional: submit at hstspreload.org once every subdomain is https-only. |
+| ✅ | HSTS preload | preloaded via app (hstspreload.org); header meets the preload requirements [↗](https://hstspreload.org/?domain=akqa-dk-ioi-nuxt-dev-yij8m.ondigitalocean.app) |  |
 
 ## 5. Exposed files & admin paths
 

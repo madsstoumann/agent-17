@@ -1,10 +1,10 @@
 ---
 name: audit-launch
-description: Use when a website is about to go live or has just launched and needs a pre-launch / go-live audit, a launch checklist or an "is the site ready" answer for any dev, staging or production URL — the manual round of PageSpeed Insights, securityheaders.com, the W3C and schema.org validators and MDN Observatory, plus robots/sitemap/canonical, redirects, soft 404s, TLS/DNS/SPF/DMARC, exposed files, caching, cookies and trackers, broken links, mixed content, share previews and icons. Also for re-checking a site after fixes or comparing with an earlier audit. Public and local (self-signed) URLs, any stack.
+description: Use when a website is about to go live or has just launched and needs a pre-launch / go-live audit, a launch checklist or an "is the site ready" answer for any dev, staging or production URL — the manual round of PageSpeed Insights, securityheaders.com, the W3C and schema.org validators and MDN Observatory, plus robots/sitemap/canonical, redirects, soft 404s, TLS/DNS/SPF/DMARC, HSTS preload list status, exposed files, caching, cookies and trackers, broken links, mixed content, share previews and icons. Also for re-checking a site after fixes or comparing with an earlier audit. Public and local (self-signed) URLs, any stack.
 argument-hint: "<url> [--env dev|staging|production] [--production-host HOST] [--pages N] [--skip group,...] [--out PATH] [--baseline report.json | --no-baseline] [--insecure] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Read, WebFetch
 metadata:
-  version: "2.1.1"
+  version: "2.2.0"
 ---
 
 # Launch audit
@@ -195,4 +195,5 @@ Mapping: "it's the dev/stage site" → `--env dev`; "production will be X" → `
   the user asks why a row failed or how to fix it on their stack.
 - `references/manual.md` — the services with no API and what to look at there.
 - `references/sample-report.md` — a real report (a dev site), to show what the output looks like.
+- `scripts/lib/hsts-preload.mjs` — the HSTS preload lookup (hstspreload.org, Chromium list fallback) and its verdict; identical copy in audit-infra, a test compares them.
 - `scripts/test/*.test.mjs` — `cd scripts && node --test test/*.test.mjs`.

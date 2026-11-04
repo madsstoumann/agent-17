@@ -5,7 +5,7 @@ import { readdir } from 'node:fs/promises';
 import os from 'node:os';
 import {
   stripJsonGuard, groupW3cMessages, w3cValidate, observatoryScan, summariseObservatory,
-  hstsPreloadStatus, sslLabsAnalyze, securityHeadersApi, parseSecurityHeadersPage, securityHeadersScrape,
+  sslLabsAnalyze, securityHeadersApi, parseSecurityHeadersPage, securityHeadersScrape,
   buildScrapeArgs, findChrome, postBody,
 } from '../lib/services.mjs';
 import { schemaValidate } from '../lib/schema.mjs';
@@ -241,38 +241,6 @@ test('observatoryScan POSTs a scan then GETs the analysis; a refused POST falls 
   assert.match(bad.error, /invalid-hostname|404/);
   const offline = await observatoryScan(fakeHttp({}), host);
   assert.equal(offline.ok, false);
-});
-
-// ---------------------------------------------------------------- HSTS preload
-
-test('hstsPreloadStatus reads status and preloadable', async () => {
-  const http = fakeHttp({
-    'https://hstspreload.org/api/v2/status?domain=browser.style': { body: '{"name":"browser.style","status":"preloaded","bulk":true,"preloadedDomain":"browser.style"}' },
-    'https://hstspreload.org/api/v2/preloadable?domain=browser.style': { body: '{"errors":[],"warnings":[{"code":"header.preloadable.max_age.over_a_year","summary":"..."}]}' },
-  });
-  const r = await hstsPreloadStatus(http, 'browser.style');
-  assert.equal(r.ok, true);
-  assert.equal(r.status, 'preloaded');
-  assert.equal(r.preloadedDomain, 'browser.style');
-  assert.equal(r.bulk, true);
-  assert.deepEqual(r.errors, []);
-  assert.equal(r.warnings.length, 1);
-
-  const unknown = await hstsPreloadStatus(fakeHttp({
-    'https://hstspreload.org/api/v2/status': { body: '{"name":"example.com","status":"unknown","bulk":false,"preloadedDomain":""}' },
-    'https://hstspreload.org/api/v2/preloadable': { body: '{"errors":[{"code":"domain.http.no_redirect","summary":"No redirect from HTTP","message":"..."}],"warnings":[]}' },
-  }), 'example.com');
-  assert.equal(unknown.status, 'unknown');
-  assert.equal(unknown.preloadedDomain, null, 'an empty string is no domain');
-  assert.equal(unknown.errors[0].code, 'domain.http.no_redirect');
-
-  const partial = await hstsPreloadStatus(fakeHttp({ 'https://hstspreload.org/api/v2/status': { body: '{"status":"pending","bulk":false,"preloadedDomain":""}' } }), 'example.com');
-  assert.equal(partial.ok, true, 'the status is known even when preloadable fails');
-  assert.equal(partial.status, 'pending');
-  assert.match(partial.error, /preloadable/);
-  const offline = await hstsPreloadStatus(fakeHttp({}), 'example.com');
-  assert.equal(offline.ok, false);
-  assert.equal(offline.status, 'unknown');
 });
 
 // ---------------------------------------------------------------- SSL Labs

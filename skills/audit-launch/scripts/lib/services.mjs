@@ -1,7 +1,7 @@
 /**
  * Third-party validators and scanners: the Nu HTML checker (the schema.org validator is in
  * schema.mjs, shared with audit-seo),
- * Mozilla Observatory, hstspreload.org, SSL Labs and securityheaders.com.
+ * Mozilla Observatory, SSL Labs and securityheaders.com.
  *
  * Zero dependencies. Node >= 22. Async functions never throw: a failure is
  * { ok: false, error }. Every function takes the `http` from createHttp(); a POST that
@@ -191,38 +191,6 @@ export async function observatoryScan(http, host, { timeout = 30000 } = {}) {
   if (summary.ok && !summary.detailsUrl) summary.detailsUrl = `https://developer.mozilla.org/en-US/observatory/analyze?host=${h}`;
   if (!summary.ok) summary.error = problems.join('; ') || summary.error;
   return summary;
-}
-
-// ---------------------------------------------------------------- hstspreload.org
-
-/**
- * hstsPreloadStatus(http, host, { timeout = 30000 })
- *   -> { ok, status: 'unknown'|'pending'|'preloaded', preloadedDomain, bulk, errors: [], warnings: [], error? }
- *
- * ok follows the status call; a failed preloadable call leaves empty lists and sets error.
- */
-export async function hstsPreloadStatus(http, host, { timeout = 30000 } = {}) {
-  const d = encodeURIComponent(host);
-  const out = { ok: false, status: 'unknown', preloadedDomain: null, bulk: false, errors: [], warnings: [] };
-  const problems = [];
-  const [st, pr] = await Promise.all([
-    http.get(`https://hstspreload.org/api/v2/status?domain=${d}`, { timeout }),
-    http.get(`https://hstspreload.org/api/v2/preloadable?domain=${d}`, { timeout }),
-  ]);
-  const stJson = httpProblem(st) ? null : parseJson(st.body).json;
-  if (stJson && typeof stJson === 'object') {
-    out.ok = true;
-    out.status = ['unknown', 'pending', 'preloaded'].includes(stJson.status) ? stJson.status : 'unknown';
-    out.preloadedDomain = stJson.preloadedDomain || null;
-    out.bulk = Boolean(stJson.bulk);
-  } else problems.push(`status: ${httpProblem(st) || 'not JSON'}`);
-  const prJson = httpProblem(pr) ? null : parseJson(pr.body).json;
-  if (prJson && typeof prJson === 'object') {
-    out.errors = Array.isArray(prJson.errors) ? prJson.errors : [];
-    out.warnings = Array.isArray(prJson.warnings) ? prJson.warnings : [];
-  } else problems.push(`preloadable: ${httpProblem(pr) || 'not JSON'}`);
-  if (problems.length) out.error = problems.join('; ');
-  return out;
 }
 
 // ---------------------------------------------------------------- SSL Labs
