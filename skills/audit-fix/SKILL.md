@@ -1,21 +1,23 @@
 ---
 name: audit-fix
-description: Use when someone wants the problems from an audit-all run fixed — "fix the audit findings", "work through the fix plan", "hand the TODO to agents", "start the audit fixes". Reads the run folder's fix plan (fix/TODO.md, tasks.json, fix/tasks/*.md), asks once for approval, then runs one subagent per task with the model the plan suggests, in parallel rounds, each in its own git worktree and branch. Agents commit locally and never push; security and blocker fixes get an independent review; a person merges. Not for running the audits themselves (use audit-all).
+description: Use when someone wants the problems from an audit-all run fixed, or a plan-geo plan built — "fix the audit findings", "work through the fix plan", "hand the TODO to agents", "start the audit fixes". Reads the run folder's fix plan (fix/TODO.md, tasks.json, fix/tasks/*.md), asks once for approval, then runs one subagent per task with the model the plan suggests, in parallel rounds, each in its own git worktree and branch. Agents commit locally and never push; security and blocker fixes get an independent review; a person merges. Not for running the audits themselves (use audit-all).
 argument-hint: "[run folder] [--only T1,T4] [--skip T7] [--max-parallel N] [--dry-run]"
 allowed-tools: Bash(git:*), Bash(node:*), Bash(npm:*), Bash(npx:*), Bash(dotnet:*), Bash(ls:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, Agent
 metadata:
-  version: "1.0.3"
+  version: "1.1.0"
 ---
 
 # Audit fix
 
-audit-all leaves a fix plan in its run folder. This skill carries it out with subagents and stops
+audit-all leaves a fix plan in its run folder, and plan-geo leaves one in the same shape (markup and
+page modules for an agent, content for people). This skill carries it out with subagents and stops
 before anything leaves the machine: every change ends up as local commits on a branch per repo,
 for a person to review and merge.
 
 ## 1. Find the plan
 
-The run folder is the one the user names, else the newest run folder under `<reports>/audit-all/`
+The run folder is the one the user names (an audit-all run, or a plan-geo run under
+`<reports>/plan-geo/<host>/runs/<stamp>/` or `<audit-all run>/plan-geo/`), else the newest run folder under `<reports>/audit-all/`
 that has `fix/TODO.md` (`<reports>/audit-all/<name>/runs/<stamp>/`, or `<reports>/audit-all/<name>-<stamp>/`
 from before audit-all 1.2.0) (`<reports>`: `$AUDIT_OUT_DIR`, else the Downloads folder, else `~/audit-reports/`).
 Read `tasks.json` (the data), `fix/TODO.md` (the rounds) and the prompts in `fix/tasks/`. When

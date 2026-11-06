@@ -157,3 +157,13 @@ test('--level filters fix/TODO.md and the prompts, never tasks.json; --console p
     fs.rmSync(run, { recursive: true, force: true });
   }
 });
+
+test('plan-geo carries the same tasks.mjs, and "plan-geo" is a task source', () => {
+  const here = path.dirname(new URL(import.meta.url).pathname);
+  const mine = fs.readFileSync(path.join(here, '..', 'lib', 'tasks.mjs'), 'utf8');
+  const theirs = path.join(here, '..', '..', '..', 'plan-geo', 'scripts', 'lib', 'tasks.mjs');
+  if (fs.existsSync(theirs)) assert.equal(fs.readFileSync(theirs, 'utf8'), mine, 'plan-geo/scripts/lib/tasks.mjs differs from audit-all\'s copy');
+  const { plan, errors } = validateTasks({ tasks: [{ id: 'G1', owner: 'human', title: 'Site graph', fix: 'Render markup/site.jsonld', sources: ['plan-geo'] }] });
+  assert.deepEqual(errors, []);
+  assert.deepEqual(plan.tasks[0].sources, ['plan-geo']);
+});

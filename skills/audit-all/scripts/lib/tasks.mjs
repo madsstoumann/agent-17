@@ -7,7 +7,7 @@ import { levelOfWord } from './levels.mjs';
 export const SEVERITIES = ['blocker', 'high', 'medium', 'low'];
 export const MODELS = ['haiku', 'sonnet', 'opus', 'fable'];
 export const OWNERS = ['agent', 'human'];
-const SOURCES = { launch: 'audit-launch', a11y: 'audit-a11y', security: 'audit-security', health: 'audit-solution-health', seo: 'audit-seo', eco: 'audit-eco', privacy: 'audit-privacy', infra: 'audit-infra' };
+const SOURCES = { launch: 'audit-launch', a11y: 'audit-a11y', security: 'audit-security', health: 'audit-solution-health', seo: 'audit-seo', eco: 'audit-eco', privacy: 'audit-privacy', infra: 'audit-infra', 'plan-geo': 'plan-geo' };
 
 const str = (v) => (v === undefined || v === null ? '' : String(v).trim());
 const list = (v) => (Array.isArray(v) ? v : v ? [v] : []).map(str).filter(Boolean);

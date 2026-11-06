@@ -117,6 +117,8 @@ Fixes that pass end up on a local `audit-fix/<run>` branch per repo for you to r
 nothing is pushed. Tasks marked for people (rotating secrets, DNS, hosting settings) stay on the
 checklist. You can also paste any single prompt from `fix/tasks/` into a Claude Code session in that repo.
 
+plan-geo, the follow-up to a GEO audit, writes its plan in the same shape: `/skills:audit-fix <plan-geo run folder>` builds the markup and page modules, and the content briefs stay on the checklist for people.
+
 ## Parameters
 
 You rarely need these: say what you want in plain words ("errors only", "skip Lighthouse", "just list the issues") and Claude picks the flags. They are here for scripted runs and for when you want to be exact. Every skill also answers `--help`.
@@ -274,6 +276,22 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 | `--assets N` | Same-site scripts and stylesheets read per site (default 12). |
 | `--jobs N` / `--timeout MS` | Sites in parallel (4), per request (15000). |
 | `--out DIR` / `--insecure` / `--json` / `--quiet` | As for the other skills. |
+
+### plan-geo
+
+Three steps with Claude's writing in between; the skill runs them. `plan.mjs extract`, then Claude writes the profile, drafts, questions and briefs, then `plan.mjs check` and `plan.mjs build`.
+
+| Flag | What it does |
+|---|---|
+| `<input>` | An audit-all run folder (the plan goes into its `plan-geo/`), an audit-seo run folder or `report.json`, or a URL (the host's last audit-seo run; with none, audit-seo runs first with `--geo`). |
+| `--pages N` | Pages read in full (default 24): the start page, the longest page of each template, a second page of large templates, then pages with three or more question headings. |
+| `--only markup\|content` | Plan the structured data only, or the content gaps only. Default both. |
+| `--queries FILE` | Search Console queries, People Also Ask or the client's own questions to start the question map from (otherwise the questions are Claude's informed guess, and the plan says so). |
+| `--competitors a.com,b.com` | Alternatives comparison briefs may name. Without it, only alternatives the site already names. |
+| `--repo PATH` | The site's code, so markup and module tasks go to audit-fix as agent tasks. |
+| `--no-render` | Never use Chrome (by default pages whose served HTML is thin are rendered). |
+| `--no-remote` | On `check` and `build`: do not send the drafts to validator.schema.org. |
+| `--out DIR` / `--header "Name: value"` / `--insecure` | As above. |
 
 ### is-website-safe
 
