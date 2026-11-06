@@ -23,7 +23,7 @@ import { buildMarkdown, buildSummary, consoleItems } from './lib/report.mjs';
 import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
 import { parseLevel, consoleList, scratchDir, removeScratch } from './lib/levels.mjs';
 
-export const VERSION = '2.1.0';
+export const VERSION = '2.1.1';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UA_SUFFIX = `audit-a11y/${VERSION}`;
 const DESKTOP = { width: 1280, height: 900 };

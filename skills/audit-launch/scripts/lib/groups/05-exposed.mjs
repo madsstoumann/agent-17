@@ -28,16 +28,45 @@ const SECRET_PROBES = [
 ];
 
 const ADMIN_PROBES = [
-  { path: '/umbraco', name: 'Umbraco backoffice' },
-  { path: '/sitecore', name: 'Sitecore login' },
-  { path: '/wp-admin', name: 'WordPress admin' },
-  { path: '/wp-login.php', name: 'WordPress login' },
+  { path: '/umbraco', name: 'Umbraco backoffice', mark: /umbraco/i },
+  { path: '/sitecore', name: 'Sitecore login', mark: /sitecore/i },
+  { path: '/wp-admin', name: 'WordPress admin', mark: /wp-login|wordpress/i },
+  { path: '/wp-login.php', name: 'WordPress login', mark: /wp-login|wordpress/i },
   { path: '/admin', name: '/admin' },
-  { path: '/administrator', name: 'Joomla admin' },
-  { path: '/episerver', name: 'Optimizely (Episerver) admin' },
-  { path: '/_layouts/15/settings.aspx', name: 'SharePoint settings' },
+  { path: '/administrator', name: 'Joomla admin', mark: /joomla/i },
+  { path: '/episerver', name: 'Optimizely (Episerver) admin', mark: /episerver|optimizely/i },
+  { path: '/_layouts/15/settings.aspx', name: 'SharePoint settings', mark: /sharepoint/i },
 ];
-const LOGIN_MARK = /<input[^>]+type=["']?password|umbraco|sitecore|wp-login|login|log in|sign in|adgangskode/i;
+const PASSWORD_INPUT = /<input[^>]+type=["']?password/i;
+const LOGIN_WORDS = /\b(log ?in|sign ?in|adgangskode|password|username)\b/i;
+
+/**
+ * Decide from a probe's redirect chain whether a CMS login really answers.
+ * chain: [{ url, status, location?, body? }] — the first hop is the probe, the last
+ * is where the chain ended. Only a 200 that looks like a login form counts: a
+ * redirect alone proves nothing (wpp.com sends /umbraco → /en/umbraco, a 404).
+ * A chain that ends on another host is an external sign-in (SSO), not a login on
+ * this site. Returns { reachable, sso, note }.
+ */
+export function classifyAdminProbe(probe, chain, origin) {
+  const last = chain[chain.length - 1] || {};
+  const hops = chain.map((h) => h.status).join(' → ');
+  let host = '';
+  try { host = new URL(origin).host; } catch {}
+  let endHost = host;
+  try { endHost = new URL(last.url, origin).host; } catch {}
+  if (endHost && host && endHost !== host && chain.length > 1) {
+    return { reachable: false, sso: true, note: `${probe.name} (${probe.path} → sign-in on ${endHost})` };
+  }
+  if (last.status !== 200) return { reachable: false, sso: false, note: '' };
+  const body = String(last.body || '');
+  const looksLikeLogin = PASSWORD_INPUT.test(body) || (probe.mark && probe.mark.test(body) && LOGIN_WORDS.test(body))
+    || (!probe.mark && /<form[\s>]/i.test(body) && LOGIN_WORDS.test(body) && /admin/i.test(body));
+  if (!looksLikeLogin) return { reachable: false, sso: false, note: '' };
+  let endPath = probe.path;
+  try { endPath = new URL(last.url, origin).pathname; } catch {}
+  return { reachable: true, sso: false, note: `${probe.name} (${probe.path}${chain.length > 1 ? ` → ${endPath}` : ''}: ${hops})` };
+}
 
 function parseSecurityTxt(text) {
   const lines = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
@@ -74,16 +103,30 @@ export default {
       : result('exposed.secret-files', 'pass', 'Secret files reachable', `${checked.length} well-known paths probed (.git, .env, appsettings.json, web.config, …); none served a real file`, { data: { checked } }));
     if (disclosures.length) out.push(result('exposed.manifests', 'warn', 'Dependency manifests reachable', disclosures.join('; '), { fix: 'Exclude package.json / composer.json from the deployed files or block them; they list exact library versions for anyone hunting known CVEs.' }));
 
-    const reachable = [];
+    const reachable = []; const sso = []; const adminChecked = [];
     for (const p of ADMIN_PROBES) {
-      const res = await http.get(origin + p.path, { redirect: 'manual', maxBytes: 64 * 1024, retry: 0 });
-      const loc = res.headers.location || '';
-      const isLogin = (res.status === 200 && LOGIN_MARK.test(res.body || '')) || (res.status >= 300 && res.status < 400 && /login|umbraco|sitecore|signin|auth/i.test(loc));
-      if (isLogin) reachable.push(`${p.name} (${p.path} → ${res.status}${loc ? ` ${loc}` : ''})`);
+      // Follow redirects by hand (max 5 hops) so the chain and the final host are known.
+      const chain = [];
+      let url = origin + p.path;
+      for (let i = 0; i < 6; i++) {
+        const res = await http.get(url, { redirect: 'manual', maxBytes: 64 * 1024, retry: 0 });
+        const loc = res.headers.location || '';
+        chain.push({ url, status: res.status, location: loc, body: res.status === 200 ? res.body : '' });
+        if (!(res.status >= 300 && res.status < 400 && loc)) break;
+        let next;
+        try { next = new URL(loc, url).href; } catch { break; }
+        if (new URL(next).host !== new URL(origin).host) { chain.push({ url: next, status: 0 }); break; }
+        url = next;
+      }
+      const v = classifyAdminProbe(p, chain, origin);
+      adminChecked.push({ path: p.path, chain: chain.map((h) => `${h.status} ${h.url}`), reachable: v.reachable, sso: v.sso });
+      if (v.reachable) reachable.push(v.note);
+      else if (v.sso) sso.push(v.note);
     }
+    const ssoNote = sso.length ? `; behind an external sign-in: ${sso.join('; ')}` : '';
     out.push(reachable.length
-      ? result('exposed.admin-paths', 'warn', 'Backoffice reachable from the internet', reachable.join('; '), { fix: 'Restrict the backoffice to office/VPN IPs or put it behind Cloudflare Access / MFA; at minimum confirm rate limiting on the login.', beforeProduction: true })
-      : result('exposed.admin-paths', 'pass', 'Backoffice reachable from the internet', 'no known CMS login answered on this host'));
+      ? result('exposed.admin-paths', 'warn', 'Backoffice reachable from the internet', reachable.join('; ') + ssoNote, { fix: 'Restrict the backoffice to office/VPN IPs or put it behind Cloudflare Access / MFA; at minimum confirm rate limiting on the login.', beforeProduction: true, data: { checked: adminChecked } })
+      : result('exposed.admin-paths', 'pass', 'Backoffice reachable from the internet', `no known CMS login answered on this host (redirects followed)${ssoNote}`, { data: { checked: adminChecked } }));
 
     const st = await http.get(`${origin}/.well-known/security.txt`, { redirect: 'follow', maxBytes: 32 * 1024 });
     const legacy = st.status !== 200 ? await http.get(`${origin}/security.txt`, { redirect: 'follow', maxBytes: 32 * 1024 }) : null;

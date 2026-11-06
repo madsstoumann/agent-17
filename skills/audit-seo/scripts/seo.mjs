@@ -22,7 +22,7 @@ import { diffRows } from './lib/diff.mjs';
 import { createHttp, isPrivateHost, isPrivateAddress, siblingHost, challengeVendor, pLimit, VERSION } from './lib/http.mjs';
 import { parseRobotsTxt, loadSitemaps } from './lib/robots.mjs';
 import { followChain } from './lib/redirects.mjs';
-import { crawlSite, checkExternal, normalise } from './lib/crawl.mjs';
+import { crawlSite, checkExternal, checkInternal, normalise } from './lib/crawl.mjs';
 import { runChecks, schemaChecks, pickSchemaPages, pickRenderPages, htmlPages } from './lib/checks.mjs';
 import { extractMeta } from './lib/html.mjs';
 import { richOf } from './lib/rich.mjs';
@@ -104,6 +104,14 @@ async function fullAudit(opts, http, siteHosts, log) {
     return { url: img, status: r.status, contentType: r.contentType, error: r.error || null };
   })));
 
+  // Internal links the crawl found but did not fetch (past --pages): a status each, so a broken
+  // footer link in a section the budget only touched once is still reported.
+  let internal = null;
+  if (opts.internalLinks > 0) {
+    internal = await checkInternal(http, crawl, { max: opts.internalLinks, concurrency: opts.concurrency });
+    if (internal.checked.length) log(`internal links: checked ${internal.checked.length} not crawled${internal.unchecked ? `, ${internal.unchecked} left unchecked` : ''}`);
+  }
+
   let external = null;
   if (opts.externalLinks > 0) {
     const list = [...crawl.external.keys()].filter((x) => /^https?:/i.test(x)).slice(0, opts.externalLinks);
@@ -135,7 +143,7 @@ async function fullAudit(opts, http, siteHosts, log) {
 
   const rows = runChecks({
     finalUrl, hosts: siteHosts, productionHost: opts.productionHost, pages: crawl.pages, inlinks: crawl.inlinks, blocked: crawl.blocked,
-    truncated: crawl.truncated, robots, sitemap, external, externalFrom: crawl.external, ogImages: ogUrls.length ? ogImages : null, schema, render: renderInfo.summary,
+    truncated: crawl.truncated, robots, sitemap, external, externalFrom: crawl.external, internal, ogImages: ogUrls.length ? ogImages : null, schema, render: renderInfo.summary,
   });
   rows.push(...geoChecks({ robots, robotsText, geo, start: crawl.pages.find((p) => p.url === finalUrl) }));
 
@@ -149,6 +157,7 @@ async function fullAudit(opts, http, siteHosts, log) {
       html: html.length, other: crawl.pages.length - html.length, redirects: crawl.pages.filter((p) => p.location).length,
       errors: crawl.pages.filter((p) => p.status === 0 || p.status >= 400).length, indexable: html.filter((p) => !p.noindex).length,
       truncated: crawl.truncated, maxPages: opts.pages, sitemapUrls: sitemap.urls.length, sitemapSampled: crawl.sitemapSampled, sitemapMissing: crawl.sitemapMissing,
+      linksChecked: internal?.checked.length || 0, linksUnchecked: internal?.unchecked || 0, locales: crawl.locales,
       seconds: Math.round((Date.now() - startedAt) / 1000),
     },
     rows,

@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-launch` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.2.1] - 2026-11-06
+
+### Fixed
+- `--version` printed 2.1.1; it now matches the skill version.
+- `exposed.admin-paths` no longer flags a backoffice because a redirect's `Location` mentions the CMS. Redirects are followed (up to 5 hops) and only a 200 that looks like a login page counts: a password field, or the CMS's own name plus login words. A locale redirect that ends in a 404 (wpp.com: `/umbraco` → 307 `/en/umbraco` → 404) is now a pass. A redirect to another host is reported as "behind an external sign-in" instead of a warning. The row's data lists each probe's redirect chain.
+
 ## [2.2.0] - 2026-11-04
 
 ### Changed

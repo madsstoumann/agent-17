@@ -1,10 +1,10 @@
 ---
 name: audit-seo
 description: Use when someone wants an SEO or content audit of a whole website, not just the start page — titles and meta descriptions (missing, too long, duplicated), Open Graph and share previews, structured data (JSON-LD that does not parse, validator.schema.org errors, Google rich-result required and recommended properties, JSON-LD that only JavaScript adds — pages are rendered in headless Chrome to find it), sitemap and robots.txt consistency (noindex, redirecting, blocked or missing URLs, orphan pages), canonical and hreflang problems, broken internal and external links and redirect chains, plus GEO (AI search readiness): llms.txt and llms-full.txt, AI crawler rules in robots.txt (OAI-SearchBot, ClaudeBot, GPTBot, PerplexityBot, Google-Extended…), Content-Signal and ai.txt, and Organization/WebSite entity markup for answer engines. Also for validating the schema.org / JSON-LD markup of a single URL or a local HTML file (`--schema-only`), "why is this page not indexed", re-checking after SEO fixes, or comparing with the last run. Any stack, public or local URLs.
-argument-hint: "<url | file.html> [--schema-only] [--pages N] [--sitemap-sample N] [--external-links N] [--schema-pages N] [--render-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
+argument-hint: "<url | file.html> [--schema-only] [--pages N] [--sitemap-sample N] [--external-links N] [--internal-links N] [--schema-pages N] [--render-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "2.2.0"
+  version: "2.3.0"
 ---
 
 # SEO audit
@@ -35,8 +35,9 @@ the findings; non-zero means the script failed (read the last stderr lines).
 
 | Flag | Use it when |
 |---|---|
-| `--pages N` (default 150) | Pages reached by following links. Big sites: 300–500 for a fuller picture (a minute or two more). The report says when the cap was hit; orphan detection is skipped then. |
+| `--pages N` (default 150) | Pages reached by following links, shared across language sections (`/en/`, `/es-ES/`, …) so one locale cannot use the whole budget. Big sites: 300–500 for a fuller picture (a minute or two more). The report says when the cap was hit; orphan detection is skipped then. |
 | `--sitemap-sample N` (default 50) | Sitemap URLs the crawl did not reach, fetched to check status, noindex and canonical. |
+| `--internal-links N` (default 300) | Internal link targets the crawl found but did not fetch (past `--pages`), checked for a status so a broken footer link in any crawled section is reported. `0` to skip. |
 | `--external-links N` (default 150) | Outbound links to check. `0` to skip. 403/429/999 answers are bot walls, reported as "verify by hand". |
 | `--schema-pages N` (default 8) | Pages sent to validator.schema.org, one per distinct JSON-LD type set. Private hosts get their HTML posted instead. `0` or `--no-remote` skips it. |
 | `--render-pages N` (default 8) | Pages rendered in headless Chrome after the crawl: the start page, then pages whose served HTML has no JSON-LD, one per section. JSON-LD that appears only after JavaScript runs is adopted for every structured-data check, posted to the validator as the rendered DOM, and reported as "JSON-LD added by JavaScript" (Google sees it; Bing, social scrapers and most AI crawlers do not). Needs Chrome, Chromium or Edge (found automatically, or `CHROME_PATH`); without one the row is skipped. `0` turns it off. |

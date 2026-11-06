@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runChecks, chainFrom, pickSchemaPages, looksSchemeless } from '../lib/checks.mjs';
-import { pageRecord, wordCount, crawlSite } from '../lib/crawl.mjs';
+import { pageRecord, wordCount, crawlSite, checkInternal, localeOf, sampleSpread } from '../lib/crawl.mjs';
 import { isAllowed } from '../lib/robotsmatch.mjs';
 import { parseRobotsTxt } from '../lib/robots.mjs';
 import { parseSchemaAnswer } from '../lib/schema.mjs';
@@ -170,4 +170,63 @@ test('crawlSite follows links, records redirects and samples the sitemap', async
   assert.ok(r.blocked.has(`${H}/blocked/x`));
   assert.ok(r.external.has('https://other.example.com/'));
   assert.equal(r.sitemapSampled, 1);
+});
+
+test('crawlSite shares the --pages budget across language sections (wpp.com /es-ES/ footer)', async () => {
+  // The English start page links 60 English pages and the Spanish home; Spanish pages carry broken footer links.
+  const en = Array.from({ length: 60 }, (_, i) => `/en/p${i}`);
+  const site = { '/': [301, null, { location: '/en' }], '/en': [200, doc({ links: [...en, '/es-ES'] })] };
+  for (const p of en) site[p] = [200, doc({ links: ['/en', '/en/privacy-policy'] })];
+  site['/en/privacy-policy'] = [200, doc()];
+  site['/es-ES'] = [200, doc({ links: ['/es-ES/news', '/es-ES/privacy-policy', '/es-ES/cookies'] })];
+  site['/es-ES/news'] = [200, doc({ links: ['/es-ES/privacy-policy'] })];
+  const http = {
+    get: async (url) => {
+      const [status, body, headers = {}] = site[new URL(url).pathname] || [404, null];
+      return { status, body, headers: { 'content-type': 'text/html', ...headers }, contentType: 'text/html', ms: 1 };
+    },
+  };
+  http.head = http.get;
+  const r = await crawlSite(http, { startUrl: `${H}/`, hosts: ['www.example.dk'], maxPages: 20 });
+  const fetched = r.pages.map((p) => new URL(p.url).pathname);
+  assert.ok(fetched.includes('/es-ES'), 'the Spanish home is fetched although 60 English links came first');
+  assert.ok(fetched.includes('/es-ES/privacy-policy'), 'a Spanish footer target is fetched within the budget');
+  assert.ok(r.truncated);
+  assert.ok(r.locales['es-es'] >= 3);
+  // whatever the crawl did not fetch is status-checked, so every broken link is found
+  const internal = await checkInternal(http, r, { max: 300 });
+  const rows = runChecks({ finalUrl: `${H}/en`, hosts: ['www.example.dk'], pages: r.pages, inlinks: r.inlinks, internal });
+  const broken = byId(rows, 'seo.broken-internal');
+  assert.notEqual(broken.status, 'pass');
+  assert.deepEqual(broken.urls.map((u) => new URL(u.url).pathname).sort(), ['/es-ES/cookies', '/es-ES/privacy-policy']);
+  assert.equal(internal.unchecked, 0);
+});
+
+test('localeOf reads the language prefix', () => {
+  assert.equal(localeOf(`${H}/es-ES/news`), 'es-es');
+  assert.equal(localeOf(`${H}/da/om-os`), 'da');
+  assert.equal(localeOf(`${H}/zh_Hans/`), 'zh-hans');
+  assert.equal(localeOf(`${H}/news/en`), '');
+  assert.equal(localeOf(`${H}/about`), '');
+});
+
+test('checkInternal only checks link targets the crawl did not fetch, round robin over sections', async () => {
+  const inlinks = new Map([[`${H}/a`, new Set([`${H}/`])], [`${H}/en/1`, new Set([`${H}/`])], [`${H}/en/2`, new Set([`${H}/`])], [`${H}/da/1`, new Set([`${H}/`])]]);
+  const seen = [];
+  const http = { head: async (url) => { seen.push(new URL(url).pathname); return { status: 200 }; }, get: async () => ({ status: 200 }) };
+  const r = await checkInternal(http, { pages: [{ url: `${H}/a` }], inlinks }, { max: 2, concurrency: 1 });
+  assert.deepEqual(seen, ['/en/1', '/da/1']);
+  assert.equal(r.unchecked, 1);
+});
+
+test('sampleSpread shares the sitemap sample across language sections', () => {
+  const en = Array.from({ length: 100 }, (_, i) => `${H}/en/p${i}`);
+  const es = Array.from({ length: 30 }, (_, i) => `${H}/es-ES/p${i}`);
+  const de = [`${H}/de-DE/a`, `${H}/de-DE/b`];
+  const s = sampleSpread([...en, ...es, ...de], 20);
+  const count = (pre) => s.filter((u) => u.includes(pre)).length;
+  assert.equal(s.length, 20);
+  assert.deepEqual([count('/en/'), count('/es-ES/'), count('/de-DE/')], [9, 9, 2]);
+  assert.equal(sampleSpread(en.slice(0, 5), 50).length, 5);
+  assert.deepEqual(sampleSpread(en, 4), [en[0], en[25], en[50], en[75]]);
 });

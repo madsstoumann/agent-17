@@ -5,7 +5,7 @@ import path from 'node:path';
 import { parseDoh, unquoteTxt, apexOf, parseCaa, parseSoa, parseMx, createResolver } from '../lib/dns.mjs';
 import { spfTree, judgeSpf, dmarc, dkimKeyBits, stsCovers } from '../lib/email.mjs';
 import { sanCovers, caaAllows, daysLeft } from '../lib/tls.mjs';
-import { parseCrtSh, parseRdap, normSerial } from '../lib/services.mjs';
+import { parseCrtSh, parseRdap, normSerial, crtSh } from '../lib/services.mjs';
 import { detectCdn, domainChecks, emailChecks } from '../lib/checks.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -262,4 +262,50 @@ test('diffRows and carryOverSections', () => {
   assert.match(md, /## Notes\n\nHello/);
   assert.match(md, /## Since last run/);
   assert.match(md, /SPF: pass → fail/);
+});
+
+test('spfTree does not read a macro include as a missing record (Proofpoint, wpp.com)', async () => {
+  const r = fakeResolver({
+    'wpp.com TXT': ['v=spf1 include:%{ir}.%{v}.%{d}.spf.has.pphosted.com include:spf.protection.outlook.com ~all'],
+    'spf.protection.outlook.com TXT': ['v=spf1 ip4:40.92.0.0/15 -all'],
+  });
+  const t = await spfTree('wpp.com', r);
+  assert.equal(t.voids, 0);
+  assert.equal(t.lookups, 2);
+  assert.deepEqual(t.macros, ['%{ir}.%{v}.%{d}.spf.has.pphosted.com']);
+  assert.deepEqual(t.problems, []);
+  const j = judgeSpf(t, { hasMx: true });
+  assert.equal(j.status, 'pass');
+  assert.match(j.evidence, /1 macro include expanded per message/);
+  assert.doesNotMatch(j.evidence, /no SPF record/);
+});
+
+test('crtSh falls back to Cert Spotter when crt.sh answers 502 (wpp.com dry run)', async () => {
+  const calls = [];
+  const fetch = async (url) => {
+    calls.push(new URL(url).host);
+    if (url.includes('crt.sh')) return { ok: false, status: 502, json: async () => ({}) };
+    const after = new URL(url).searchParams.get('after');
+    const body = after ? [] : [
+      { id: '1', cert_sha256: 'ab01', dns_names: ['*.x.dk', 'x.dk', 'shop.x.dk', 'other.com'], issuer: { name: 'C=US, O=Let\'s Encrypt, CN=R11' }, not_after: '2099-01-01T00:00:00Z' },
+      { id: '2', cert_sha256: 'cd02', dns_names: ['old.x.dk'], issuer: { name: 'C=US, O=Let\'s Encrypt, CN=R10' }, not_after: '2000-01-01T00:00:00Z' },
+    ];
+    return { ok: true, status: 200, json: async () => body };
+  };
+  const ct = await crtSh('x.dk', { fetch, pause: 0 });
+  assert.equal(ct.ok, true);
+  assert.equal(ct.source, 'Cert Spotter');
+  assert.deepEqual(ct.names, ['*.x.dk', 'shop.x.dk', 'x.dk']);
+  assert.deepEqual(ct.issuers, { "Let's Encrypt": 1 });
+  assert.equal(ct.certs, 1);
+  assert.ok(ct.fingerprints.has('ab01'));
+  assert.match(ct.fallbackFrom, /HTTP 502/);
+  assert.deepEqual(calls.slice(0, 2), ['crt.sh', 'crt.sh']);
+});
+
+test('crtSh reports both sources when neither answers', async () => {
+  const fetch = async () => ({ ok: false, status: 503, json: async () => ({}) });
+  const ct = await crtSh('x.dk', { fetch, pause: 0 });
+  assert.equal(ct.ok, false);
+  assert.match(ct.error, /crt\.sh: HTTP 503; Cert Spotter: HTTP 503/);
 });

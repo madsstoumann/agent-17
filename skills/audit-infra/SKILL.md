@@ -4,7 +4,7 @@ description: Use when someone wants the infrastructure or domain hygiene of a si
 argument-hint: "<url or domain> [--email-domain D] [--dkim-selector S] [--no-ct] [--max-subdomains N] [--only domain,email,tls,edge,ct] [--out DIR] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
-  version: "2.2.0"
+  version: "2.3.0"
 ---
 
 # Infrastructure audit
@@ -17,7 +17,7 @@ run it, read the stdout summary and tell the user what to fix and who fixes it (
 registrar, mail provider, host).
 
 It is **passive**. It asks DNS over HTTPS (Cloudflare, then Google), makes ordinary TLS handshakes,
-one GET of the home page, and reads public registries: RDAP for the registration, crt.sh for
+one GET of the home page, and reads public registries: RDAP for the registration, crt.sh (Cert Spotter when crt.sh does not answer) for
 Certificate Transparency, hstspreload.org for the preload list. No port scans, no load, no logins,
 no zone transfers. Still, only audit domains the user owns or is engaged on.
 
@@ -37,7 +37,7 @@ skips) to stdout. Exit code 0 whatever it finds; non-zero means the script faile
 | `--platform-ok` | Only when the user wants the platform's own domain audited. |
 | `--email-domain D` | Mail is sent from another domain than the site's. |
 | `--dkim-selector S` | The user knows their provider's selector (it is `s=` in the DKIM-Signature header of a sent mail). Repeatable. About 25 common selectors are always tried. |
-| `--no-ct` / `--max-subdomains N` | crt.sh is down or slow, or the domain has hundreds of hosts. Default probes the first 30 names. |
+| `--no-ct` / `--max-subdomains N` | crt.sh and Cert Spotter are both down or slow, or the domain has hundreds of hosts. Default probes the first 30 names. |
 | `--only` / `--skip` | Narrow questions. Groups: `domain email tls edge ct`. "Just mail" → `--only email`. |
 | `--no-legacy` | Skip the TLS 1.0/1.1 probe. |
 | `--header "Name: value"` | A WAF bypass header (see audit-launch); sent only with the one GET of the home page. Also `AUDIT_HEADERS`. |
@@ -66,7 +66,7 @@ the report as well.
 | Email | `email.mx` (resolves, no CNAME, null MX), `email.spf` (whole include tree, > 10 lookups or `+all` fail, void includes), `email.dmarc` (p, sp, pct, rua, external destinations publish the `_report._dmarc` record), `email.dkim` (keys found, < 2048-bit RSA warn), `email.mta-sts` (policy file, mode, covers every MX), `email.tls-rpt`, `email.bimi` |
 | TLS | One handshake per host (site + www/apex sibling) and per IP: `tls.chain` (missing intermediates), `tls.expiry` (soonest endpoint), `tls.consistency`, `tls.san`, `tls.key`, `tls.protocol`, `tls.alpn` (h2), `tls.ocsp-stapling`, `tls.legacy` (TLS 1.0/1.1 accepted), `tls.caa-match` (CAA allows the CA that issued the live certificate, or renewal fails), `tls.ipv6` |
 | Edge | `edge.cdn` (and cache status), `edge.http3` (Alt-Svc or HTTPS record), `hsts.preload-list` (apex on the preload list per hstspreload.org, Chromium list as fallback; pass when listed and the header still qualifies, warn when listed but the header dropped a requirement) |
-| Subdomains | `ct.inventory` from crt.sh, `ct.dangling` (claimable services such as azurewebsites.net or github.io are blockers), `ct.certificates` (expired, wrong name, untrusted), `ct.no-https` (warn when HSTS includeSubDomains or preload would lock them out), `ct.issuers` vs CAA, `ct.stale` |
+| Subdomains | `ct.inventory` from crt.sh (or Cert Spotter, said in the row), `ct.dangling` (claimable services such as azurewebsites.net or github.io are blockers), `ct.certificates` (expired, wrong name, untrusted), `ct.no-https` (warn when HSTS includeSubDomains or preload would lock them out), `ct.issuers` vs CAA, `ct.stale` |
 
 `tls.interception`: when the certificate this machine receives is not in the CT logs, something on
 the network re-signs TLS (corporate proxy, VPN, antivirus, a cloud sandbox). The script then marks
@@ -115,7 +115,7 @@ some ("CAA is managed by the agency", "the banner is Cookiebot's default"); no s
 - `scripts/lib/dns.mjs`: DoH resolver with system fallback, record parsers.
 - `scripts/lib/email.mjs`: SPF tree, DMARC, DKIM, MTA-STS.
 - `scripts/lib/tls.mjs`: handshakes, certificate fields, CAA match.
-- `scripts/lib/services.mjs`: RDAP, crt.sh.
+- `scripts/lib/services.mjs`: RDAP, crt.sh, Cert Spotter.
 - `scripts/lib/hsts-preload.mjs`: HSTS preload lookup and verdict (identical copy in audit-launch; its test compares them).
 - `scripts/lib/checks.mjs`: the five groups.
 - `scripts/lib/target-state.mjs`: target folders and run folders (identical copy in every audit skill; a test compares them).

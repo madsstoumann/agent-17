@@ -2,6 +2,15 @@
 
 All notable changes to the `audit-infra` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.3.0] - 2026-11-06
+
+### Fixed
+- SPF: an include or redirect whose target uses macros (RFC 7208 §7, such as Proofpoint's `include:%{ir}.%{v}.%{d}.spf.has.pphosted.com`) is no longer read as a missing record and a permanent error. It still counts as one DNS lookup, is not followed (receivers expand it per message), and the evidence names it as a macro include.
+- `--version` printed 2.1.0; it now matches the skill version.
+
+### Changed
+- Certificate Transparency: crt.sh gets a second try after a short pause, and when it still does not answer (it often returns 502) the names come from Cert Spotter's free API instead. The row says which source answered. With Cert Spotter the "certificate not in CT logs" check compares SHA-256 fingerprints instead of serials, and is skipped when only the first pages were read.
+
 ## [2.2.0] - 2026-11-04
 
 ### Changed
