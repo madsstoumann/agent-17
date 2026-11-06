@@ -13,7 +13,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { normaliseUrl, parseHeaderLines, VERSION } from './http.mjs';
 import { targetDir, stamp } from './target-state.mjs';
 
-export const DEFAULTS = { pages: 150, sitemapSample: 50, externalLinks: 150, schemaPages: 8, renderPages: 8, concurrency: 6, timeout: 15000 };
+export const DEFAULTS = { pages: 150, sitemapSample: 50, externalLinks: 150, internalLinks: 300, schemaPages: 8, renderPages: 8, concurrency: 6, timeout: 15000 };
 
 export function parseCli(argv, env = process.env, { cwd = process.cwd() } = {}) {
   let values, positionals;
@@ -25,6 +25,7 @@ export function parseCli(argv, env = process.env, { cwd = process.cwd() } = {}) 
         pages: { type: 'string' },
         'sitemap-sample': { type: 'string' },
         'external-links': { type: 'string' },
+        'internal-links': { type: 'string' },
         'schema-pages': { type: 'string' },
         'render-pages': { type: 'string' },
         'schema-only': { type: 'boolean' },
@@ -73,6 +74,7 @@ export function parseCli(argv, env = process.env, { cwd = process.cwd() } = {}) 
       pages: Math.max(1, int(values.pages, DEFAULTS.pages, 'pages')),
       sitemapSample: int(values['sitemap-sample'], DEFAULTS.sitemapSample, 'sitemap-sample'),
       externalLinks: int(values['external-links'], DEFAULTS.externalLinks, 'external-links'),
+      internalLinks: int(values['internal-links'], DEFAULTS.internalLinks, 'internal-links'),
       schemaPages: int(values['schema-pages'], DEFAULTS.schemaPages, 'schema-pages'),
       renderPages: int(values['render-pages'], DEFAULTS.renderPages, 'render-pages'),
       concurrency: Math.max(1, int(values.concurrency, DEFAULTS.concurrency, 'concurrency')),
@@ -161,6 +163,8 @@ Usage: node seo.mjs <url> [flags]
   --pages N              Pages to crawl by following links (default ${DEFAULTS.pages}).
   --sitemap-sample N     Extra sitemap URLs to fetch that the crawl did not reach (default ${DEFAULTS.sitemapSample}).
   --external-links N     External links to check (default ${DEFAULTS.externalLinks}, 0 to skip).
+  --internal-links N     Internal link targets the crawl found but did not fetch (past --pages), checked for a
+                         status so broken links on every crawled page are found (default ${DEFAULTS.internalLinks}, 0 to skip).
   --schema-pages N       Pages (one per template) sent to validator.schema.org (default ${DEFAULTS.schemaPages}, 0 to skip).
   --render-pages N       Pages rendered in headless Chrome to find JSON-LD that JavaScript adds: the start page plus
                          pages without JSON-LD in the served HTML, one per section (default ${DEFAULTS.renderPages}, 0 to skip).

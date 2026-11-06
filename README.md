@@ -192,8 +192,9 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 |---|---|
 | `--schema-only` | Structured data on the given page only: validator.schema.org, Google rich-result rules, JSON-LD added by JavaScript, every issue on its own line. No crawl. Implied for a local file. |
 | `--render-pages N` | Pages rendered in headless Chrome to find JSON-LD that JavaScript adds (default 8, 0 to skip). Uses `CHROME_PATH` or finds Chrome. |
-| `--pages N` | Pages to crawl (default 150). |
+| `--pages N` | Pages to crawl (default 150), shared across language sections. |
 | `--sitemap-sample N` | Extra sitemap URLs the crawl did not reach (default 50). |
+| `--internal-links N` | Internal link targets past the `--pages` cap, checked for a status only (default 300, 0 to skip). |
 | `--external-links N` | External links to check (default 150, 0 to skip). |
 | `--schema-pages N` | Pages sent to validator.schema.org (default 8, 0 to skip). |
 | `--production-host HOST` | The future live host. |

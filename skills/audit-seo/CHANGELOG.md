@@ -2,6 +2,17 @@
 
 All notable changes to the `audit-seo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.3.0] - 2026-11-06
+
+### Added
+- `--internal-links N` (default 300, `0` to skip): internal link targets the crawl found but did not fetch because `--pages` ran out are checked for a status (HEAD, redirects followed), so broken links on every crawled page are reported. The report says how many were checked this way.
+
+### Changed
+- The `--pages` budget is shared across language sections: each crawl wave takes links from the sections with the fewest pages so far, and at most half of what is left, so a section found late still gets pages. The sitemap sample is spread over the sections the same way. The report lists pages per language section when there is more than one.
+
+### Fixed
+- The crawl spent its whole budget on `/en/` pages of wpp.com and reported "every internal link answers" while the footer links of `/es-ES/` and `/de-DE/` pages returned 404 (audit-launch counted 161 such links). Both changes above fix it; a live re-run finds them.
+
 ## [2.2.0] - 2026-11-01
 
 ### Added

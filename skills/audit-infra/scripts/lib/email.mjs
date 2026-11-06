@@ -5,12 +5,14 @@ const SPF_RE = /^v=spf1(\s|$)/i;
 const LOOKUP = /^[-~?+]?(include:|a(?=$|[:/])|mx(?=$|[:/])|ptr(?=$|:)|exists:)/i;
 
 /**
- * spfTree(domain, resolver) -> { record, records, terminal, lookups, voids, includes: [{ domain, record, error }], problems: [] }
+ * spfTree(domain, resolver) -> { record, records, terminal, lookups, voids, includes: [{ domain, record, error, macro? }], macros: [], problems: [] }
+ * Include/redirect targets with macros (%{i}, %{d}, …) count as a lookup but are not followed:
+ * receivers expand them per message, so there is no record to read ahead of time.
  * Counts DNS-querying terms across the whole include/redirect tree, the way receivers do
  * (RFC 7208 §4.6.4: more than 10 is a permerror; more than 2 void lookups too).
  */
 export async function spfTree(domain, resolver, { maxDepth = 10 } = {}) {
-  const out = { domain, record: null, records: [], terminal: null, lookups: 0, voids: 0, includes: [], problems: [] };
+  const out = { domain, record: null, records: [], terminal: null, lookups: 0, voids: 0, includes: [], macros: [], problems: [] };
   const top = await txtSpf(domain, resolver);
   out.records = top.records;
   if (top.error) { out.problems.push(top.error); return out; }
@@ -28,6 +30,9 @@ export async function spfTree(domain, resolver, { maxDepth = 10 } = {}) {
       if (LOOKUP.test(term) || redirect) out.lookups++;
       const target = (include || redirect)?.[1];
       if (!target) continue;
+      // A macro target (RFC 7208 §7, e.g. Proofpoint's include:%{ir}.%{v}.%{d}.spf.has.pphosted.com)
+      // is built per message from the sender's IP and domain; it has no fixed record to look up.
+      if (/%\{/.test(target)) { out.macros.push(target); out.includes.push({ domain: target, record: null, macro: true, error: null }); continue; }
       if (seen.has(target) || depth >= maxDepth) { if (seen.has(target)) out.problems.push(`include loop at ${target}`); continue; }
       seen.add(target);
       const sub = await txtSpf(target, resolver);
@@ -62,6 +67,8 @@ export function judgeSpf(t, { hasMx }) {
   }
   if (!t.record) return { status: 'fail', evidence: t.problems.join('; '), fix: 'Keep exactly one v=spf1 TXT record.' };
   const notes = [`${t.terminal || 'no all'}`, `${t.lookups} DNS lookup${t.lookups === 1 ? '' : 's'} across ${t.includes.length} include${t.includes.length === 1 ? '' : 's'}`];
+  const macros = t.macros || [];
+  if (macros.length) notes.push(`${macros.length} macro include${macros.length === 1 ? '' : 's'} expanded per message by receivers, not followed here (${macros.join(', ')})`);
   const fixes = [];
   let status = 'pass';
   if (t.lookups > 10) { status = 'fail'; fixes.push('Cut the tree to 10 lookups or fewer (drop unused includes, or flatten one); past 10 receivers return permerror and SPF fails for all mail'); }

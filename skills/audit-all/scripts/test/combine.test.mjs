@@ -85,7 +85,7 @@ test('plain strips Markdown and emoji', () => {
 
 test('headline: audit-launch, audit-solution-health and audit-security figures', () => {
   const la = headline({ kind: 'audit-launch', target: null, md: sample('audit-launch') });
-  assert.deepEqual(la.counts, { pass: 47, warn: 17, fail: 1, info: 54, skipped: 1 });
+  assert.deepEqual(la.counts, { pass: 48, warn: 17, fail: 1, info: 53, skipped: 1 });
   assert.match(la.target, /ondigitalocean\.app/);
   const sh = headline({ kind: 'audit-solution-health', target: 'shop-web', md: sample('audit-solution-health') });
   assert.equal(sh.counts.red, 14);

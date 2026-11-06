@@ -88,6 +88,7 @@ export const looksSchemeless = (url) => { try { return /^\/?(?:[^/]*\/)*?(?:www\
  * runChecks(input) -> result rows. input:
  *   { finalUrl, hosts, productionHost, pages, inlinks, blocked, truncated, robots: { status, parsed, error },
  *     sitemap: { urls, sources, truncated, declared }, external: [{ url, status, ok, blocked, error }] | null,
+ *     internal: { checked: [{ url, status, error }], unchecked } | null (link targets the crawl did not fetch),
  *     ogImages: [{ url, status, contentType }] | null, schema: [{ url, types, ok, errors, warnings, nodes, error }] | null,
  *     sitemapSampled, sitemapMissing, render, detailed } (render and detailed: see schemaChecks)
  */
@@ -111,11 +112,15 @@ export function runChecks(input) {
   else if (noindex.length) out.push(result('seo.noindex', 'info', 'Noindex pages', `${plural(noindex.length, 'page')} of ${html.length} are noindex; check each is meant to be`, { fix: 'Fine for search results, filters, thank-you and account pages. Anything that should rank must not be noindex.', urls: noindex.map((p) => ({ url: p.url, note: p.xRobots ? `X-Robots-Tag: ${p.xRobots}` : `meta: ${p.metaRobots}` })) }));
   else out.push(result('seo.noindex', 'pass', 'Noindex pages', `none of ${html.length} crawled pages is noindex`));
 
-  const bad = pages.filter((p) => p.status === 0 || p.status >= 400);
+  // Crawled pages plus link targets that were only status-checked (past the --pages budget).
+  const linkOnly = (input.internal?.checked || []).filter((c) => !byUrl.has(c.url));
+  const bad = [...pages, ...linkOnly].filter((p) => p.status === 0 || p.status >= 400);
   const linked = bad.filter((p) => inlinks.has(p.url));
+  const answered = pages.length + linkOnly.length;
+  const unchecked = input.internal?.unchecked || 0;
   out.push(linked.length
     ? result('seo.broken-internal', linked.some((p) => p.status >= 500 || p.status === 0) || linked.length > 3 ? 'fail' : 'warn', 'Broken internal links', `${plural(linked.length, 'URL')} linked from the site answer ${[...new Set(linked.map((p) => p.status || p.error))].slice(0, 4).join(', ')}`, { fix: 'Fix or remove the links, or redirect the old URL (301) to its replacement.', urls: linked.map((p) => ({ url: p.url, note: `${p.status || p.error}${looksSchemeless(p.url) ? ' · the href is missing https:// so it resolves as a path on this site' : ''} · linked from ${fromList(inlinks.get(p.url))}${inlinks.get(p.url).size > 2 ? ` and ${inlinks.get(p.url).size - 2} more` : ''}` })) })
-    : result('seo.broken-internal', 'pass', 'Broken internal links', `every internal link of ${pages.length} URLs answers`));
+    : result('seo.broken-internal', 'pass', 'Broken internal links', `every internal link of ${answered} URLs answers${linkOnly.length ? ` (${linkOnly.length} of them link targets past the crawl, status only)` : ''}${unchecked ? `; ${unchecked} more not checked (raise --internal-links)` : ''}`));
 
   const thin = idx.filter((p) => p.words < THIN_WORDS && !sameUrlModuloSlash(p.url, finalUrl));
   out.push(thin.length

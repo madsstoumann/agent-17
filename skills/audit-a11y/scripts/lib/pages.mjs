@@ -1,5 +1,6 @@
 // Which pages to audit: a list the user gives, audit-launch's crawl, or the sitemap plus the start
-// page's links, sampled so different templates (first path segment, depth) come before more of one.
+// page's links, sampled so different templates (first path segment, depth) come before more of one,
+// and the same page in another language (/en/news, /es-ES/news) counts as the same template.
 import fs from 'node:fs';
 
 const SKIP = /\.(pdf|zip|gz|jpe?g|png|gif|webp|avif|svg|ico|mp4|mp3|webm|woff2?|ttf|css|js|mjs|json|xml|txt|csv|xlsx?|docx?|pptx?)(\?|$)/i;
@@ -17,13 +18,29 @@ function clean(u, origin) {
 /** <loc> values from a sitemap or sitemap index. */
 export const sitemapLocs = (xml) => [...String(xml || '').matchAll(/<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]\s]+)\s*(?:\]\]>)?\s*<\/loc>/gi)].map((m) => m[1].replace(/&amp;/g, '&'));
 
-/** Template key: first path segment and depth, so /news/a and /news/b count as one template. */
-export const templateOf = (u) => {
+/** A locale path segment: en, da, es-ES, en-gb, zh-Hans, pt_BR. */
+const LOCALE_SEG = /^[a-z]{2}(?:[-_](?:[a-z]{2}|[a-z]{4}))?$/i;
+
+/** Path without a leading locale segment, so /es-ES/news and /en/news are the same page in two languages. */
+export const pathOf = (u) => {
   const segs = new URL(u).pathname.split('/').filter(Boolean);
+  if (segs.length && LOCALE_SEG.test(segs[0])) segs.shift();
+  return `/${segs.join('/')}`.toLowerCase();
+};
+
+/**
+ * Template key: first path segment and depth after any locale prefix, so /news/a and /news/b
+ * count as one template, and so do /en/news and /es-ES/news.
+ */
+export const templateOf = (u) => {
+  const segs = pathOf(u).split('/').filter(Boolean);
   return `${segs[0] || ''}|${Math.min(segs.length, 3)}`;
 };
 
-/** Start page first, then one URL per template in the order found, then the rest, up to `n`. */
+/**
+ * Start page first, then one URL per template in the order found, then pages with a path not
+ * yet picked in any language, then the rest (other languages of picked pages), up to `n`.
+ */
 export function pickPages({ start, candidates = [], n = 10 }) {
   const origin = new URL(start).origin;
   const startClean = clean(start, origin) || start;
@@ -41,6 +58,11 @@ export function pickPages({ start, candidates = [], n = 10 }) {
     if (out.length >= n) break;
     const t = templateOf(u);
     if (!templates.has(t)) { templates.add(t); out.push(u); }
+  }
+  const paths = new Set(out.map(pathOf));
+  for (const u of pool) {
+    if (out.length >= n) break;
+    if (!out.includes(u) && !paths.has(pathOf(u))) { paths.add(pathOf(u)); out.push(u); }
   }
   for (const u of pool) {
     if (out.length >= n) break;

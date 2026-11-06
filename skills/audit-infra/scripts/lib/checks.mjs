@@ -316,15 +316,17 @@ export async function ctChecks(ctx) {
   const { resolver: r, apex } = ctx;
   const out = [];
   const ct = await crtSh(apex, { fetch: ctx.fetch, now: ctx.now });
-  if (!ct.ok) { out.push(result('ct.inventory', 'skip', 'Certificate Transparency', `crt.sh: ${ct.error} (it is often slow; run again or pass --no-ct)`)); return out; }
+  if (!ct.ok) { out.push(result('ct.inventory', 'skip', 'Certificate Transparency', `${ct.error} (both are often slow; run again or pass --no-ct)`)); return out; }
   const wildcards = ct.names.filter((n) => n.startsWith('*.'));
   const names = ct.names.filter((n) => !n.startsWith('*.')).sort((a, b) => a.split('.').length - b.split('.').length || a.localeCompare(b));
   const probe = names.slice(0, ctx.maxSubdomains);
-  out.push(result('ct.inventory', 'info', 'Names in CT logs', `${plural(names.length, 'host name')}${wildcards.length ? ` and ${plural(wildcards.length, 'wildcard')}` : ''} on ${ct.certs} unexpired certificates; issuers ${Object.entries(ct.issuers).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} (${v})`).join(', ')}${names.length > probe.length ? `; checked the first ${probe.length}` : ''}`, { data: { names, wildcards } }));
+  out.push(result('ct.inventory', 'info', 'Names in CT logs', `${plural(names.length, 'host name')}${wildcards.length ? ` and ${plural(wildcards.length, 'wildcard')}` : ''} on ${ct.certs} unexpired certificates; issuers ${Object.entries(ct.issuers).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} (${v})`).join(', ')}${names.length > probe.length ? `; checked the first ${probe.length}` : ''}${ct.source !== 'crt.sh' ? ` (from ${ct.source}${ct.partial ? ', first pages only' : ''}; ${ct.fallbackFrom || 'crt.sh did not answer'})` : ''}`, { data: { names, wildcards } }));
 
   // Every publicly trusted certificate is logged; a leaf that is not means someone re-signs TLS on the way.
   const leaf = ctx.shared.cert;
-  if (leaf?.serial && ct.serials.size && !ct.serials.has(normSerial(leaf.serial))) {
+  const logged = ct.serials.size ? (leaf?.serial && ct.serials.has(normSerial(leaf.serial)))
+    : ct.fingerprints?.size && !ct.partial ? (leaf?.fingerprint && ct.fingerprints.has(normSerial(leaf.fingerprint))) : true;
+  if (leaf && !logged) {
     out.push(result('tls.interception', 'warn', 'Certificate not in CT logs', `the certificate this machine received for ${ctx.host} (serial ${leaf.serial}, issuer ${leaf.issuer}) is not among the ${ct.certs} logged ones. A proxy, VPN or antivirus is probably re-signing TLS here, so the TLS rows above describe it, not the site`, { fix: 'Run again from a network without TLS inspection, or check the certificate at crt.sh. If it really is unlogged, browsers that enforce CT will reject it.', link: `https://crt.sh/?q=${ctx.host}` }));
   }
 

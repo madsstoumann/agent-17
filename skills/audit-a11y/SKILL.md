@@ -4,7 +4,7 @@ description: Use when someone wants an accessibility audit, WCAG 2.2 or 2.1 AA c
 argument-hint: "<url> [--pages N] [--from audit-launch/report.json] [--urls FILE] [--keyboard N] [--wcag A|AA|AAA] [--repo NAME[=PATH]] [--out DIR] [--state DIR] [--baseline FILE] [--no-baseline] [--header NAME:VALUE] [--insecure] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
-  version: "2.1.0"
+  version: "2.1.1"
 ---
 
 # Accessibility audit
@@ -34,7 +34,7 @@ code 0 means it ran, whatever it found.
 
 | Flag | Use it when |
 |---|---|
-| `--pages N` (default 10) | Pages to audit, start page included. Picked from the sitemap and the start page's links, one per template (first path segment and depth) before more of the same. |
+| `--pages N` (default 10) | Pages to audit, start page included. Picked from the sitemap and the start page's links, one per template (first path segment and depth, after any locale prefix such as `/en/` or `/es-ES/`) before more of the same, and other languages of an already picked page last. |
 | `--from <audit-launch report.json>` | audit-launch already crawled the site: sample from its crawl. audit-all always does this. |
 | `--urls FILE` | The user names the pages (one URL per line): the checkout, a form, a login page. |
 | `--keyboard N` (default 3) | Keyboard walk on the first N pages. `0` for a quick engine-only pass. |

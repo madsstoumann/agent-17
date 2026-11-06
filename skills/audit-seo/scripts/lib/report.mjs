@@ -31,6 +31,13 @@ export function resultLine(counts) {
   return ['fail', 'warn', 'pass', 'info', 'skipped'].map((k) => `${counts[k === 'skipped' ? 'skip' : k]} ${k}`).join(', ');
 }
 
+/** " Pages per language section: en 21, es-es 19, …" when the crawl saw more than one. */
+function localeNote(locales) {
+  const named = Object.entries(locales || {}).filter(([l]) => l);
+  if (named.length < 2) return '';
+  return ` Pages per language section: ${Object.entries(locales).sort((a, b) => b[1] - a[1]).map(([l, n]) => `${l || '(none)'} ${n}`).join(', ')}.`;
+}
+
 export function renderMarkdown(report, { levels } = {}) {
   const { site, stats, env } = report;
   const counts = countStatuses(report.rows);
@@ -43,7 +50,7 @@ export function renderMarkdown(report, { levels } = {}) {
   out.push(`**Result:** ${resultLine(counts)}`, '');
   if (filtered) out.push(levelNote(levels, { hidden: report.rows.length - rows.length }), '');
   if (report.mode === 'schema') out.push(`**Checked:** structured data on this one page only (${/^file:|^\//.test(site.finalUrl) || !/^https?:/.test(site.finalUrl) ? 'a local file' : '--schema-only'}); nothing was crawled. Run without --schema-only for the full SEO audit.`, '');
-  else out.push(`**Crawled:** ${stats.html} HTML pages and ${stats.other} other URLs (${stats.redirects} redirects, ${stats.errors} errors) by following links${stats.truncated ? ` (stopped at the --pages cap of ${stats.maxPages}; the site has more)` : ''}${stats.sitemapMissing ? `, plus ${stats.sitemapSampled} of ${stats.sitemapMissing} sitemap URLs the links did not reach` : ''}. ${stats.indexable} pages are indexable.`, '');
+  else out.push(`**Crawled:** ${stats.html} HTML pages and ${stats.other} other URLs (${stats.redirects} redirects, ${stats.errors} errors) by following links${stats.truncated ? ` (stopped at the --pages cap of ${stats.maxPages}; the site has more)` : ''}${stats.sitemapMissing ? `, plus ${stats.sitemapSampled} of ${stats.sitemapMissing} sitemap URLs the links did not reach` : ''}. ${stats.indexable} pages are indexable.${localeNote(stats.locales)}${stats.linksChecked ? ` ${stats.linksChecked} more link targets past the cap were checked for a status only${stats.linksUnchecked ? ` (${stats.linksUnchecked} not checked)` : ''}.` : ''}`, '');
   if (env.note) out.push(`> ${env.note}`, '');
   if (report.notes) out.push('## Notes', '', report.notes.trim(), '');
   if (report.diff && !report.diff.error) out.push(...diffMarkdown(report.diff, { from: report.diff.from, date: report.diff.date }));

@@ -7,7 +7,7 @@ import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 
 import { scFromAxeTags, scFromHtmlcsCode, enClause, criteriaFor, axeTags } from '../lib/wcag.mjs';
-import { pickPages, sitemapLocs, templateOf } from '../lib/pages.mjs';
+import { pickPages, sitemapLocs, templateOf, pathOf } from '../lib/pages.mjs';
 import { analyseWalk } from '../lib/keyboard.mjs';
 import { aggregate, toTasks, genericMessage, diffRuns } from '../lib/findings.mjs';
 import { resultLine, buildMarkdown, consoleItems } from '../lib/report.mjs';
@@ -40,6 +40,22 @@ test('pages: start page first, one per template, same origin only', () => {
   assert.deepEqual(picked, ['https://shop.example.dk/', 'https://shop.example.dk/news/a', 'https://shop.example.dk/about', 'https://shop.example.dk/news/b']);
   assert.equal(templateOf('https://x.dk/a/b/c/d'), 'a|3');
   assert.deepEqual(sitemapLocs('<urlset><url><loc>https://x.dk/a?b=1&amp;c=2</loc></url><url><loc><![CDATA[https://x.dk/b]]></loc></url></urlset>'), ['https://x.dk/a?b=1&c=2', 'https://x.dk/b']);
+});
+
+test('pages: the same page in other languages is one template (wpp.com /news in 8 locales)', () => {
+  const o = 'https://www.wpp.com';
+  const locales = ['en', 'es-ES', 'de-DE', 'fr-FR', 'it-IT', 'ja-JP', 'pt-BR', 'zh-CN'];
+  const picked = pickPages({
+    start: `${o}/`,
+    candidates: [...locales.map((l) => `${o}/${l}/news`), `${o}/en/about`, `${o}/en/work/case-a`, `${o}/es-ES/about`, `${o}/en/careers`],
+    n: 5,
+  });
+  assert.deepEqual(picked, [`${o}/`, `${o}/en/news`, `${o}/en/about`, `${o}/en/work/case-a`, `${o}/en/careers`]);
+  assert.equal(templateOf(`${o}/es-ES/news`), templateOf(`${o}/news`));
+  assert.equal(pathOf(`${o}/zh-Hans/news/`), '/news');
+  assert.equal(pathOf(`${o}/news/en`), '/news/en');
+  // with room left, other languages come last
+  assert.equal(pickPages({ start: `${o}/`, candidates: [`${o}/en/news`, `${o}/es-ES/news`, `${o}/en/about`], n: 4 })[3], `${o}/es-ES/news`);
 });
 
 const stop = (uid, extra = {}) => ({ uid, path: `#s${uid}`, tag: 'a', name: `s${uid}`, visible: true, indicator: true, x: 0, y: uid * 40, w: 50, h: 20, ...extra });
