@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-eco` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.2.0] - 2026-11-06
+
+### Fixed
+- `--pages` samples sitemap pages from different site sections (first path segment, locale prefix ignored) and skips noindex pages (meta robots or X-Robots-Tag). On 3.dk every extra page was a noindex help guide, so the median described the help section only. A site that is noindex everywhere still gets its pages measured.
+
 ## [2.1.0] - 2026-11-01
 
 ### Removed

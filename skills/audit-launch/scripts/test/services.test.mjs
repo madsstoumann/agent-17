@@ -4,7 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import os from 'node:os';
 import {
-  stripJsonGuard, groupW3cMessages, w3cValidate, observatoryScan, summariseObservatory,
+  stripJsonGuard, groupW3cMessages, modernCssFeature, w3cValidate, observatoryScan, summariseObservatory,
   sslLabsAnalyze, securityHeadersApi, parseSecurityHeadersPage, securityHeadersScrape,
   buildScrapeArgs, findChrome, postBody,
 } from '../lib/services.mjs';
@@ -57,7 +57,7 @@ test('groupW3cMessages counts by kind and groups identical messages, most freque
   assert.equal(fatal.count, 1);
   const warn = s.groups.find((g) => g.type === 'info' && g.subType === 'warning');
   assert.match(warn.message, /unnecessary/);
-  assert.deepEqual(groupW3cMessages([]), { errors: 0, warnings: 0, info: 0, fatal: 0, distinct: 0, groups: [] });
+  assert.deepEqual(groupW3cMessages([]), { errors: 0, warnings: 0, info: 0, fatal: 0, modernCss: 0, distinct: 0, modernCssFeatures: {}, groups: [] });
   assert.deepEqual(groupW3cMessages(undefined).groups, []);
 });
 
@@ -376,4 +376,24 @@ test('schema.mjs is identical to audit-seo\'s copy', () => {
   const mine = readFileSync(new URL('../lib/schema.mjs', here), 'utf8');
   const theirs = new URL('../../../audit-seo/scripts/lib/schema.mjs', here);
   if (existsSync(theirs)) assert.equal(readFileSync(theirs, 'utf8'), mine);
+});
+
+test('groupW3cMessages counts CSS errors for modern features apart, as info (3.dk: @container, @property, container-type)', () => {
+  const e = (message, extract = '') => ({ type: 'error', message, extract });
+  const msgs = [
+    ...Array(3).fill(e('CSS: Unrecognized at-rule “@container”')),
+    ...Array(2).fill(e('CSS: Unrecognized at-rule “@property”')),
+    e('CSS: “container-type”: Property “container-type” doesn\'t exist.'),
+    e('CSS: “width”: Unknown dimension.', ' { width: 10cqi; } '),
+    e('CSS: “colr”: Property “colr” doesn\'t exist.'),
+    e('CSS: Unrecognized at-rule “@madeup”'),
+    e('Element “div” not allowed as child of element “h2” in this context.'),
+  ];
+  const s = groupW3cMessages(msgs);
+  assert.equal(s.errors, 3, 'typo property, unknown at-rule and the HTML error stay errors');
+  assert.equal(s.modernCss, 7);
+  assert.deepEqual(s.modernCssFeatures, { '@container': 3, '@property': 2, 'container-type': 1, 'cqi unit': 1 });
+  assert.equal(s.groups.find((g) => /@container/.test(g.message)).modernCss, true);
+  assert.equal(s.groups.find((g) => /colr/.test(g.message)).modernCss, undefined);
+  assert.equal(modernCssFeature({ type: 'error', message: 'CSS: “width”: Unknown dimension.', extract: '10qq' }), null);
 });

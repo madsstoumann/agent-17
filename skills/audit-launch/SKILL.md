@@ -4,7 +4,7 @@ description: Use when a website is about to go live or has just launched and nee
 argument-hint: "<url> [--env dev|staging|production] [--production-host HOST] [--pages N] [--skip group,...] [--out PATH] [--baseline report.json | --no-baseline] [--insecure] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Read, WebFetch
 metadata:
-  version: "2.2.1"
+  version: "2.3.0"
 ---
 
 # Launch audit
@@ -40,7 +40,7 @@ read the last stderr lines.
 |---|---|
 | `--env dev\|staging\|production` | Always pass it when the user says which environment it is. Otherwise the script guesses from the hostname and the report says `(auto from hostname — pass --env to override)`; repeat that caveat to the user. |
 | `--production-host www.example.com` | The user names the future live domain. Canonical, og:url, hreflang and sitemap hosts are then compared against it. |
-| `--pages N` (default 3) | Extra sitemap pages for Lighthouse, mobile only. `0` for speed. |
+| `--pages N` (default 3) | Extra sitemap pages for Lighthouse, mobile only: indexable pages from different sections. `0` for speed. |
 | `--skip perf` / `--skip perf,links` | "Quick check", "skip Lighthouse". `--only headers,tls` for a narrow question. Groups: `crawl redirects notfound tls exposed headers caching perf a11y privacy links ops` (also `dns`, `email`, `social`, `icons`). |
 | `--out PATH` | The user says where the report should go: a folder, or a `.md` path (JSON and raw files land beside it). Default `<target>/runs/<YYYYMMDD-HHMM>/` (see "What carries over"). Always quote the report paths printed on stdout. |
 | `--baseline <previous report.json>` | Compare with a specific earlier run. Without it, every run compares with the last run for the same host automatically ("Since last run"). |

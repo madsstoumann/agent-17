@@ -32,10 +32,11 @@ const dnsErrorText = (e) => (e?.code ? `${e.code}: ${e.message}` : (e?.message |
  *    | { ok: false, error }
  *
  * Connects with rejectUnauthorized: false so the certificate can be read even when the
- * chain is invalid; `authorized` and `authorizationError` say what Node's verifier thought.
+ * chain is invalid; `authorized` and `authorizationError` say what Node's verifier thought
+ * against `ca` (default: Node's default store, which includes NODE_EXTRA_CA_CERTS).
  * The chain follows issuerCertificate until a certificate references itself.
  */
-export function tlsInfo(host, { port = 443, timeout = 10000, connect = tls.connect } = {}) {
+export function tlsInfo(host, { port = 443, timeout = 10000, ca, connect = tls.connect } = {}) {
   return new Promise((resolve) => {
     let socket; let done = false;
     const finish = (result) => {
@@ -46,7 +47,7 @@ export function tlsInfo(host, { port = 443, timeout = 10000, connect = tls.conne
     };
     const timer = setTimeout(() => finish({ ok: false, error: `TLS handshake timed out after ${timeout} ms` }), timeout);
     try {
-      socket = connect({ host, port, servername: host, ALPNProtocols: ['h2', 'http/1.1'], rejectUnauthorized: false }, () => {
+      socket = connect({ host, port, servername: host, ALPNProtocols: ['h2', 'http/1.1'], rejectUnauthorized: false, ...(ca ? { ca } : {}) }, () => {
         const peer = socket.getPeerCertificate(true);
         if (!peer || !Object.keys(peer).length) { finish({ ok: false, error: 'no peer certificate' }); return; }
         const chain = [];
@@ -77,6 +78,25 @@ export function tlsInfo(host, { port = 443, timeout = 10000, connect = tls.conne
       finish({ ok: false, error: describeError(e) });
     }
   });
+}
+
+/** Verifier errors that mean "no trusted root for this chain" (not expired, not a wrong name). */
+const UNTRUSTED_ROOT = /SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_GET_ISSUER_CERT|UNABLE_TO_VERIFY_LEAF_SIGNATURE|DEPTH_ZERO_SELF_SIGNED_CERT|CERT_UNTRUSTED/;
+
+/**
+ * publicTlsInfo(host, opts) -> tlsInfo result judged against Node's built-in public roots only
+ * (tls.rootCertificates: no NODE_EXTRA_CA_CERTS, no system store), plus `intercepted: true` when
+ * those roots reject the chain for lack of a root but this machine's own store accepts it. That is
+ * a proxy, VPN, antivirus or cloud egress gateway re-signing TLS: the certificate is not the site's.
+ * `interceptedBy` names the root that signed it.
+ */
+export async function publicTlsInfo(host, { roots = tls.rootCertificates, ...opts } = {}) {
+  const info = await tlsInfo(host, { ...opts, ca: roots });
+  if (!info.ok || info.authorized || !UNTRUSTED_ROOT.test(info.authorizationError || '')) return info;
+  const local = await tlsInfo(host, opts);
+  if (!local.ok || !local.authorized) return info;
+  const root = info.chain[info.chain.length - 1] || {};
+  return { ...info, intercepted: true, interceptedBy: root.subject?.CN || root.subject?.O || root.issuer?.CN || 'an unknown CA' };
 }
 
 /** Wildcard-aware SAN match: *.example.com covers exactly one extra label. */

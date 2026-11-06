@@ -20,7 +20,7 @@ import { readStack } from './lib/stack.mjs';
 import { parseLevel, levelOfWord, consoleList } from './lib/levels.mjs';
 import { targetDir, claimTarget, newRun, previousRuns, readNotes, targetName } from './lib/target-state.mjs';
 
-export const VERSION = '1.13.0';
+export const VERSION = '1.14.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, '..', 'assets');
 const SIBLINGS = path.join(HERE, '..', '..');

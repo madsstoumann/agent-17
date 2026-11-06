@@ -348,3 +348,19 @@ test('Built with: check-tech-stack results on the cover and under the title', as
   assert.match(combinedMarkdown(args), /\nBuilt with: Umbraco 13\.2 · Next\.js 15\.0\.0 · Cloudflare\n/);
   assert.doesNotMatch(combinedHtml({ ...args, stack: [] }), /class="stack"/);
 });
+
+test('<details>/<summary> from the sub-audits render as an open block, not as escaped text (3.dk, wpp.com)', () => {
+  const md = ['## Cookies', '', '<details>', '<summary>Cookies before any choice (13)</summary>', '', '| Name | Domain |', '|---|---|', '| _ga | .3.dk |', '', '</details>', '',
+    '<details><summary>2 packages with updates available</summary>', '', '- npm a: 1.0 → 2.0', '', '</details>', '', 'After.'].join('\n');
+  const blocks = parseBlocks(md);
+  assert.deepEqual(blocks.map((b) => b.type), ['heading', 'details', 'details', 'para']);
+  assert.equal(blocks[1].summary, 'Cookies before any choice (13)');
+  assert.equal(blocks[1].blocks[0].type, 'table');
+  const html = renderBlocks(blocks);
+  assert.match(html, /<details open><summary>Cookies before any choice \(13\)<\/summary>/);
+  assert.match(html, /<td>_ga<\/td>/);
+  assert.match(html, /<details open><summary>2 packages with updates available<\/summary>\n<ul>/);
+  assert.doesNotMatch(html, /&lt;details|&lt;summary/);
+  // Other raw HTML is still escaped.
+  assert.match(renderBlocks(parseBlocks('<script>x</script>')), /&lt;script&gt;/);
+});

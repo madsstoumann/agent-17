@@ -6,6 +6,7 @@ import { staticAssets, cssAssets } from '../lib/static.mjs';
 import { renderMarkdown, findings, resultLine } from '../lib/report.mjs';
 import { parseCli, resolveOut } from '../lib/cli.mjs';
 import { findChrome } from '../lib/browser.mjs';
+import { sampleSitemapUrls, pickIndexable } from '../lib/robots.mjs';
 
 const close = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
 
@@ -118,4 +119,15 @@ test('findChrome honours --chrome and CHROME_PATH', () => {
   assert.equal(findChrome({ chromePath: '/c' }), '/c');
   assert.equal(findChrome({ env: { CHROME_PATH: '/x/chrome' }, exists: (p) => p === '/x/chrome', list: () => [] }), '/x/chrome');
   assert.equal(findChrome({ env: {}, home: '/h', exists: () => false, list: () => [] }), null);
+});
+
+test('sitemap sample spreads across sections and skips noindex pages (3.dk help guides)', async () => {
+  const help = Array.from({ length: 40 }, (_, i) => `https://www.3.dk/hjalp/vejledninger/guide-${i}`);
+  const urls = [...help, 'https://www.3.dk/mobilabonnementer', 'https://www.3.dk/bredbaand/5g', 'https://www.3.dk/en/bredbaand/x'];
+  const candidates = sampleSitemapUrls(urls, { startUrl: 'https://www.3.dk/', n: 12 });
+  assert.deepEqual(candidates.slice(0, 3), ['https://www.3.dk/hjalp/vejledninger/guide-0', 'https://www.3.dk/bredbaand/5g', 'https://www.3.dk/mobilabonnementer']);
+  const get = async (u) => ({ status: 200, headers: { 'content-type': 'text/html' }, body: u.includes('/hjalp/') ? '<meta name="robots" content="noindex">' : '' });
+  const { picked, skipped } = await pickIndexable(get, candidates, { n: 3 });
+  assert.deepEqual(picked, ['https://www.3.dk/bredbaand/5g', 'https://www.3.dk/mobilabonnementer', 'https://www.3.dk/en/bredbaand/x']);
+  assert.ok(skipped.every((x) => x.reason === 'noindex'));
 });

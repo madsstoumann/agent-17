@@ -16,7 +16,7 @@ import { parseCli, resolveOut, resolveState, reportsRoot, usage } from './lib/cl
 import { claimTarget, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
 import { diffRows } from './lib/diff.mjs';
 import { createHttp, siblingHost, challengeVendor, VERSION } from './lib/http.mjs';
-import { parseRobotsTxt, loadSitemaps, sampleSitemapUrls } from './lib/robots.mjs';
+import { parseRobotsTxt, loadSitemaps, sampleSitemapUrls, pickIndexable } from './lib/robots.mjs';
 import { launch, measure, findChrome } from './lib/browser.mjs';
 import { measureStatic } from './lib/static.mjs';
 import { summarisePage, runChecks } from './lib/checks.mjs';
@@ -64,7 +64,7 @@ async function main() {
   const u = new URL(finalUrl);
   const host = u.host.toLowerCase();
 
-  // Pages: the start page, any the user named, then one sitemap page per template.
+  // Pages: the start page, any the user named, then indexable sitemap pages from different sections.
   const targets = [finalUrl, ...opts.extraUrls];
   if (opts.pages > 0) {
     const robotsRes = await http.get(`${u.origin}/robots.txt`, { redirect: 'follow', maxBytes: 256 * 1024 });
@@ -72,7 +72,12 @@ async function main() {
     const candidates = [...new Set([...(robots?.sitemaps || []), `${u.origin}/sitemap.xml`])];
     const sitemap = await loadSitemaps(http, candidates, { maxChildren: 5, maxUrls: 5000 });
     const own = sitemap.urls.filter((x) => { try { return siteHosts.includes(new URL(x).host.toLowerCase()) || new URL(x).host.toLowerCase() === host; } catch { return false; } });
-    targets.push(...sampleSitemapUrls(own, { startUrl: finalUrl, n: opts.pages, exclude: targets }));
+    // Candidates spread across sections; keep indexable ones, so a noindex help section does not set the median.
+    const sample = sampleSitemapUrls(own, { startUrl: finalUrl, n: opts.pages * 4, exclude: targets });
+    const sel = await pickIndexable((x) => http.get(x, { redirect: 'follow', maxBytes: 256 * 1024 }), sample, { n: opts.pages });
+    const noindex = sel.skipped.filter((x) => x.reason === 'noindex').length;
+    if (noindex) log(`sitemap: skipped ${noindex} noindex page(s)`);
+    targets.push(...sel.picked);
     log(`sitemap: ${sitemap.urls.length} URLs; measuring ${targets.length} pages`);
   }
 

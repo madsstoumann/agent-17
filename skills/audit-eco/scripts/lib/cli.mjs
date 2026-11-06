@@ -145,7 +145,7 @@ export function usage() {
 
 Usage: node eco.mjs <url> [more page urls] [flags]
 
-  --pages N           Extra pages from the sitemap, one per template (default ${DEFAULTS.pages}). Page URLs after
+  --pages N           Extra sitemap pages, indexable ones from different sections (default ${DEFAULTS.pages}). Page URLs after
                       the first are measured as well.
   --grid CODE         Grid intensity of the visitors' country for device and network (DK, DNK, SE, DEU, ...).
                       Default: the model's global 494 g/kWh, which keeps sites comparable.

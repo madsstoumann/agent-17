@@ -2,7 +2,7 @@
 // them, turns a crash into one skip row, and writes the report.
 import { result, pLimit, settle } from './common.mjs';
 import { parseMx, parseCaa, parseSoa, undot } from './dns.mjs';
-import { handshake, sanCovers, daysLeft, caaAllows } from './tls.mjs';
+import { handshake, sanCovers, daysLeft, caaAllows, PUBLIC_ROOTS, UNTRUSTED_ROOT } from './tls.mjs';
 import { spfTree, judgeSpf, dmarc, dkim, mtaSts, stsCovers } from './email.mjs';
 import { rdap, crtSh, normSerial } from './services.mjs';
 import { preloadLookup, preloadVerdict, parseHstsHeader } from './hsts-preload.mjs';
@@ -188,7 +188,18 @@ export async function tlsChecks(ctx) {
     if (!ips.v4.length && !ips.v6.length) endpoints.push({ name, ip: null });
   }
   const limit = pLimit(4);
-  const shakes = await Promise.all(endpoints.map((e) => limit(async () => ({ ...e, hs: await handshake({ host: e.name, ip: e.ip, connect: ctx.connect }) }))));
+  // Trust is judged against Node's public roots only. When that fails for lack of a root but this
+  // machine's own store (NODE_EXTRA_CA_CERTS, system CAs) accepts the chain, something on the way
+  // re-signs TLS (corporate proxy, antivirus, a cloud egress gateway): the certificate seen is not the site's.
+  const ca = ctx.publicRoots || PUBLIC_ROOTS;
+  const shakes = await Promise.all(endpoints.map((e) => limit(async () => {
+    const hs = await handshake({ host: e.name, ip: e.ip, ca, connect: ctx.connect });
+    if (hs.ok && !hs.authorized && UNTRUSTED_ROOT.test(hs.authorizationError || '')) {
+      const local = await handshake({ host: e.name, ip: e.ip, connect: ctx.connect });
+      if (local.ok && local.authorized) hs.intercepted = true;
+    }
+    return { ...e, hs };
+  })));
   const okShakes = shakes.filter((s) => s.hs.ok);
   const failed = shakes.filter((s) => !s.hs.ok);
   const v6Failed = failed.filter((s) => s.v6);
@@ -210,6 +221,13 @@ export async function tlsChecks(ctx) {
   const primary = rows.find((x) => x.name === host) || rows[0];
   ctx.shared.issuer = primary.leaf.issuer;
   ctx.shared.cert = primary.leaf;
+  const intercepted = rows.filter((x) => x.hs.intercepted);
+  if (intercepted.length) {
+    ctx.shared.intercepted = true;
+    const root = (x) => x.hs.chain[x.hs.chain.length - 1] || x.leaf;
+    const by = [...new Set(intercepted.map((x) => root(x).issuerCN || root(x).issuer || root(x).subject))].join(', ');
+    out.push(result('tls.interception', 'warn', 'TLS interception', `the certificate this machine received for ${intercepted.map((x) => `${x.name} @ ${x.ip || 'default'}`).join(', ')} chains to ${by}, which only this machine's own CA store trusts, not the public roots. A proxy, VPN, antivirus or cloud egress gateway re-signs TLS here, so the certificate rows describe it, not the site`, { fix: 'Run audit-infra from a network without TLS inspection (your own machine) to check the real certificates.' }));
+  }
   const untrusted = rows.filter((x) => !x.hs.authorized);
   out.push(untrusted.length
     ? result('tls.chain', 'fail', 'Certificate chain', untrusted.map((x) => `${x.name} @ ${x.ip || 'default'}: ${x.hs.authorizationError}${x.hs.authorizationError === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' ? ' (intermediate certificate not sent)' : ''}`).join('; '), { fix: 'Install the full chain (leaf + intermediates) on every endpoint; browsers that cannot fetch the missing intermediate (many Android apps, curl, APIs) fail.', blocker: true })
@@ -326,8 +344,8 @@ export async function ctChecks(ctx) {
   const leaf = ctx.shared.cert;
   const logged = ct.serials.size ? (leaf?.serial && ct.serials.has(normSerial(leaf.serial)))
     : ct.fingerprints?.size && !ct.partial ? (leaf?.fingerprint && ct.fingerprints.has(normSerial(leaf.fingerprint))) : true;
-  if (leaf && !logged) {
-    out.push(result('tls.interception', 'warn', 'Certificate not in CT logs', `the certificate this machine received for ${ctx.host} (serial ${leaf.serial}, issuer ${leaf.issuer}) is not among the ${ct.certs} logged ones. A proxy, VPN or antivirus is probably re-signing TLS here, so the TLS rows above describe it, not the site`, { fix: 'Run again from a network without TLS inspection, or check the certificate at crt.sh. If it really is unlogged, browsers that enforce CT will reject it.', link: `https://crt.sh/?q=${ctx.host}` }));
+  if (leaf && !logged && !ctx.shared.intercepted) {
+    out.push(result('tls.interception', 'warn', 'TLS interception (certificate not in CT logs)', `the certificate this machine received for ${ctx.host} (serial ${leaf.serial}, issuer ${leaf.issuer}) is not among the ${ct.certs} logged ones. A proxy, VPN or antivirus is probably re-signing TLS here, so the TLS rows above describe it, not the site`, { fix: 'Run again from a network without TLS inspection, or check the certificate at crt.sh. If it really is unlogged, browsers that enforce CT will reject it.', link: `https://crt.sh/?q=${ctx.host}` }));
   }
 
   const caa = ctx.shared.caa || [];
@@ -347,7 +365,7 @@ export async function ctChecks(ctx) {
       row.dangling = t.nxdomain || !t.answers.length;
     }
     if (addrs.length) {
-      const hs = await settle(handshake({ host: name, connect: ctx.connect, timeout: 6000 }), 8000, (e) => ({ ok: false, error: e.message }));
+      const hs = await settle(handshake({ host: name, ca: ctx.publicRoots || PUBLIC_ROOTS, connect: ctx.connect, timeout: 6000 }), 8000, (e) => ({ ok: false, error: e.message }));
       row.https = hs.ok;
       if (hs.ok) {
         const leaf = hs.chain[0] || {};

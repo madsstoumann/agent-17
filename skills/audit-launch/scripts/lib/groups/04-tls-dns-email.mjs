@@ -5,7 +5,7 @@
  * --email-domain), which is rarely the audited host on staging.
  */
 import { result } from '../registry.mjs';
-import { tlsInfo, certSummary, dnsRecords, dnssecStatus, evaluateSpf, evaluateDmarc, dkimProbe } from '../net.mjs';
+import { tlsInfo, publicTlsInfo, certSummary, dnsRecords, dnssecStatus, evaluateSpf, evaluateDmarc, dkimProbe } from '../net.mjs';
 import { preloadLookup, preloadVerdict } from '../hsts-preload.mjs';
 import net from 'node:net';
 import { isPlatformHost } from '../cli.mjs';
@@ -25,7 +25,11 @@ export default {
     if (u.protocol !== 'https:') {
       out.push(result('tls.chain', 'fail', 'HTTPS', `the site is served over ${u.protocol.replace(':', '')}`, { fix: 'Serve everything over https with a valid certificate.', blocker: true }));
     } else {
-      const info = await tlsInfo(hostname, { port: Number(u.port) || 443, timeout: 10000 });
+      // Public hosts are judged against the public roots only, so a re-signing proxy is caught; a
+      // private host keeps the local store (mkcert and company CAs are expected there).
+      const tlsOpts = { port: Number(u.port) || 443, timeout: 10000 };
+      const info = isPrivate || isIp ? await tlsInfo(hostname, tlsOpts) : await publicTlsInfo(hostname, tlsOpts);
+      const tlsStart = out.length;
       if (!info.ok) {
         out.push(result('tls.chain', 'skip', 'Certificate chain', `TLS handshake failed: ${info.error}`));
       } else {
@@ -42,6 +46,15 @@ export default {
         const proto = info.protocol || '';
         out.push(result('tls.protocol', /TLSv1\.[23]/.test(proto) ? 'pass' : 'warn', 'Negotiated protocol', `${proto}${info.alpn ? `, ALPN ${info.alpn}` : ''}${info.cipher?.name ? `, ${info.cipher.name}` : ''}`, { fix: /TLSv1\.[23]/.test(proto) ? '' : 'Enable TLS 1.2 and 1.3; disable 1.0/1.1.' }));
         out.push(result('tls.issuer', 'info', 'Issuer', `${sum.issuer}${info.cert?.serialNumber ? ` · serial ${info.cert.serialNumber.slice(0, 16)}…` : ''}`, { link: `https://www.ssllabs.com/ssltest/analyze.html?d=${encodeURIComponent(hostname)}&hideResults=on` }));
+        if (info.intercepted) {
+          // The rows above describe the proxy's certificate, not the site's.
+          for (const r of out.slice(tlsStart)) {
+            r.evidence = `not checked from this network (TLS is re-signed on the way, see "TLS interception"); seen: ${r.evidence}`;
+            r.status = 'skip'; r.fix = ''; delete r.blocker; delete r.beforeProduction;
+          }
+          ctx.scoreboard.tls = null;
+          out.push(result('tls.interception', 'warn', 'TLS interception', `the certificate this machine received for ${hostname} chains to ${info.interceptedBy}, which only this machine's own CA store trusts, not the public roots. A proxy, VPN, antivirus or cloud egress gateway re-signs TLS here`, { fix: 'Run the audit from a network without TLS inspection (your own machine) to check the real certificate.', link: `https://www.ssllabs.com/ssltest/analyze.html?d=${encodeURIComponent(hostname)}&hideResults=on` }));
+        }
       }
     }
 

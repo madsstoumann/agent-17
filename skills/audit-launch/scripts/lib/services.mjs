@@ -82,32 +82,57 @@ export function stripJsonGuard(text) {
   return String(text ?? '').replace(/^\)\]\}'\r?\n?/, '');
 }
 
+// The Nu checker's CSS parser predates these (it reports them as errors); they are valid CSS in
+// every current browser. Messages about them are counted apart, as info, not as page errors.
+const MODERN_AT_RULES = new Set(['container', 'property', 'layer', 'scope', 'starting-style', 'view-transition', 'position-try', 'font-palette-values', 'counter-style', 'font-feature-values']);
+const MODERN_PROPERTIES = /^(container(-type|-name)?|anchor-(name|scope)|position-(anchor|area|try(-fallbacks|-order)?|visibility)|view-transition-(name|class)|field-sizing|interpolate-size|text-wrap(-mode|-style)?|white-space-collapse|text-box(-trim|-edge)?|content-visibility|contain-intrinsic-(size|width|height|block-size|inline-size)|scrollbar-(gutter|color|width)|overscroll-behavior(-x|-y|-inline|-block)?|scroll-timeline(-name|-axis)?|view-timeline(-name|-axis|-inset)?|animation-(timeline|range(-start|-end)?|composition)|timeline-scope|transition-behavior|translate|rotate|scale|inset(-inline|-block)?(-start|-end)?|aspect-ratio|accent-color|color-scheme|hyphenate-character|math-depth|math-style|font-palette|font-optical-sizing|offset(-path|-distance|-rotate|-anchor|-position)?|backdrop-filter|mask(-image|-size|-position|-repeat|-mode|-composite|-clip|-origin|-type)?|paint-order|reading-flow|dynamic-range-limit)$/;
+const MODERN_UNITS = /\d(?:cq(?:i|b|w|h|min|max)|[dsl]v(?:h|w|i|b|min|max)|rlh|rcap|rch|rex|ric)\b/;
+
+/** modernCssFeature(message) -> the feature name (e.g. "@container", "container-type") or null. */
+export function modernCssFeature(m) {
+  const msg = String(m?.message ?? '');
+  if (!/^CSS:/.test(msg)) return null;
+  const at = msg.match(/Unrecognized at-rule [“"]@([\w-]+)[”"]/);
+  if (at) return MODERN_AT_RULES.has(at[1].toLowerCase()) ? `@${at[1].toLowerCase()}` : null;
+  const prop = msg.match(/Property [“"]([\w-]+)[”"] doesn.t exist/);
+  if (prop) return MODERN_PROPERTIES.test(prop[1].toLowerCase()) ? prop[1].toLowerCase() : null;
+  if (/Unknown dimension/.test(msg)) { const u = String(m?.extract ?? '').match(MODERN_UNITS); return u ? `${u[0].replace(/^\d/, '')} unit` : null; }
+  return null;
+}
+
 /**
- * groupW3cMessages(messages) -> { errors, warnings, info, fatal, distinct,
- *   groups: [{ type, subType, message, count, sample: { lastLine, firstColumn, extract } }] }
+ * groupW3cMessages(messages) -> { errors, warnings, info, fatal, distinct, modernCss, modernCssFeatures,
+ *   groups: [{ type, subType, message, count, modernCss?, sample: { lastLine, firstColumn, extract } }] }
  *
  * type 'error' counts as an error (subType 'fatal' also as fatal); type 'info' with subType
- * 'warning' as a warning; other info as info. Grouped by trimmed message, most frequent first.
+ * 'warning' as a warning; other info as info. A CSS error about a feature the checker does not
+ * know yet (@container, @property, container-type, cqi units…) is not an error: it counts in
+ * modernCss, with modernCssFeatures { feature: count }. Grouped by trimmed message, most frequent first.
  */
 export function groupW3cMessages(messages) {
-  const counts = { errors: 0, warnings: 0, info: 0, fatal: 0 };
+  const counts = { errors: 0, warnings: 0, info: 0, fatal: 0, modernCss: 0 };
+  const features = {};
   const groups = new Map();
   for (const m of Array.isArray(messages) ? messages : []) {
     const type = m?.type || 'info';
     const subType = m?.subType || null;
-    if (type === 'error' || type === 'non-document-error') { counts.errors++; if (subType === 'fatal') counts.fatal++; }
+    const modern = type === 'error' ? modernCssFeature(m) : null;
+    if (modern) { counts.modernCss++; features[modern] = (features[modern] || 0) + 1; }
+    else if (type === 'error' || type === 'non-document-error') { counts.errors++; if (subType === 'fatal') counts.fatal++; }
     else if (subType === 'warning') counts.warnings++;
     else counts.info++;
     const message = String(m?.message ?? '').trim();
     let g = groups.get(message);
     if (!g) {
       g = { type, subType, message, count: 0, sample: { lastLine: m?.lastLine ?? null, firstColumn: m?.firstColumn ?? m?.lastColumn ?? null, extract: m?.extract ?? null } };
+      if (modern) g.modernCss = true;
       groups.set(message, g);
     }
     g.count++;
   }
   const list = [...groups.values()].sort((a, b) => b.count - a.count);
-  return { ...counts, distinct: list.length, groups: list };
+  const modernCssFeatures = Object.fromEntries(Object.entries(features).sort((a, b) => b[1] - a[1]));
+  return { ...counts, distinct: list.length, modernCssFeatures, groups: list };
 }
 
 /**

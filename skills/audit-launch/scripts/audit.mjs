@@ -24,7 +24,7 @@ import { consoleList, scratchDir, removeScratch, levelOf } from './lib/levels.mj
 import { extractMeta } from './lib/html.mjs';
 import { parseRobotsTxt, loadSitemaps } from './lib/robots.mjs';
 import { followChain } from './lib/redirects.mjs';
-import { checkLocalLighthouse, findChrome, runLighthouseLocal, runPsi, summariseLhr, pickPerfPages, blockedStatus } from './lib/lighthouse.mjs';
+import { checkLocalLighthouse, findChrome, runLighthouseLocal, runPsi, summariseLhr, pickPerfPages, pickIndexable, blockedStatus } from './lib/lighthouse.mjs';
 
 import crawlability from './lib/groups/01-crawlability.mjs';
 import redirects from './lib/groups/02-redirects.mjs';
@@ -126,7 +126,8 @@ async function main() {
     isPrivate, insecure: opts.insecure, remote,
     page: { status: page.status, headers: page.headers, setCookie: page.setCookie, html, meta, curl, chain, contentType: page.contentType, bytes: page.bytes },
     robots, sitemap,
-    sampledPages: pickPerfPages(sitemap.urls, { startUrl: finalUrl, n: opts.pages }),
+    // Candidates spread across sections; pickIndexable() keeps opts.pages of them before Lighthouse runs.
+    sampledPages: pickPerfPages(sitemap.urls, { startUrl: finalUrl, n: opts.pages * 4 }),
     crawl: null, lh: null,
     scoreboard: {}, raw, rawDir: out.rawDir,
     chromePath: opts.chromePath || findChrome() || null,
@@ -232,6 +233,13 @@ async function main() {
     if (runner !== 'off') {
       ctx.lh.mobile = await runOne({ url: finalUrl, strategy: 'mobile', name: 'lighthouse-mobile' });
       if (runner !== 'off') ctx.lh.desktop = await runOne({ url: finalUrl, strategy: 'desktop', name: 'lighthouse-desktop' });
+      if (ctx.sampledPages.length && opts.pages > 0) {
+        // Prefer pages a search engine may index: a noindex help section says little about the site.
+        const sel = await pickIndexable((url) => http.get(url, { redirect: 'follow', maxBytes: 256 * 1024, retry: 0 }), ctx.sampledPages, { n: opts.pages });
+        const noindex = sel.skipped.filter((x) => x.reason === 'noindex').length;
+        if (noindex) log(`lighthouse pages: skipped ${noindex} noindex page(s)`);
+        ctx.sampledPages = sel.picked;
+      } else ctx.sampledPages = ctx.sampledPages.slice(0, Math.max(0, opts.pages));
       let i = 0;
       for (const pageUrl of ctx.sampledPages) {
         if (runner === 'off') break;
