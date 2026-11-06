@@ -288,8 +288,13 @@ export async function loadSitemaps(http, sitemapUrls, { maxChildren = 5, maxUrls
     log(`sitemap ${url} -> ${parsed.kind}, ${parsed.count} entries${source.error ? ` (${source.error})` : ''}`);
     if (parsed.kind === 'sitemapindex') {
       out.indexes.push(url);
+      // Depth first: an index's children are read before the next declared sitemap, so one huge
+      // sitemap listed later in robots.txt (3.dk's help centre) cannot fill the URL cap first.
+      const kids = [];
       for (const { loc } of parsed.sitemaps) {
-        if (visited.has(loc) || queue.includes(loc)) continue;
+        if (visited.has(loc) || kids.includes(loc)) continue;
+        const queued = queue.indexOf(loc);
+        if (queued >= 0) queue.splice(queued, 1); // declared too: read it now, as the index's child
         if (childrenFollowed >= maxChildren) {
           out.sources.push({ url: loc, status: null, kind: 'skipped', count: 0, error: `skipped: more than ${maxChildren} index children` });
           continue;
@@ -298,8 +303,9 @@ export async function loadSitemaps(http, sitemapUrls, { maxChildren = 5, maxUrls
         const row = { url: loc, status: null, kind: 'unknown', count: 0, error: null };
         reserved.set(loc, row);
         out.sources.push(row);
-        queue.push(loc);
+        kids.push(loc);
       }
+      queue.unshift(...kids);
       continue;
     }
     for (const { loc } of parsed.urls) {

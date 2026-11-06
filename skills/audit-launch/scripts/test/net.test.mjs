@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import {
-  tlsInfo, certSummary, doh, parseDohAnswer, dnsRecords, dnssecStatus,
+  tlsInfo, publicTlsInfo, certSummary, doh, parseDohAnswer, dnsRecords, dnssecStatus,
   evaluateSpf, evaluateDmarc, dkimProbe,
 } from '../lib/net.mjs';
 
@@ -427,4 +427,28 @@ test('dkimProbe: TXT at <selector>._domainkey.<domain>, absent selectors ignored
   assert.deepEqual(Object.keys(r.errors), ['selector1']);
   const custom = await dkimProbe('example.com', { selectors: ['google'], resolver });
   assert.equal(custom.found.length, 1);
+});
+
+test('publicTlsInfo: a chain only the local CA store trusts is TLS interception (cloud egress proxy, 3.dk)', async () => {
+  const calls = [];
+  const proxyRoot = { subject: { CN: 'Egress Gateway CA', O: 'Proxy Inc' }, issuer: { CN: 'Egress Gateway CA' }, valid_to: 'Jan  1 00:00:00 2030 GMT' };
+  proxyRoot.issuerCertificate = proxyRoot;
+  const cert = { ...certChain(), issuer: { O: 'Proxy Inc', CN: 'Egress Gateway SDS Issuing CA' }, issuerCertificate: proxyRoot };
+  const connect = (opts, cb) => {
+    calls.push(opts);
+    const pub = Boolean(opts.ca);
+    return fakeConnect({ cert, authorized: !pub, authorizationError: pub ? 'SELF_SIGNED_CERT_IN_CHAIN' : undefined }).connect(opts, cb);
+  };
+  const r = await publicTlsInfo('3.dk', { connect, roots: ['public-root'] });
+  assert.equal(r.intercepted, true);
+  assert.equal(r.interceptedBy, 'Egress Gateway CA');
+  assert.deepEqual(calls[0].ca, ['public-root']);
+  assert.equal(calls[1].ca, undefined);
+
+  // Publicly trusted: one handshake, no flag. Expired: not an interception, even if the local store also says no.
+  const ok = await publicTlsInfo('example.com', { connect: fakeConnect().connect, roots: ['public-root'] });
+  assert.equal(ok.intercepted, undefined);
+  const expired = await publicTlsInfo('example.com', { connect: fakeConnect({ authorized: false, authorizationError: 'CERT_HAS_EXPIRED' }).connect, roots: ['public-root'] });
+  assert.equal(expired.intercepted, undefined);
+  assert.equal(expired.authorized, false);
 });

@@ -33,9 +33,13 @@ export default {
       if (w.ok && !unreachable(w)) {
         const s = w.summary;
         await ctx.saveRaw('w3c.json', { url: finalUrl, mode: w.mode, messages: w.messages });
-        ctx.scoreboard.w3c = { errors: s.errors, warnings: s.warnings, distinct: s.distinct, fatal: s.fatal, link: w3cLink };
-        const top = s.groups.filter((g) => g.type === 'error').slice(0, 5).map((g) => `${g.count}× ${g.message.slice(0, 90)}`).join(' · ');
+        ctx.scoreboard.w3c = { errors: s.errors, warnings: s.warnings, distinct: s.distinct, fatal: s.fatal, modernCss: s.modernCss, link: w3cLink };
+        const top = s.groups.filter((g) => g.type === 'error' && !g.modernCss).slice(0, 5).map((g) => `${g.count}× ${g.message.slice(0, 90)}`).join(' · ');
         out.push(result('links.w3c', s.fatal ? 'fail' : s.errors ? 'warn' : s.warnings ? 'info' : 'pass', 'W3C HTML validator', `${s.errors} error${s.errors === 1 ? '' : 's'}, ${s.warnings} warning${s.warnings === 1 ? '' : 's'} (${s.distinct} distinct)${top ? ` — ${top}` : ''}${w.mode === 'html' ? (w.fellBack ? ' (validator could not fetch the URL; the fetched HTML was posted instead)' : ' (HTML posted; private host)') : ''}`, { fix: s.errors ? 'Group by message (the raw w3c.json has them all): most are one template fix each — e.g. link[as] without rel, unknown CSS values, block elements inside inline ones.' : '', link: w3cLink, data: { groups: s.groups.slice(0, 30) } }));
+        if (s.modernCss) {
+          const feats = Object.entries(s.modernCssFeatures).map(([f, n]) => `${n}× ${f}`).join(', ');
+          out.push(result('links.w3c-modern-css', 'info', 'W3C validator: modern CSS', `${s.modernCss} CSS message${s.modernCss === 1 ? '' : 's'} not counted as errors: the validator's CSS parser does not know ${feats}, which current browsers support`, { link: w3cLink }));
+        }
       } else {
         ctx.scoreboard.w3c = { errors: null, error: w.error, link: w3cLink };
         out.push(result('links.w3c', 'skip', 'W3C HTML validator', `not validated: ${w.error}`, { link: w3cLink }));

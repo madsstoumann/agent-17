@@ -46,3 +46,8 @@ test('every sample report keeps its sections with something to fix', () => {
     assert.ok(text(c).length < text(full).length, skill);
   }
 });
+
+test('compact drops <details> reference blocks (cookie lists, appendices)', () => {
+  const out = compactBlocks(parseBlocks(['Intro.', '', '<details>', '<summary>Cookies after accepting (40)</summary>', '', '- a', '', '</details>'].join('\n')));
+  assert.deepEqual(out.map((b) => b.type), ['para']);
+});

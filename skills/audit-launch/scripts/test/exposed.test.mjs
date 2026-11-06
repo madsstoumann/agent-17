@@ -45,3 +45,15 @@ test('a redirect to another host is an external sign-in, not a login on this sit
   assert.equal(v.sso, true);
   assert.match(v.note, /login\.microsoftonline\.com/);
 });
+
+test('a trailing-slash 301 that ends in 404 is not a reachable backoffice (3.dk)', () => {
+  const sitecore = { path: '/sitecore', name: 'Sitecore login', mark: /sitecore/i };
+  for (const [p, probe] of [['/umbraco', umbraco], ['/sitecore', sitecore]]) {
+    const v = classifyAdminProbe(probe, [
+      { url: `https://www.3.dk${p}`, status: 301, location: `${p}/` },
+      { url: `https://www.3.dk${p}/`, status: 404 },
+    ], 'https://www.3.dk');
+    assert.equal(v.reachable, false, p);
+    assert.equal(v.sso, false, p);
+  }
+});

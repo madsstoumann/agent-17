@@ -161,7 +161,7 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 |---|---|
 | `--env dev\|staging\|production` | Which environment this is. Default: guessed from the hostname. On dev and staging, noindex is expected and goes on a "Before production" list. |
 | `--production-host HOST` | The future live hostname, for canonical, og:url and sitemap checks. |
-| `--pages N` | Extra sitemap pages for Lighthouse (default 3). |
+| `--pages N` | Extra sitemap pages for Lighthouse, indexable ones from different sections (default 3). |
 | `--max-pages N` / `--max-external N` | Crawl limit (default 100) and external links checked (default 200). |
 | `--skip a,b` / `--only a,b` | Groups: `crawl redirects notfound tls dns email exposed headers caching perf a11y privacy links social icons ops`. `--skip perf` skips Lighthouse. |
 | `--lighthouse local\|psi\|off` | Default `psi` with `PSI_API_KEY`, else `local`. |
@@ -205,7 +205,7 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 
 | Flag | What it does |
 |---|---|
-| `[more page urls]` / `--pages N` | Extra pages to measure, or N from the sitemap (default 4). |
+| `[more page urls]` / `--pages N` | Extra pages to measure, or N indexable ones from different sections of the sitemap (default 4). |
 | `--grid CODE` | The visitors' country for grid intensity (`DK`, `SE`, `DEU` …). Default: global average. |
 | `--views N` | Page views a month, for a yearly CO2e estimate. |
 | `--mobile` | Phone viewport instead of desktop. |

@@ -204,11 +204,15 @@ export function parseSitemapBody(body, { url = '', contentType = '' } = {}) {
 
 // ---------------------------------------------------------------- sampling
 
+/** A locale path segment: en, da, es-ES, en-gb, zh-Hans, pt_BR. */
+const LOCALE_SEG = /^[a-z]{2}(?:[-_](?:[a-z]{2}|[a-z]{4}))?$/i;
+
 /**
- * Up to `n` URLs chosen for template diversity, deterministically. Drops the start URL
+ * Up to `n` URLs spread across site sections, deterministically. Drops the start URL
  * (modulo a trailing slash), URLs with a query string, `exclude`d and invalid ones; buckets
- * the rest by (first path segment, number of path segments); orders buckets by size desc
- * then key asc; round-robins over them, taking the shortest URL first (then alphabetical).
+ * the rest by first path segment after any locale prefix (/hjalp, /en/news); orders buckets
+ * by size desc then key asc; round-robins over them, taking the shortest URL first (then
+ * alphabetical). Ask for more than you need and let pickIndexable() keep the first n.
  * @param {string[]} urls
  * @param {{ startUrl: string, n: number, exclude?: string[] }} opts
  * @returns {string[]}
@@ -225,7 +229,8 @@ export function sampleSitemapUrls(urls, { startUrl, n, exclude = [] }) {
     if (sameUrlModuloSlash(u.href, startUrl) || exclude.some((x) => x === u.href || sameUrlModuloSlash(u.href, x))) continue;
     seen.add(u.href);
     const segments = u.pathname.split('/').filter(Boolean);
-    const key = `${segments[0] || ''}/${segments.length}`;
+    if (segments.length > 1 && LOCALE_SEG.test(segments[0])) segments.shift();
+    const key = segments[0] || '';
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push(u.href);
   }
@@ -244,6 +249,39 @@ export function sampleSitemapUrls(urls, { startUrl, n, exclude = [] }) {
     if (!any) break;
   }
   return picked;
+}
+
+/** Does this response say noindex (X-Robots-Tag, or a robots/googlebot meta tag)? */
+export function isNoindex(headers = {}, html = '') {
+  const xr = headers['x-robots-tag'];
+  if (/\bnoindex\b|\bnone\b/i.test(Array.isArray(xr) ? xr.join(',') : String(xr || ''))) return true;
+  for (const m of String(html).matchAll(/<meta\b[^>]*>/gi)) {
+    const tag = m[0];
+    if (/name\s*=\s*["']?(robots|googlebot)\b/i.test(tag) && /content\s*=\s*["'][^"']*\b(noindex|none)\b/i.test(tag)) return true;
+  }
+  return false;
+}
+
+/**
+ * pickIndexable(get, candidates, { n }) -> { picked: string[], skipped: [{ url, reason }] }
+ * Keeps the first n candidates that answer 200 with HTML and are not noindex, in the order given
+ * (so the spread across sections holds). `get(url)` -> { status, headers, body }. When fewer
+ * than n are indexable (a dev site is noindex everywhere), noindex pages fill the rest.
+ */
+export async function pickIndexable(get, candidates, { n = 3 } = {}) {
+  const picked = []; const noindex = []; const skipped = [];
+  for (const url of candidates) {
+    if (picked.length >= n) break;
+    let res;
+    try { res = await get(url); } catch (e) { skipped.push({ url, reason: e.message }); continue; }
+    if (res.status !== 200) { skipped.push({ url, reason: `HTTP ${res.status}` }); continue; }
+    const ct = String(res.headers?.['content-type'] || '');
+    if (ct && !/html/i.test(ct)) { skipped.push({ url, reason: ct }); continue; }
+    if (isNoindex(res.headers, res.body)) { noindex.push(url); skipped.push({ url, reason: 'noindex' }); continue; }
+    picked.push(url);
+  }
+  while (picked.length < n && noindex.length) picked.push(noindex.shift());
+  return { picked, skipped };
 }
 
 // ---------------------------------------------------------------- loading
@@ -288,8 +326,13 @@ export async function loadSitemaps(http, sitemapUrls, { maxChildren = 5, maxUrls
     log(`sitemap ${url} -> ${parsed.kind}, ${parsed.count} entries${source.error ? ` (${source.error})` : ''}`);
     if (parsed.kind === 'sitemapindex') {
       out.indexes.push(url);
+      // Depth first: an index's children are read before the next declared sitemap, so one huge
+      // sitemap listed later in robots.txt (3.dk's help centre) cannot fill the URL cap first.
+      const kids = [];
       for (const { loc } of parsed.sitemaps) {
-        if (visited.has(loc) || queue.includes(loc)) continue;
+        if (visited.has(loc) || kids.includes(loc)) continue;
+        const queued = queue.indexOf(loc);
+        if (queued >= 0) queue.splice(queued, 1); // declared too: read it now, as the index's child
         if (childrenFollowed >= maxChildren) {
           out.sources.push({ url: loc, status: null, kind: 'skipped', count: 0, error: `skipped: more than ${maxChildren} index children` });
           continue;
@@ -298,8 +341,9 @@ export async function loadSitemaps(http, sitemapUrls, { maxChildren = 5, maxUrls
         const row = { url: loc, status: null, kind: 'unknown', count: 0, error: null };
         reserved.set(loc, row);
         out.sources.push(row);
-        queue.push(loc);
+        kids.push(loc);
       }
+      queue.unshift(...kids);
       continue;
     }
     for (const { loc } of parsed.urls) {

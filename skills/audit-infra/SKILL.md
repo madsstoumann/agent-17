@@ -4,7 +4,7 @@ description: Use when someone wants the infrastructure or domain hygiene of a si
 argument-hint: "<url or domain> [--email-domain D] [--dkim-selector S] [--no-ct] [--max-subdomains N] [--only domain,email,tls,edge,ct] [--out DIR] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
-  version: "2.3.0"
+  version: "2.4.0"
 ---
 
 # Infrastructure audit
@@ -68,9 +68,11 @@ the report as well.
 | Edge | `edge.cdn` (and cache status), `edge.http3` (Alt-Svc or HTTPS record), `hsts.preload-list` (apex on the preload list per hstspreload.org, Chromium list as fallback; pass when listed and the header still qualifies, warn when listed but the header dropped a requirement) |
 | Subdomains | `ct.inventory` from crt.sh (or Cert Spotter, said in the row), `ct.dangling` (claimable services such as azurewebsites.net or github.io are blockers), `ct.certificates` (expired, wrong name, untrusted), `ct.no-https` (warn when HSTS includeSubDomains or preload would lock them out), `ct.issuers` vs CAA, `ct.stale` |
 
-`tls.interception`: when the certificate this machine receives is not in the CT logs, something on
-the network re-signs TLS (corporate proxy, VPN, antivirus, a cloud sandbox). The script then marks
-the certificate rows as skipped instead of reporting the proxy's certificate. Tell the user to run
+`tls.interception`: every handshake is verified against Node's built-in public roots only. When
+only this machine's own CA store trusts the chain, or the certificate it receives is not in the CT
+logs, something on the network re-signs TLS (corporate proxy, VPN, antivirus, a cloud sandbox's
+egress proxy). The script then marks the certificate rows as skipped instead of reporting the
+proxy's certificate. Tell the user to run
 it from another network for those rows.
 
 ## Reading the result

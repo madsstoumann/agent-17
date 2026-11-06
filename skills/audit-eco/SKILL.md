@@ -4,12 +4,12 @@ description: Use when someone asks about a website's carbon footprint, CO2 per p
 argument-hint: "<url> [more page urls] [--pages N] [--grid DK] [--views N] [--mobile] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "2.1.0"
+  version: "2.2.0"
 ---
 
 # Eco audit
 
-One script loads the start page and a few other pages (one per template from the sitemap) in
+One script loads the start page and a few other pages (indexable ones from different sections of the sitemap) in
 headless Chrome, as a first visit with an empty cache, and records every request: bytes on the
 wire, type, compression and caching. It scrolls to the bottom to see what lazy loading saves,
 looks up the host with the Green Web Foundation, and turns bytes into grams of CO2e per page view
@@ -34,7 +34,7 @@ Run it with **`timeout: 600000`**. Each page takes 5–30 seconds (pages with vi
 
 | Flag | Use it when |
 |---|---|
-| `--pages N` (default 4) | Extra pages from the sitemap, one per template. Page URLs after the first are measured too ("measure the product page and the checkout"). |
+| `--pages N` (default 4) | Extra pages from the sitemap, indexable ones from different sections. Page URLs after the first are measured too ("measure the product page and the checkout"). |
 | `--grid DK` | The user wants the figure for their visitors' country (DK, SE, DE, or any ISO alpha-3 code). Applies to device and network; the data centre stays on the global figure. Without it the model's global 494 g/kWh is used, which keeps sites comparable; say which one the report uses. Denmark's grid is roughly a third of the global one, so `--grid DK` gives much lower numbers. |
 | `--views N` | The user knows monthly page views: the report adds a yearly CO2e estimate. |
 | `--mobile` | "On mobile": a 412×915 phone viewport (images may differ with srcset). |

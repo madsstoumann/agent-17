@@ -2,6 +2,14 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.14.0] - 2026-11-06
+
+### Fixed
+- `<details>`/`<summary>` blocks written by the sub-audits (audit-privacy's cookie lists, audit-launch's appendix, audit-solution-health's update lists) render as open blocks in report.html and the PDFs instead of literal escaped tags. The compact report leaves them out. Other raw HTML is still escaped.
+
+### Added
+- A test that every skill's script `VERSION` constant matches its SKILL.md `metadata.version`, so the section heads in a combined report show the version on the cover.
+
 ## [1.13.0] - 2026-11-01
 
 ### Added

@@ -5,7 +5,7 @@ import { isAbsolute } from 'node:path';
 import {
   blockedStatus,
   SEO_NOINDEX_AUDITS, compareVersions, findChrome, checkLocalLighthouse, buildLighthouseArgs,
-  runLighthouseLocal, runPsi, summariseLhr, pickPerfPages, cwvRating, scoreVerdict,
+  runLighthouseLocal, runPsi, summariseLhr, pickPerfPages, pickIndexable, isNoindex, cwvRating, scoreVerdict,
 } from '../lib/lighthouse.mjs';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/lighthouse/${name}`, import.meta.url), 'utf8');
@@ -311,29 +311,57 @@ test('summariseLhr never throws on an empty report, and only on a non-object', (
 // ---------------------------------------------------------------- pickPerfPages
 
 const seg = (u) => new URL(u).pathname.split('/').filter(Boolean);
-const bucket = (u) => `${seg(u)[0]}/${seg(u).length}`;
 
-test('pickPerfPages drops the start URL and query URLs, then samples buckets round-robin', () => {
+test('pickPerfPages drops the start URL and query URLs, then samples sections round-robin', () => {
   const input = ['https://example.com/', 'https://example.com/blog/beta?utm=1', 'https://example.com/products/desk?page=2', ...urls];
   const opts = { startUrl: 'https://example.com', n: 5 };
   assert.deepEqual(pickPerfPages(input, opts), [
-    'https://example.com/blog/beta',          // blog/2 (6 URLs): shortest, then alphabetical
-    'https://example.com/products/desk',      // products/2 (5)
-    'https://example.com/products/lamps/led', // products/3 (5): key breaks the size tie
-    'https://example.com/blog/2024/one',      // blog/3 (4)
-    'https://example.com/docs/faq',           // docs/2 (3)
+    'https://example.com/products/desk', // products (13 URLs): shortest, then alphabetical
+    'https://example.com/blog/beta',     // blog (12)
+    'https://example.com/docs/faq',      // docs (8)
+    'https://example.com/about/team',    // about (4)
+    'https://example.com/news/2023',     // news (3)
   ]);
-  const thirteen = pickPerfPages(input, { ...opts, n: 13 });
-  assert.equal(thirteen.length, 13);
-  assert.equal(new Set(thirteen.map(bucket)).size, 13, 'one URL from each (segment, depth) bucket');
-  assert.equal(new Set(thirteen.map((u) => seg(u)[0])).size, 5, 'all five first segments');
-  const fourteen = pickPerfPages(input, { ...opts, n: 14 });
-  assert.equal(fourteen[13], 'https://example.com/blog/zeta', 'the second lap starts with the biggest bucket again');
+  assert.equal(new Set(pickPerfPages(input, opts).map((u) => seg(u)[0])).size, 5, 'one URL from each first segment before any repeats');
+  assert.equal(pickPerfPages(input, { ...opts, n: 6 })[5], 'https://example.com/products/lamp', 'the second lap starts with the biggest section again');
   const all = pickPerfPages(input, { ...opts, n: 100 });
   assert.equal(all.length, 40);
   assert.ok(!all.includes('https://example.com/'));
   assert.ok(!all.some((u) => u.includes('?')));
   assert.equal(pickPerfPages(input, { startUrl: 'https://example.com' }).length, 5, 'n defaults to 5');
+});
+
+test('pickPerfPages spreads a sitemap dominated by one deep section (3.dk help guides) and ignores locale prefixes', () => {
+  const help = Array.from({ length: 60 }, (_, i) => `https://www.3.dk/hjalp/vejledninger/${['iphone', 'android', 'router'][i % 3]}/guide-${i}`);
+  const input = [...help, 'https://www.3.dk/mobilabonnementer', 'https://www.3.dk/mobiler/apple/iphone-17', 'https://www.3.dk/bredbaand/5g', 'https://www.3.dk/en/mobiler/x'];
+  const picked = pickPerfPages(input, { startUrl: 'https://www.3.dk/', n: 4 });
+  assert.equal(picked.filter((u) => u.includes('/hjalp/')).length, 1, 'one help guide, not all of them');
+  assert.ok(picked.includes('https://www.3.dk/mobilabonnementer'));
+  assert.ok(picked.includes('https://www.3.dk/bredbaand/5g'));
+  assert.equal(picked.filter((u) => /\/mobiler\//.test(u)).length, 1, '/en/mobiler and /mobiler are one section');
+});
+
+test('pickIndexable keeps indexable HTML pages in order and skips noindex, errors and non-HTML', async () => {
+  const pages = {
+    'https://x.dk/hjalp/a': { status: 200, headers: { 'content-type': 'text/html' }, body: '<meta name="robots" content="noindex, follow">' },
+    'https://x.dk/shop': { status: 200, headers: { 'content-type': 'text/html' }, body: '<title>Shop</title>' },
+    'https://x.dk/gone': { status: 404, headers: {}, body: '' },
+    'https://x.dk/tagged': { status: 200, headers: { 'content-type': 'text/html', 'x-robots-tag': 'noindex' }, body: '' },
+    'https://x.dk/file.pdf': { status: 200, headers: { 'content-type': 'application/pdf' }, body: '' },
+    'https://x.dk/about': { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' }, body: '<meta content="index,follow" name="robots">' },
+    'https://x.dk/later': { status: 200, headers: { 'content-type': 'text/html' }, body: '' },
+  };
+  const calls = [];
+  const get = async (u) => { calls.push(u); return pages[u]; };
+  const r = await pickIndexable(get, Object.keys(pages), { n: 2 });
+  assert.deepEqual(r.picked, ['https://x.dk/shop', 'https://x.dk/about']);
+  assert.deepEqual(r.skipped.map((x) => x.reason), ['noindex', 'HTTP 404', 'noindex', 'application/pdf']);
+  assert.ok(!calls.includes('https://x.dk/later'), 'stops once n pages are found');
+  // A site that is noindex everywhere (dev) still gets its pages measured.
+  const dev = await pickIndexable(async () => ({ status: 200, headers: { 'x-robots-tag': 'noindex, nofollow' }, body: '' }), ['https://dev/a', 'https://dev/b'], { n: 2 });
+  assert.deepEqual(dev.picked, ['https://dev/a', 'https://dev/b']);
+  assert.equal(isNoindex({}, '<meta name="googlebot" content="none">'), true);
+  assert.equal(isNoindex({}, '<meta name="description" content="noindex here">'), false);
 });
 
 test('pickPerfPages is deterministic whatever the input order, and dedupes', () => {

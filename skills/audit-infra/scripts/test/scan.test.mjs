@@ -6,7 +6,8 @@ import { parseDoh, unquoteTxt, apexOf, parseCaa, parseSoa, parseMx, createResolv
 import { spfTree, judgeSpf, dmarc, dkimKeyBits, stsCovers } from '../lib/email.mjs';
 import { sanCovers, caaAllows, daysLeft } from '../lib/tls.mjs';
 import { parseCrtSh, parseRdap, normSerial, crtSh } from '../lib/services.mjs';
-import { detectCdn, domainChecks, emailChecks } from '../lib/checks.mjs';
+import { detectCdn, domainChecks, emailChecks, tlsChecks } from '../lib/checks.mjs';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import { reportsRoot, prepareRun, finishRun, diffRows, carryOverSections, taskCandidates, result } from '../lib/common.mjs';
@@ -308,4 +309,47 @@ test('crtSh reports both sources when neither answers', async () => {
   const ct = await crtSh('x.dk', { fetch, pause: 0 });
   assert.equal(ct.ok, false);
   assert.match(ct.error, /crt\.sh: HTTP 503; Cert Spotter: HTTP 503/);
+});
+
+/** A tls.connect stand-in: the proxy's certificate is trusted by the local store only, unless publicTrusted. */
+function fakeConnect({ publicTrusted = false } = {}) {
+  const calls = [];
+  const connect = (opts) => {
+    calls.push(opts);
+    const sock = new EventEmitter();
+    const root = { subject: { CN: 'Egress Gateway CA' }, issuer: { CN: 'Egress Gateway CA', O: 'Proxy Inc' }, raw: Buffer.from('r'), fingerprint256: 'R' };
+    root.issuerCertificate = root;
+    const leaf = { subject: { CN: '3.dk' }, issuer: { CN: 'Egress Gateway SDS Issuing CA', O: 'Proxy Inc' }, subjectaltname: 'DNS:3.dk', valid_from: '2026-11-01T00:00:00Z', valid_to: '2026-12-06T00:00:00Z', serialNumber: 'AB', fingerprint256: 'L', raw: Buffer.from('l'), bits: 2048, issuerCertificate: root };
+    const pub = Boolean(opts.ca);
+    Object.assign(sock, {
+      getPeerCertificate: () => leaf, getProtocol: () => 'TLSv1.3', alpnProtocol: 'h2', destroy() {},
+      authorized: pub ? publicTrusted : true, authorizationError: pub && !publicTrusted ? 'SELF_SIGNED_CERT_IN_CHAIN' : null,
+    });
+    setImmediate(() => sock.emit('secureConnect'));
+    return sock;
+  };
+  return { connect, calls };
+}
+
+test('tlsChecks reports TLS interception without crt.sh when only the local CA store trusts the chain (3.dk, cloud egress proxy)', async () => {
+  const { connect, calls } = fakeConnect();
+  const ctx = { resolver: fakeResolver({}), host: '3.dk', sibling: null, now: new Date('2026-11-06'), shared: { ips: { '3.dk': { v4: ['80.251.200.7'], v6: [] } } }, connect, publicRoots: ['fake-root'] };
+  const rows = await tlsChecks(ctx);
+  const hit = rows.find((r) => r.id === 'tls.interception');
+  assert.ok(hit, 'interception reported');
+  assert.match(hit.evidence, /3\.dk @ 80\.251\.200\.7.*Egress Gateway CA/);
+  assert.equal(ctx.shared.intercepted, true);
+  assert.deepEqual(calls[0].ca, ['fake-root'], 'first handshake trusts the public roots only');
+  assert.equal(calls[1].ca, undefined, 'second handshake uses the local store');
+  const marked = markIntercepted(rows);
+  for (const id of ['tls.chain', 'tls.expiry', 'tls.san']) assert.equal(marked.find((r) => r.id === id).status, 'skip', id);
+});
+
+test('tlsChecks reports no interception when the public roots trust the chain', async () => {
+  const { connect, calls } = fakeConnect({ publicTrusted: true });
+  const ctx = { resolver: fakeResolver({}), host: '3.dk', sibling: null, now: new Date('2026-11-06'), shared: { ips: { '3.dk': { v4: ['80.251.200.7'], v6: [] } } }, connect, publicRoots: ['fake-root'] };
+  const rows = await tlsChecks(ctx);
+  assert.equal(rows.find((r) => r.id === 'tls.interception'), undefined);
+  assert.equal(rows.find((r) => r.id === 'tls.chain').status, 'pass');
+  assert.equal(calls.length, 1);
 });

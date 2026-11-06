@@ -261,3 +261,19 @@ test('loadSitemaps fetches each starting URL once and does not loop on an index 
   assert.deepEqual(calls.map((c) => c.url), ['https://example.com/sitemap.xml', 'https://example.com/sitemap-pages.xml']);
   assert.deepEqual(r.urls, ['https://example.com/a/']);
 });
+
+test('loadSitemaps reads an index\'s children before the next declared sitemap, so a huge later one cannot fill the cap (3.dk)', async () => {
+  const index = '<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://www.3.dk/sitemap.xml</loc></sitemap><sitemap><loc>https://www.3.dk/tilbehoer/sitemap.xml</loc></sitemap></sitemapindex>';
+  const help = Array.from({ length: 10 }, (_, i) => `https://www.3.dk/hjalp/vejledninger/${i}`);
+  const http = fakeHttp({
+    'https://www.3.dk/sitemap_index.xml': { body: index },
+    'https://www.3.dk/sitemap.xml': { body: urlsetOf('https://www.3.dk/shop', 'https://www.3.dk/business') },
+    'https://www.3.dk/tilbehoer/sitemap.xml': { body: urlsetOf('https://www.3.dk/tilbehoer/cover') },
+    'https://cdn.example.com/three-dk/sitemap.xml': { body: urlsetOf(...help) },
+  });
+  // robots.txt order, plus the /sitemap.xml fallback the audit always adds.
+  const r = await loadSitemaps(http, ['https://www.3.dk/sitemap_index.xml', 'https://cdn.example.com/three-dk/sitemap.xml', 'https://www.3.dk/sitemap.xml'], { maxUrls: 5 });
+  assert.deepEqual(r.urls.slice(0, 3), ['https://www.3.dk/shop', 'https://www.3.dk/business', 'https://www.3.dk/tilbehoer/cover']);
+  assert.equal(r.urls.length, 5);
+  assert.deepEqual(r.sources.map((s) => s.url), ['https://www.3.dk/sitemap_index.xml', 'https://www.3.dk/sitemap.xml', 'https://www.3.dk/tilbehoer/sitemap.xml', 'https://cdn.example.com/three-dk/sitemap.xml']);
+});

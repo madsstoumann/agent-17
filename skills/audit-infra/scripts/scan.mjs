@@ -11,7 +11,7 @@ import { SECTIONS, domainChecks, emailChecks, tlsChecks, edgeChecks, ctChecks } 
 import { DKIM_SELECTORS } from './lib/email.mjs';
 import { result, countStatuses, prepareRun, finishRun, consoleItems, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, settle, GLYPH } from './lib/common.mjs';
 
-export const VERSION = '2.3.0';
+export const VERSION = '2.4.0';
 const UA = `Mozilla/5.0 (compatible; audit-infra/${VERSION})`;
 
 const USAGE = `audit-infra ${VERSION}: domain, DNS, email, TLS and subdomain audit
@@ -136,8 +136,8 @@ export async function run(args, deps = {}) {
 export function markIntercepted(results) {
   if (!results.some((r) => r.id === 'tls.interception')) return results;
   for (const r of results) {
-    if (!/^tls\.(chain|expiry|consistency|san|key|protocol|alpn|ocsp-stapling|legacy|caa-match)$/.test(r.id) || r.status === 'skip') continue;
-    r.evidence = `not checked from this network (TLS is re-signed on the way, see "Certificate not in CT logs"); seen: ${r.evidence}`;
+    if (!/^tls\.(chain|expiry|consistency|san|key|protocol|alpn|ocsp-stapling|legacy|caa-match)$|^ct\.certificates$/.test(r.id) || r.status === 'skip') continue;
+    r.evidence = `not checked from this network (TLS is re-signed on the way, see "TLS interception"); seen: ${r.evidence}`;
     r.status = 'skip';
     r.fix = '';
     delete r.blocker;

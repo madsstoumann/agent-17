@@ -61,7 +61,7 @@ function compactDetails(blocks) {
   return out;
 }
 
-/** Compact an array of blocks: long lists and tables cut, long code blocks dropped. */
+/** Compact an array of blocks: long lists and tables cut, long code blocks and <details> dropped. */
 export function compactBlocks(blocks) {
   const out = [];
   for (const b of blocks) {
@@ -69,6 +69,7 @@ export function compactBlocks(blocks) {
     else if (b.type === 'list') out.push(...compactList(b));
     else if (b.type === 'code' && b.text.split('\n').length > 8) continue;
     else if (b.type === 'quote') out.push({ ...b, blocks: compactBlocks(b.blocks) });
+    else if (b.type === 'details') continue; // cookie lists, appendices: reference material
     else out.push(b);
   }
   return out;

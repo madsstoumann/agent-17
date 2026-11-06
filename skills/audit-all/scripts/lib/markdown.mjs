@@ -1,6 +1,7 @@
 // Small zero-dependency Markdown parser for the reports the audit skills write: headings,
 // paragraphs, lists (nested, ordered, task items), tables, fenced code, blockquotes, rules,
-// and inline code, links, bold, italic, strikethrough. Raw HTML is escaped, never passed through.
+// and inline code, links, bold, italic, strikethrough. Raw HTML is escaped, never passed through, except
+// <details>/<summary> wrappers on their own lines (the sub-audits write them), rendered open so print shows them.
 
 const STATUS_EMOJI = [
   [/(?:🔴|❌|⛔|🚫)\uFE0F?/gu, 'fail'],
@@ -60,7 +61,7 @@ const LIST_RE = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
 const indentOf = (l) => l.match(/^\s*/)[0].replace(/\t/g, '    ').length;
 
 /** Markdown -> array of blocks: {type:'heading',level,text} | {type:'para',lines} | {type:'list',ordered,start,items} |
- *  {type:'table',head,align,rows} | {type:'code',lang,text} | {type:'quote',blocks} | {type:'hr'} */
+ *  {type:'table',head,align,rows} | {type:'code',lang,text} | {type:'quote',blocks} | {type:'details',summary,blocks} | {type:'hr'} */
 export function parseBlocks(md) {
   const lines = String(md).replace(/\r\n?/g, '\n').split('\n');
   return parseLines(lines);
@@ -80,6 +81,25 @@ function parseLines(lines) {
       while (i < lines.length && !lines[i].trim().startsWith(fence[1])) body.push(lines[i++]);
       i++;
       blocks.push({ type: 'code', lang: fence[2] || '', text: body.join('\n') });
+      continue;
+    }
+
+    // <details> [<summary>…</summary>] … </details>: a block whose content is Markdown again.
+    const det = line.match(DETAILS_OPEN);
+    if (det) {
+      let rest = det[1];
+      i++;
+      if (!rest.trim()) { while (i < lines.length && !lines[i].trim()) i++; if (i < lines.length && SUMMARY.test(lines[i])) rest = lines[i++]; }
+      const sm = rest.match(SUMMARY);
+      const body = sm ? [] : [rest];
+      let depth = 1;
+      while (i < lines.length) {
+        const l = lines[i];
+        if (DETAILS_OPEN.test(l)) depth++;
+        if (/<\/details>\s*$/i.test(l) && --depth === 0) { const before = l.replace(/<\/details>\s*$/i, ''); if (before.trim()) body.push(before); i++; break; }
+        body.push(l); i++;
+      }
+      blocks.push({ type: 'details', summary: sm ? sm[1].trim() : '', blocks: parseLines(body) });
       continue;
     }
 
@@ -120,9 +140,12 @@ function parseLines(lines) {
   return blocks;
 }
 
+const DETAILS_OPEN = /^\s{0,3}<details(?:\s+open)?>(.*)$/i;
+const SUMMARY = /^\s*<summary>(.*?)<\/summary>\s*$/i;
+
 function startsBlock(lines, i) {
   const l = lines[i];
-  return /^\s{0,3}#{1,6}\s/.test(l) || /^\s*(```|~~~)/.test(l) || /^\s*>/.test(l) || LIST_RE.test(l)
+  return DETAILS_OPEN.test(l) || /^\s{0,3}#{1,6}\s/.test(l) || /^\s*(```|~~~)/.test(l) || /^\s*>/.test(l) || LIST_RE.test(l)
     || /^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(l) || (l.includes('|') && i + 1 < lines.length && isTableSep(lines[i + 1]));
 }
 
@@ -198,6 +221,7 @@ function renderBlock(b, off) {
     case 'hr': return '<hr>';
     case 'code': return `<pre><code>${escapeHtml(b.text)}</code></pre>`;
     case 'quote': return `<blockquote>${renderBlocks(b.blocks, { headingOffset: off })}</blockquote>`;
+    case 'details': return `<details open>${b.summary ? `<summary>${inline(b.summary)}</summary>` : ''}\n${renderBlocks(b.blocks, { headingOffset: off })}\n</details>`;
     case 'table': {
       // A column with no header whose cells are only status marks becomes a narrow flag column.
       const flag = b.head.map((h, i) => !h.trim() && b.rows.length > 0 && b.rows.every((r) => /^(<span class="mk [a-z]+"[^>]*><\/span>)?$/.test(inline(r[i] ?? '').trim())));

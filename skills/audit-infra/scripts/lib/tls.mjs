@@ -3,11 +3,18 @@
 import tls from 'node:tls';
 import crypto from 'node:crypto';
 
+/** Node's built-in public roots only: no NODE_EXTRA_CA_CERTS, no system store, so a proxy CA added there is not trusted. */
+export const PUBLIC_ROOTS = tls.rootCertificates;
+
+/** Verifier errors that mean "no trusted root for this chain" (as opposed to expired, wrong name, …). */
+export const UNTRUSTED_ROOT = /SELF_SIGNED_CERT_IN_CHAIN|UNABLE_TO_GET_ISSUER_CERT|UNABLE_TO_VERIFY_LEAF_SIGNATURE|DEPTH_ZERO_SELF_SIGNED_CERT|CERT_UNTRUSTED/;
+
 /**
- * handshake({ host, ip, port, timeout, minVersion, maxVersion, ciphers, connect })
+ * handshake({ host, ip, port, timeout, minVersion, maxVersion, ciphers, ca, connect })
+ * ca: trust store for `authorized` (default: Node's default store, which includes NODE_EXTRA_CA_CERTS).
  *   -> { ok, protocol, alpn, authorized, authorizationError, ocsp, chain: [cert], error? }
  */
-export function handshake({ host, ip, port = 443, timeout = 8000, minVersion, maxVersion, ciphers, connect = tls.connect } = {}) {
+export function handshake({ host, ip, port = 443, timeout = 8000, minVersion, maxVersion, ciphers, ca, connect = tls.connect } = {}) {
   return new Promise((resolve) => {
     let done = false;
     let ocsp = null;
@@ -16,6 +23,7 @@ export function handshake({ host, ip, port = 443, timeout = 8000, minVersion, ma
     if (minVersion) opts.minVersion = minVersion;
     if (maxVersion) opts.maxVersion = maxVersion;
     if (ciphers) opts.ciphers = ciphers;
+    if (ca) opts.ca = ca;
     let sock;
     try { sock = connect(opts); } catch (e) { resolve({ ok: false, error: e.code || e.message }); return; }
     const timer = setTimeout(() => finish({ ok: false, error: `timeout after ${timeout / 1000}s` }), timeout);
