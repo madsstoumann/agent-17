@@ -7,6 +7,7 @@ All notable changes to the `audit-launch` skill. Format follows [Keep a Changelo
 ### Fixed
 - TLS interception: the certificate of a public host is verified against Node's built-in public roots only. When only this machine's own CA store trusts it (a corporate proxy, antivirus or cloud egress gateway re-signing TLS), `tls.interception` says so and the certificate rows are skipped instead of passing on the proxy's certificate. Private hosts keep the local store (mkcert, company CAs).
 - Lighthouse pages are sampled from different site sections (first path segment, locale prefix ignored) instead of (segment, depth) buckets, and noindex pages (meta robots or X-Robots-Tag) are skipped. On 3.dk every sampled page was a noindex help guide, so the page rows read "SEO 69 (page is noindex)". A site that is noindex everywhere still gets its pages measured.
+- Sitemaps are read depth first: a sitemap index's children come before the next sitemap declared in robots.txt, and a child that is also declared is read in its index's place. On 3.dk the help centre's sitemap on another host (8,680 URLs) filled the 5,000-URL cap before www.3.dk/sitemap.xml was read, so only help pages could be sampled.
 - `links.w3c` no longer counts the validator's CSS errors for features its parser does not know (`@container`, `@property`, `@layer`, `@scope`, `container-type`, container and viewport units, and similar). They are listed in a new info row, `links.w3c-modern-css`, and the scoreboard notes them. On 3.dk that was 262 of 433 errors.
 
 ### Added

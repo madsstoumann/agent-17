@@ -6,6 +6,7 @@ All notable changes to the `audit-eco` skill. Format follows [Keep a Changelog](
 
 ### Fixed
 - `--pages` samples sitemap pages from different site sections (first path segment, locale prefix ignored) and skips noindex pages (meta robots or X-Robots-Tag). On 3.dk every extra page was a noindex help guide, so the median described the help section only. A site that is noindex everywhere still gets its pages measured.
+- Sitemaps are read depth first: a sitemap index's children come before the next sitemap declared in robots.txt, and a child that is also declared is read in its index's place. On 3.dk the help centre's sitemap on another host (8,680 URLs) filled the 5,000-URL cap before www.3.dk/sitemap.xml was read, so only help pages could be sampled.
 
 ## [2.1.0] - 2026-11-01
 

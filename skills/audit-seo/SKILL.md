@@ -4,7 +4,7 @@ description: Use when someone wants an SEO or content audit of a whole website, 
 argument-hint: "<url | file.html> [--schema-only] [--pages N] [--sitemap-sample N] [--external-links N] [--internal-links N] [--schema-pages N] [--render-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "2.3.0"
+  version: "2.3.1"
 ---
 
 # SEO audit
