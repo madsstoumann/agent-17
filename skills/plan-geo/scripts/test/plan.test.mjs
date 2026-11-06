@@ -1,0 +1,310 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+import { templateKey, groupTemplates, pickSample, pageSlug, guessType } from '../lib/templates.mjs';
+import { toMarkdown, questionPairs, visibleDates, leadDate, breadcrumbs, organisation, extractPage } from '../lib/extract.mjs';
+import { verifyDraft, norm, onPage, knownUrl } from '../lib/verify.mjs';
+import { parseCsv, readQuestions, renderProposals } from '../lib/proposals.mjs';
+import { extractMeta } from '../lib/html.mjs';
+import { topTypes, VERSION } from '../plan.mjs';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const SKILLS = path.join(HERE, '..', '..', '..');
+const PLAN = path.join(HERE, '..', 'plan.mjs');
+
+// ---------------------------------------------------------------- shared copies
+
+test('shared libs are identical to the skills they come from', () => {
+  const pairs = [['html.mjs', 'audit-seo'], ['render.mjs', 'audit-seo'], ['rich.mjs', 'audit-seo'], ['schema.mjs', 'audit-seo'], ['tasks.mjs', 'audit-all'], ['levels.mjs', 'audit-all'], ['target-state.mjs', 'audit-security']];
+  for (const [file, owner] of pairs) {
+    const theirs = path.join(SKILLS, owner, 'scripts', 'lib', file);
+    if (!fs.existsSync(theirs)) continue;
+    assert.equal(fs.readFileSync(path.join(HERE, '..', 'lib', file), 'utf8'), fs.readFileSync(theirs, 'utf8'), `${file} differs from ${owner}'s copy`);
+  }
+});
+
+// ---------------------------------------------------------------- templates
+
+test('templateKey: sections, locale prefixes, years and one-segment pages', () => {
+  assert.equal(templateKey('https://x.com/'), 'home');
+  assert.equal(templateKey('https://x.com/en/'), 'home');
+  assert.equal(templateKey('https://x.com/resources/insights/industry-articles/2025/x'), 'resources/insights');
+  assert.equal(templateKey('https://x.com/da-DK/resources/insights/y'), 'resources/insights');
+  assert.equal(templateKey('https://x.com/Solutions/SimCorp-One/x'), 'solutions/simcorp-one');
+  assert.equal(templateKey('https://x.com/your-industry/pensions'), 'your-industry');
+  assert.equal(templateKey('https://x.com/news/2024/x'), 'news');
+  assert.equal(templateKey('https://x.com/contact'), 'contact');
+  assert.equal(templateKey('https://x.com/trust-center'), 'top-level');
+  assert.equal(templateKey('https://x.com/faq/what'), 'faq', '"faq" is not a locale');
+});
+
+test('guessType: by URL first, then by dated pages', () => {
+  assert.equal(guessType('about-us/news').type, 'news');
+  assert.equal(guessType('resources/client-success-stories').type, 'case-study');
+  assert.equal(guessType('resources/insights').type, 'article');
+  assert.equal(guessType('solutions/axioma-solutions').type, 'product');
+  assert.equal(guessType('your-industry').type, 'audience');
+  assert.equal(guessType('legal').type, 'legal');
+  assert.equal(guessType('home').type, 'home');
+  assert.equal(guessType('things', [{ sig: { visibleDate: '2025-01-01' } }, { sig: {} }]).type, 'article');
+  assert.equal(guessType('things', [{ sig: {} }]).type, 'page');
+});
+
+const page = (url, extra = {}) => ({ url, status: 200, noindex: false, contentType: 'text/html', words: 300, sig: { questionHeadings: 0 }, jsonLd: [], ...extra });
+
+test('groupTemplates and pickSample: home first, case duplicates once, legal skipped, question pages added', () => {
+  const pages = [
+    page('https://x.com/'),
+    ...Array.from({ length: 6 }, (_, i) => page(`https://x.com/blog/2025/post-${i}`, { words: 400 + i, jsonLd: i ? [] : [{ types: ['Article'] }] })),
+    page('https://x.com/Blog/2025/post-1'),
+    page('https://x.com/legal/terms'),
+    page('https://x.com/products/a', { sig: { questionHeadings: 4 } }),
+    page('https://x.com/products/b', { sig: { questionHeadings: 3 }, words: 100 }),
+    page('https://x.com/hidden', { noindex: true }),
+  ];
+  const t = groupTemplates(pages);
+  assert.equal(t[0].key, 'home');
+  const blog = t.find((x) => x.key === 'blog');
+  assert.equal(blog.pages, 6, 'the case-only duplicate is counted once');
+  assert.deepEqual(blog.markup, { Article: 1 });
+  assert.equal(blog.slug, 'blog');
+  assert.ok(!t.some((x) => x.key === 'hidden'));
+  const s = pickSample(t, pages, { max: 10 });
+  assert.equal(s[0].url, 'https://x.com/');
+  assert.ok(!s.some((x) => x.template === 'legal'), 'legal pages are not read');
+  assert.equal(s.find((x) => x.template === 'blog').url, 'https://x.com/blog/2025/post-5', 'the longest page first');
+  assert.ok(s.some((x) => x.url === 'https://x.com/products/b' && /question headings/.test(x.why)));
+  assert.equal(pickSample(t, pages, { max: 2 }).length, 2);
+  assert.equal(pageSlug('https://x.com/'), 'home');
+  assert.equal(pageSlug('https://x.com/Blog/2025/Post-1/'), 'blog-2025-post-1');
+});
+
+// ---------------------------------------------------------------- extract
+
+const HTML = `<!doctype html><html lang="en"><head><title>What is an IBOR? | Acme</title>
+<meta name="description" content="An IBOR explained.">
+<meta property="og:site_name" content="Acme"><meta property="og:image" content="https://cdn.acme.com/og.png">
+<link rel="apple-touch-icon" href="/icon.png"></head><body>
+<header><a href="/"><img src="/img/acme-logo.svg" alt="Acme logo"></a><nav><ul><li><a href="/products">Products</a></li></ul></nav></header>
+<div id="onetrust-banner-sdk"><p>We use cookies to improve things for everyone here.</p></div>
+<main>
+<nav aria-label="Breadcrumb"><ol><li><a href="/">Home</a></li><li><a href="/insights">Insights</a></li><li>What is an IBOR?</li></ol></nav>
+<p>March 7, 2025</p>
+<h1>What is an IBOR?</h1>
+<p>By Jane Doe, Head of Data</p>
+<p>An investment book of record (IBOR) is the single source of positions for the front office.</p>
+<h2>Why does an IBOR matter?</h2>
+<p>It gives one real-time view of <a href="/products/one">Acme One</a> positions.</p>
+<p>The deadline is 1 January 2027 for most funds.</p>
+<table><tr><th>Book</th><th>Purpose</th></tr><tr><td>IBOR</td><td>Positions</td></tr></table>
+</main>
+<footer><a href="https://www.linkedin.com/company/acme">LinkedIn</a><a href="tel:+4512345678">Call</a><a href="mailto:info@acme.com">Mail</a><img src="/clients/client-logo.png" alt="Client logo"></footer>
+</body></html>`;
+
+test('toMarkdown, questionPairs, dates and the page date', () => {
+  const md = toMarkdown('<h2>What is X?</h2><p>X is <b>a</b> thing.</p><ul><li>One</li><li>Two</li></ul><table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>');
+  assert.match(md, /^## What is X\?$/m);
+  assert.match(md, /^X is a thing\.$/m);
+  assert.match(md, /^- One$/m);
+  assert.match(md, /^\| A \| B \|$/m);
+  assert.deepEqual(questionPairs(md).map((q) => q.question), ['What is X?']);
+  assert.match(questionPairs(md)[0].answer, /^X is a thing/);
+  assert.deepEqual(visibleDates('On 12 March 2025, March 7, 2023, 2024-01-31, 05.06.2022 and March 7 2023 again'), ['2022-06-05', '2023-03-07', '2024-01-31', '2025-03-12']);
+  assert.deepEqual(visibleDates('2025-13-40 and 99/99/2020'), []);
+  assert.equal(leadDate('March 7 2023\n\n# Title\n\nText.'), '2023-03-07');
+  assert.equal(leadDate('# Title\n\nPublished 4 June 2024\n\nText.'), '2024-06-04');
+  assert.equal(leadDate(`# Title\n\n${'word '.repeat(200)}\n\nThe deadline is 1 January 2027.`), null, 'a date deep in the text is not the page date');
+});
+
+test('extractPage: main content, breadcrumb, organisation details, no cookie banner', () => {
+  const p = extractPage(HTML, 'https://acme.com/insights/what-is-an-ibor');
+  assert.equal(p.title, 'What is an IBOR? | Acme');
+  assert.equal(p.h1, 'What is an IBOR?');
+  assert.equal(p.leadDate, '2025-03-07');
+  assert.deepEqual(p.dates, ['2025-03-07', '2027-01-01']);
+  assert.deepEqual(p.questions.map((q) => q.question), ['What is an IBOR?', 'Why does an IBOR matter?']);
+  assert.equal(p.tables, 2);
+  assert.deepEqual(p.bylines, ['Jane Doe']);
+  assert.deepEqual(p.breadcrumbs.map((b) => b.name), ['Home', 'Insights', 'What is an IBOR?']);
+  assert.equal(p.breadcrumbs[1].url, 'https://acme.com/insights');
+  assert.equal(p.org.logo, 'https://acme.com/img/acme-logo.svg', 'the header logo, not a client logo');
+  assert.equal(p.org.name, 'Acme');
+  assert.deepEqual(p.org.social, ['https://www.linkedin.com/company/acme']);
+  assert.deepEqual(p.org.phones, ['+4512345678']);
+  assert.deepEqual(p.org.emails, ['info@acme.com']);
+  assert.ok(!/cookies/.test(p.text), 'the consent banner is left out');
+  assert.ok(!/Products/.test(p.markdown), 'the header nav is not main content');
+  assert.ok(p.urls.includes('https://acme.com/products/one'));
+  assert.ok(p.urls.includes('https://cdn.acme.com/og.png'));
+  const meta = extractMeta(HTML, 'https://acme.com/');
+  assert.equal(organisation(HTML, 'https://acme.com/', meta).icon, 'https://acme.com/icon.png');
+  assert.deepEqual(breadcrumbs('<p>none</p>', 'https://acme.com/'), []);
+});
+
+// ---------------------------------------------------------------- verify
+
+test('verifyDraft: values from the page pass, invented ones are flagged', () => {
+  const p = extractPage(HTML, 'https://acme.com/insights/what-is-an-ibor');
+  const good = {
+    '@context': 'https://schema.org', '@type': 'Article', '@id': 'https://acme.com/insights/what-is-an-ibor#article',
+    headline: 'What is an IBOR?', datePublished: '2025-03-07', image: 'https://cdn.acme.com/og.png',
+    description: 'An investment book of record (IBOR) is the single source of positions for the front office.',
+    author: { '@type': 'Person', name: 'Jane Doe', jobTitle: 'Head of Data' },
+    publisher: { '@id': 'https://acme.com/#organization', name: 'Acme', logo: { '@type': 'ImageObject', url: 'https://acme.com/img/acme-logo.svg' }, sameAs: ['https://www.linkedin.com/company/acme'] },
+    mentions: { '@type': 'SoftwareApplication', name: 'Acme One', url: 'https://acme.com/products/one' },
+    inLanguage: 'en',
+  };
+  assert.deepEqual(verifyDraft(good, p), []);
+  const bad = {
+    '@type': 'Article', headline: 'What is an IBOR?',
+    datePublished: '2027-01-01', dateModified: '2025-04-01', award: 'Best IBOR vendor 2025', foundingDate: '1971',
+    author: { '@type': 'Person', name: 'John Smith', sameAs: 'https://www.linkedin.com/in/johnsmith' }, url: 'https://acme.com/somewhere-else',
+  };
+  const flags = Object.fromEntries(verifyDraft(bad, p).map((f) => [f.path, f.reason]));
+  assert.match(flags.datePublished, /page's own date is 2025-03-07/);
+  assert.match(flags.dateModified, /not shown/);
+  assert.match(flags.award, /text not on the page/);
+  assert.match(flags.foundingDate, /year not on the page/);
+  assert.match(flags['author.name'], /text not on the page/);
+  assert.match(flags['author.sameAs'], /URL not linked/);
+  assert.match(flags.url, /URL not linked/);
+  assert.equal(flags.headline, undefined);
+});
+
+test('norm, onPage and knownUrl', () => {
+  assert.equal(norm('SimCorp’s “One” – platform & data'), "simcorp's one platform and data");
+  const hay = norm('The quick brown fox jumps over the lazy dog while the cat sleeps on the warm mat today and the birds sing in the old oak tree near the river bank all morning long');
+  assert.ok(onPage('quick brown fox', hay));
+  assert.ok(!onPage('quick red fox', hay));
+  assert.ok(onPage('The quick brown fox jumps over the lazy dog while the cat sleeps on the warm mat today and the birds sing in the old oak tree near the river bank all day long', hay), 'long text with a small change passes');
+  assert.ok(!onPage('A slow grey wolf walks past the busy fox while the cat sleeps on the warm mat today and nobody sings', hay), 'long text that only shares a phrase does not');
+  const pg = { url: 'https://a.com/x', urls: ['https://a.com/en/products/one'] };
+  assert.ok(knownUrl('https://a.com/', pg));
+  assert.ok(knownUrl('https://a.com/x/', pg));
+  assert.ok(knownUrl('https://a.com/products/one', pg), 'same path without the locale prefix');
+  assert.ok(!knownUrl('https://b.com/', pg));
+});
+
+test('topTypes: top level and @graph members only', () => {
+  assert.deepEqual(topTypes({ '@type': 'NewsArticle', mentions: { '@type': 'SoftwareApplication' } }), ['NewsArticle']);
+  assert.deepEqual(topTypes({ '@graph': [{ '@type': 'Article' }, { '@type': ['BreadcrumbList'] }] }), ['Article', 'BreadcrumbList']);
+});
+
+// ---------------------------------------------------------------- questions and proposals
+
+test('parseCsv and readQuestions', () => {
+  assert.deepEqual(parseCsv('a,b\n"x, y","say ""hi"""\r\n\n'), [['a', 'b'], ['x, y', 'say "hi"']]);
+  const ok = readQuestions('question,intent,status,page,brief\nWhat is X?,definition,missing,,01-x.md\n"X vs Y?",comparison,answered,https://a.com/x,\n');
+  assert.deepEqual(ok.errors, []);
+  assert.equal(ok.questions[1].question, 'X vs Y?');
+  const bad = readQuestions('question,intent,status,page\nWhat?,guess,maybe,\nWhy?,other,answered,\n');
+  assert.equal(bad.errors.length, 4, 'bad intent, bad status, and a page missing on both non-missing rows');
+  assert.deepEqual(readQuestions('question,page\nx,y').errors, ['questions.csv has no "status" column']);
+});
+
+test('renderProposals: markup table, questions ordered missing first, not-covered section', () => {
+  const inventory = { host: 'a.com', crawled: 10, indexable: 9, truncated: false, sample: [{ slug: 'news-2025-x', template: 'news' }], templates: [
+    { key: 'home', slug: 'home', type: 'home', types: ['Organization', 'WebSite'], pages: 1, markup: {} },
+    { key: 'news', slug: 'news', type: 'news', types: ['NewsArticle', 'BreadcrumbList'], pages: 5, markup: { NewsArticle: 2 } },
+    { key: 'legal', slug: 'legal', type: 'legal', types: ['WebPage'], pages: 2, markup: {} },
+  ] };
+  const check = { drafts: [
+    { file: 'markup/site.jsonld', slug: 'site', types: ['Organization', 'WebSite'], notOnPage: [], required: [], recommended: [] },
+    { file: 'markup/news-2025-x.jsonld', slug: 'news-2025-x', types: ['NewsArticle'], notOnPage: [{ path: 'datePublished', value: '2020-01-01', reason: 'date not shown on the page' }], required: [], recommended: [] },
+  ] };
+  const md = renderProposals({ inventory, check, version: VERSION, summary: 'Do the site graph first.', profile: '# A\n\nA sells things.\n\n## Context (not from the site)\n\nMore.',
+    questions: [{ question: 'Q answered', intent: 'other', status: 'answered', page: 'https://a.com/q' }, { question: 'Q missing', intent: 'definition', status: 'missing', brief: '01-q.md' }], briefs: ['01-q.md'] });
+  assert.match(md, /^# GEO plan: a\.com/);
+  assert.match(md, /Do the site graph first\./);
+  assert.match(md, /^### Context \(not from the site\)/m, 'profile headings are demoted under "About the site"');
+  assert.match(md, /\| home \| 1 \| home \| none \| Organization, WebSite \| \[site\.jsonld\]\(markup\/site\.jsonld\) \| passes \|/);
+  assert.match(md, /\| news \| 5 \| news \| NewsArticle \(2\) \| NewsArticle \| \[news-2025-x\.jsonld\]\(markup\/news-2025-x\.jsonld\) \| 1 not on page \|/, 'a page-slug draft lands on its template');
+  assert.match(md, /\| legal \| 2 \| legal \| none \| not drafted/);
+  assert.match(md, /datePublished: "2020-01-01" \(date not shown on the page\)/);
+  assert.ok(md.indexOf('Q missing') < md.indexOf('Q answered'));
+  assert.match(md, /## Not covered/);
+});
+
+// ---------------------------------------------------------------- end to end (local server, no Chrome, no validator)
+
+function serve(pages) {
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      const body = pages[req.url];
+      if (!body) { res.writeHead(404); res.end('not found'); return; }
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(body);
+    });
+    server.listen(0, '127.0.0.1', () => resolve(server));
+  });
+}
+
+function run(args, env = {}) {
+  return new Promise((resolve) => {
+    const p = spawn(process.execPath, [PLAN, ...args], { env: { ...process.env, ...env } });
+    let out = ''; let err = '';
+    p.stdout.on('data', (d) => { out += d; });
+    p.stderr.on('data', (d) => { err += d; });
+    p.on('close', (code) => resolve({ code, out, err }));
+  });
+}
+
+test('extract → check → build on a local site', async () => {
+  const home = '<html lang="en"><head><title>Acme</title><meta name="description" content="Acme makes investment software."></head><body><main><h1>Acme</h1><p>Acme makes investment software for pension funds and insurers around the world.</p></main><footer><a href="https://www.linkedin.com/company/acme">in</a></footer></body></html>';
+  const server = await serve({ '/': home, '/insights/what-is-an-ibor': HTML });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-geo-'));
+  try {
+    const seoRun = path.join(tmp, 'seo-run');
+    fs.mkdirSync(seoRun);
+    fs.writeFileSync(path.join(seoRun, 'report.json'), JSON.stringify({ tool: 'audit-seo', mode: 'site', site: { url: `${base}/`, host: `127.0.0.1:${server.address().port}` }, pages: [
+      page(`${base}/`), page(`${base}/insights/what-is-an-ibor`, { sig: { questionHeadings: 2 } }), page(`${base}/legal/terms`),
+    ] }));
+    const out = path.join(tmp, 'plan');
+    const ex = await run(['extract', seoRun, '--out', out, '--no-render', '--competitors', 'b.com'], { AUDIT_OUT_DIR: path.join(tmp, 'reports') });
+    assert.equal(ex.code, 0, ex.err);
+    assert.match(ex.out, /2 pages read in full/);
+    const inv = JSON.parse(fs.readFileSync(path.join(out, 'inventory.json'), 'utf8'));
+    assert.deepEqual(inv.options.competitors, ['b.com']);
+    assert.equal(inv.templates.find((t) => t.key === 'insights').example, 'insights-what-is-an-ibor');
+    assert.ok(fs.existsSync(path.join(out, 'pages', 'insights-what-is-an-ibor.md')));
+    assert.ok(fs.existsSync(path.join(out, '.audit-run')));
+
+    fs.mkdirSync(path.join(out, 'markup'));
+    fs.writeFileSync(path.join(out, 'markup', 'insights.jsonld'), JSON.stringify({ '@context': 'https://schema.org', '@type': 'Article', headline: 'What is an IBOR?', datePublished: '2025-03-07', author: { '@type': 'Person', name: 'Jane Doe' }, award: 'Invented award' }));
+    fs.writeFileSync(path.join(out, 'markup', 'broken.jsonld'), '{ nope');
+    const ck = await run(['check', out, '--no-remote']);
+    assert.equal(ck.code, 0, ck.err);
+    assert.match(ck.out, /WARN markup\/insights\.jsonld \[Article\]: 1 value\(s\) not on the page: award "Invented award"/);
+    assert.match(ck.out, /FAIL markup\/broken\.jsonld: does not parse/);
+
+    fs.mkdirSync(path.join(out, 'content', 'briefs'), { recursive: true });
+    fs.writeFileSync(path.join(out, 'content', 'questions.csv'), `question,intent,status,page,brief\nWhat is an IBOR?,definition,answered,${base}/insights/what-is-an-ibor,\nIBOR vs ABOR?,comparison,missing,,01-ibor-abor.md\n`);
+    fs.writeFileSync(path.join(out, 'content', 'briefs', '01-ibor-abor.md'), '# IBOR vs ABOR\n');
+    fs.writeFileSync(path.join(out, 'summary.md'), 'Add Article markup first.');
+    fs.writeFileSync(inv.profile, '# Acme\n\nAcme makes investment software.');
+    fs.writeFileSync(path.join(out, 'tasks.json'), JSON.stringify({ tasks: [{ id: 'G1', owner: 'human', title: 'Article markup', fix: 'Follow markup/insights.jsonld', sources: ['plan-geo'] }] }));
+    const b = await run(['build', out, '--no-remote']);
+    assert.equal(b.code, 0, b.err);
+    assert.match(b.out, /Questions: 2 \(1 answered, 0 partly, 1 missing\); 1 brief/);
+    const md = fs.readFileSync(path.join(out, 'proposals.md'), 'utf8');
+    assert.match(md, /Acme makes investment software\./);
+    assert.match(md, /Invented award/);
+    assert.ok(fs.existsSync(path.join(out, 'fix', 'TODO.md')));
+    assert.ok(fs.existsSync(path.join(out, 'site-profile.md')));
+    assert.ok(fs.existsSync(path.join(inv.target, 'last-plan.json')));
+
+    const none = await run(['extract', path.join(tmp, 'nothing-here')]);
+    assert.notEqual(none.code, 0);
+    assert.match(none.err, /does not exist/);
+  } finally {
+    server.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

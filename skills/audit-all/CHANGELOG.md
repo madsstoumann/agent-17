@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+
+## [1.16.0] - 2026-11-06
+
+### Added
+- `plan-geo` is a valid task source in tasks.json, so plan-geo's fix plan validates and renders with the same `lib/tasks.mjs` (plan-geo carries an identical copy, checked by a test).
+
 ## [1.15.0] - 2026-11-06
 
 ### Added

@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-fix` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+
+## [1.1.0] - 2026-11-06
+
+### Added
+- Runs plan-geo's fix plan too (the same tasks.json and fix/ shape; tasks carry `sources: ["plan-geo"]`).
+
 ## [1.0.3] - 2026-11-01
 
 ### Changed

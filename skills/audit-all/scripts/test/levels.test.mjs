@@ -9,7 +9,7 @@ import { parseLevel, levelOf, levelOfWord, shows, byLevel, countLevels, levelNot
 const SKILLS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 test('every report-writing skill carries the same levels.mjs', () => {
-  const copies = ['audit-launch', 'audit-a11y', 'audit-seo', 'audit-eco', 'audit-privacy', 'audit-infra', 'audit-security', 'audit-solution-health', 'audit-all', 'enable-memory-management']
+  const copies = ['audit-launch', 'audit-a11y', 'audit-seo', 'audit-eco', 'audit-privacy', 'audit-infra', 'audit-security', 'audit-solution-health', 'audit-all', 'enable-memory-management', 'plan-geo']
     .map((s) => path.join(SKILLS, s, 'scripts', 'lib', 'levels.mjs'))
     .filter((f) => fs.existsSync(f));
   assert.ok(copies.length >= 1);
