@@ -258,20 +258,92 @@ export async function dnsRecords(name, { resolver = dns, doh: dohImpl = doh } = 
 }
 
 /**
- * dnssecStatus(name, { doh = doh }) -> { validated: boolean|null, provider, error? }
+ * dnssecStatus(name, { type = 'A', doh = doh }) -> { validated: boolean|null, provider, cname?, error? }
  *
- * The AD flag of an A query at Cloudflare, then Google: both validate, so AD false means
- * the zone is unsigned. A local resolver never sets AD, which is why DoH is used.
+ * The AD flag of a query at Cloudflare, then Google: both validate, so AD false means
+ * the zone is unsigned. A local resolver never sets AD, which is why DoH is used. Ask the
+ * zone itself with type 'NS': a host that is a CNAME into another zone carries that zone's flag.
  */
-export async function dnssecStatus(name, { doh: dohImpl = doh } = {}) {
-  const cf = await dohImpl(name, 'A', { provider: 'cloudflare' });
-  if (cf.ok) return { validated: cf.ad, provider: 'cloudflare' };
-  const g = await dohImpl(name, 'A', { provider: 'google' });
-  if (g.ok) return { validated: g.ad, provider: 'google' };
+export async function dnssecStatus(name, { type = 'A', doh: dohImpl = doh } = {}) {
+  // A CNAME out of the zone (www -> cname.vercel-dns.com) ends in the target's zone, whose AD flag
+  // says nothing about this one: name the alias so the caller can tell the two apart.
+  const withCname = (r, out) => {
+    const alias = r.answers.find((a) => a.type === 'CNAME' && a.name.toLowerCase() === undot(name).toLowerCase());
+    return alias ? { ...out, cname: undot(alias.data) } : out;
+  };
+  const cf = await dohImpl(name, type, { provider: 'cloudflare' });
+  if (cf.ok) return withCname(cf, { validated: cf.ad, provider: 'cloudflare' });
+  const g = await dohImpl(name, type, { provider: 'google' });
+  if (g.ok) return withCname(g, { validated: g.ad, provider: 'google' });
   const error = cf.status === 2 && g.status === 2
     ? 'SERVFAIL from Cloudflare and Google (a broken DNSSEC chain answers this way)'
     : (g.error || cf.error || 'no answer');
   return { validated: null, provider: 'google', error };
+}
+
+// ---------------------------------------------------------------- a resolver that sees only addresses
+
+/** The registrable domain, good enough for the common cases (two-label public suffixes like co.uk). */
+export function zoneOf(host) {
+  const labels = undot(String(host || '').toLowerCase()).split('.');
+  if (labels.length <= 2) return labels.join('.');
+  const two = labels.slice(-2).join('.');
+  return /^(co|com|net|org|gov|ac|edu)\.[a-z]{2}$/.test(two) ? labels.slice(-3).join('.') : two;
+}
+
+/**
+ * dohResolver({ doh }) -> the node:dns/promises methods dnsRecords and dkimProbe use, answered over
+ * DNS-over-HTTPS (Cloudflare, then Google). No records throws ENODATA and NXDOMAIN ENOTFOUND, as
+ * Node does; an unreachable DoH throws EDOH, which dnsRecords records as an error.
+ */
+export function dohResolver({ doh: dohImpl = doh } = {}) {
+  const fail = (code, message) => Object.assign(new Error(message), { code });
+  async function ask(name, type) {
+    let r = await dohImpl(name, type, { provider: 'cloudflare' });
+    if (!r.ok) {
+      const g = await dohImpl(name, type, { provider: 'google' });
+      if (g.ok) r = g; else throw fail('EDOH', `DNS-over-HTTPS: ${g.error || r.error || 'no answer'}`);
+    }
+    if (r.status === 3) throw fail('ENOTFOUND', `${name}: NXDOMAIN`);
+    const data = r.answers.filter((a) => a.type === type).map((a) => a.data);
+    if (!data.length) throw fail('ENODATA', `${name}: no ${type} records`);
+    return data;
+  }
+  return {
+    via: 'doh',
+    resolve4: (n) => ask(n, 'A'),
+    resolve6: (n) => ask(n, 'AAAA'),
+    resolveNs: (n) => ask(n, 'NS'),
+    resolveCaa: async (n) => (await ask(n, 'CAA')).map((d) => { const c = parseCaaData(d); return { critical: c.flags, [c.tag]: c.value }; }),
+    resolveMx: async (n) => (await ask(n, 'MX')).map((d) => { const [priority, ...rest] = String(d).split(/\s+/); return { priority: Number(priority), exchange: rest.join(' ') }; }),
+    resolveTxt: async (n) => (await ask(n, 'TXT')).map((d) => [d]),
+  };
+}
+
+/**
+ * pickResolver(zone, { resolver = node:dns/promises, doh = doh })
+ *   -> { mode: 'system'|'doh'|'blind', resolver (null when blind), note }
+ *
+ * Every registered zone has NS records. When the local resolver returns none for the zone (some
+ * sandboxes, VPNs and cloud containers answer A/AAAA only and ENODATA for the rest), a public DoH
+ * resolver is asked: if it has NS, every record is read over DoH; if it cannot be reached either, the
+ * DNS and mail rows cannot be trusted ('blind') and are skipped rather than reported missing.
+ */
+export async function pickResolver(zone, { resolver = dns, doh: dohImpl = doh } = {}) {
+  try {
+    if ((await resolver.resolveNs(zone)).length) return { mode: 'system', resolver, note: '' };
+  } catch (e) {
+    // SERVFAIL, timeouts and refusals are retried over DoH per record type by dnsRecords already.
+    if (!EMPTY_CODES.has(e?.code)) return { mode: 'system', resolver, note: '' };
+  }
+  const remote = dohResolver({ doh: dohImpl });
+  try {
+    await remote.resolveNs(zone);
+    return { mode: 'doh', resolver: remote, note: `the local resolver returned no NS for ${zone}` };
+  } catch (e) {
+    if (e.code === 'ENODATA' || e.code === 'ENOTFOUND') return { mode: 'system', resolver, note: '' };
+    return { mode: 'blind', resolver: null, note: `the local resolver returned no records for ${zone} (not even NS) and DNS-over-HTTPS could not be reached (${e.message})` };
+  }
 }
 
 // ---------------------------------------------------------------- SPF / DMARC / DKIM

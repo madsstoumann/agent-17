@@ -52,10 +52,10 @@ On **dev/staging** (`--env dev|staging`, or guessed from the hostname), findings
 | `tls.san` | Names covered | host missing fail (blocker); www/apex sibling missing warn | Add the sibling name. |
 | `tls.protocol` | Negotiated version | below TLS 1.2 warn | TLS 1.2 + 1.3 only. |
 | `tls.issuer` | CA and serial | info | — |
-| `dns.records` | A/AAAA/NS | info | IPv6 is optional but cheap on a CDN. |
+| `dns.records` | A/AAAA, NS of the domain. When the local resolver returns no NS for the domain, every DNS and mail record is read over DNS-over-HTTPS (said in the row); with DoH unreachable too, the DNS and mail rows are skipped | info | IPv6 is optional but cheap on a CDN. |
 | `dns.caa` | CAA on host or apex | none warn | `0 issue "letsencrypt.org"` (or your CA). |
 | `dns.mx` | Mail exchangers on the apex | info | — |
-| `dns.dnssec` | DoH `AD` flag | info | Optional. |
+| `dns.dnssec` | DoH `AD` flag on the domain's zone; a host that is a CNAME into an unsigned platform zone is named, not counted as unsigned | info | Optional. |
 | `email.spf` | `v=spf1` on the email domain | 0 records: warn with MX, info without; > 1 fail; `-all`/`~all` pass; `?all`/`+all` warn; > 10 lookups warn | One record ending `-all` (or `~all`). |
 | `email.dmarc` | `_dmarc.<domain>` | missing: fail with MX, warn without; `p=none` warn | `v=DMARC1; p=quarantine; rua=mailto:…` |
 | `email.dkim` | Common selectors | info | Confirm the provider's selector. |
@@ -134,7 +134,7 @@ On **dev/staging** (`--env dev|staging`, or guessed from the hostname), findings
 |---|---|---|---|
 | `links.crawl-summary` | Pages fetched, statuses | 5xx fail; 4xx warn | — |
 | `links.internal-broken` | Internal links that do not answer 2xx/3xx | 5xx fail; else warn | Fix or redirect. |
-| `links.external-broken` | External links (HEAD, then GET) | broken warn; 403/429/999 = blocked, info | Replace dead links. |
+| `links.external-broken` | External links (HEAD, then GET when HEAD answers nothing or any 4xx/5xx) | broken warn; 403/429/999 = blocked, info | Replace dead links. |
 | `links.mixed-content` | `http://` sub-resources on https pages | any fail | https everywhere. |
 | `links.images-alt` | `<img>` without an alt attribute | any warn | alt text or `alt=""`. |
 | `links.images-empty-alt` | Share of images with `alt=""` | > 50 % of ≥ 20 images warn | Real alt text on content images; `alt=""` only for decoration. |

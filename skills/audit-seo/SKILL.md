@@ -4,7 +4,7 @@ description: Use when someone wants an SEO, content or GEO (AI search) audit of 
 argument-hint: "<url | file.html> [--geo] [--schema-only] [--pages N] [--sitemap-sample N] [--external-links N] [--internal-links N] [--schema-pages N] [--render-pages N] [--bot-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "2.4.0"
+  version: "2.5.0"
 ---
 
 # SEO audit
@@ -42,7 +42,7 @@ the findings; non-zero means the script failed (read the last stderr lines).
 | `--schema-pages N` (default 8) | Pages sent to validator.schema.org, one per distinct JSON-LD type set. Private hosts get their HTML posted instead. `0` or `--no-remote` skips it. |
 | `--render-pages N` (default 8) | Pages rendered in headless Chrome after the crawl: the start page, then pages whose served HTML has no JSON-LD, one per section, then one page per section not picked yet. JSON-LD that appears only after JavaScript runs is adopted for every structured-data check, posted to the validator as the rendered DOM, and reported as "JSON-LD added by JavaScript" (Google sees it; Bing, social scrapers and most AI crawlers do not). Each rendered page's text (consent banners left out) is compared with its served HTML for "Text without JavaScript". Needs Chrome, Chromium or Edge (found automatically, or `CHROME_PATH`); without one those rows are skipped. `0` turns it off. Raise it (16–24) for a GEO audit of a site with many templates. |
 | `--bot-pages N` (default 3) | Pages (start page, then one per section) fetched once as a browser and once with each AI crawler's user agent (OAI-SearchBot, ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, GPTBot, ClaudeBot), bingbot and Googlebot, without the `--header` bypass, to find CDN or WAF rules that refuse crawlers robots.txt lets in. Crawlers robots.txt shuts out are not fetched. `0` skips it. |
-| `--geo` | The user wants a GEO audit, AI search readiness, "is the site ready for ChatGPT / AI answers", or the technical part of a GEO proposal. `report.md` becomes a "GEO audit" with the AI search rows first and only the indexing rows that decide what AI crawlers reach (robots.txt, noindex, thin pages, sitemap, JSON-LD, h1, lang). `report.json` and `findings.json` keep every row (`"geo": true` marks the GEO findings). |
+| `--geo` | The user wants a GEO audit, AI search readiness, "is the site ready for ChatGPT / AI answers", or the technical part of a GEO proposal. `report.md` becomes a "GEO audit" with the AI search rows first and only the indexing rows that decide what AI crawlers reach (robots.txt, noindex, thin pages, sitemap and the noindex or blocked URLs it lists, canonical targets, JSON-LD and its coverage, duplicate titles, h1, lang). `report.json` and `findings.json` keep every row (`"geo": true` marks the GEO findings). |
 | `--schema-only` | The user only wants the structured data of one page checked ("validate the schema on …", "is my JSON-LD valid?"). Fetches that URL alone, renders it, validates it and runs the Google rich-result rules, and lists every validator error and warning on its own line. No crawl, robots, sitemap or GEO. |
 | `<file.html>` instead of a URL | A local HTML file: the same as `--schema-only` on the file (rendered from `file://`, its HTML posted to the validator). |
 | `--production-host www.example.com` | Auditing staging: canonicals, sitemap URLs and hreflang on the future live host are then not "another host". |
@@ -117,8 +117,11 @@ Honesty rules:
 - Duplicate titles across language versions are fine when hreflang ties them together.
 - The crawl is a sample when the cap was hit. Say "in the 150 pages crawled", not "on the site".
 - **GEO readiness** (on every full run, at the top of the report) is the share of GEO rows that
-  pass: pass and info count 1, warn 0.5, fail 0, skipped rows are left out. It sums up the rows;
-  it does not measure whether AI engines cite the site. Say so whenever you quote it.
+  pass: pass and plain info count 1, warn 0.5, fail 0, skipped rows are left out. Info rows that
+  point at something missing (no llms.txt, structured data opportunities, no article pages
+  recognised, no sitemap lastmod, partial JSON-LD coverage) are **opportunities** and count 0.75;
+  the report lists them under the score. It sums up the rows; it does not measure whether AI
+  engines cite the site. Say so whenever you quote it.
 - **AI crawlers at the edge** sends each crawler's user agent from this machine, not from the
   crawler's published IP ranges. When a Googlebot user agent is refused too, the edge checks
   crawlers by IP and the row is info ("cannot tell from here"): point to the CDN's bot settings
@@ -129,8 +132,14 @@ Honesty rules:
   crawlers do not run.
 - Dates, authors, answer structure and structured data opportunities are heuristics over the
   served HTML. "Article pages" are pages with Article/BlogPosting/NewsArticle JSON-LD, og:type
-  article, article:published_time or a dated `<article>`; question headings end in "?". Present
-  them as where to look, not as defects, except undated or anonymous articles.
+  article, article:published_time or a dated `<article>`, plus **article-like pages** without that
+  markup: a news, blog or insights URL with its own slug and either a year in the path
+  (`/news/2022/…`) or a date written as text on the page ("November 24, 2022"). Those count as
+  articles without a machine-readable date. Question headings end in "?". Present them as where
+  to look, not as defects, except undated or anonymous articles.
+- og:image and link checks send HEAD and then GET (body discarded) when HEAD answers nothing or any
+  4xx/5xx: image edges such as Sitecore's answer HEAD 404 for a resized variant they have not built
+  yet, and scrapers use GET.
 - IndexNow and Bing Webmaster Tools cannot be seen from outside: the Bing row says what to ask.
 - GEO rows are about readiness, not results. Blocking an AI *search* crawler (OAI-SearchBot,
   ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot) keeps the site out of AI answers and

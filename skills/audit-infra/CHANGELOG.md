@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-infra` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.4.1] - 2026-11-06
+
+### Fixed
+- DNS is read over DNS-over-HTTPS first, but when both providers are unreachable the system resolver answers. A resolver that answers addresses only (ENODATA for TXT, MX, NS, CAA, as in the Claude cloud container) then made every DNS and mail row read as missing. When the system resolver answered the domain's NS query with none, the DNS and mail rows are now skipped with "the local resolver returned no records" instead.
+
 ## [2.4.0] - 2026-11-06
 
 ### Fixed

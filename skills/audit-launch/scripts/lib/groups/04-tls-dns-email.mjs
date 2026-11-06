@@ -5,7 +5,7 @@
  * --email-domain), which is rarely the audited host on staging.
  */
 import { result } from '../registry.mjs';
-import { tlsInfo, publicTlsInfo, certSummary, dnsRecords, dnssecStatus, evaluateSpf, evaluateDmarc, dkimProbe } from '../net.mjs';
+import { tlsInfo, publicTlsInfo, certSummary, dnsRecords, dnssecStatus, evaluateSpf, evaluateDmarc, dkimProbe, pickResolver, zoneOf } from '../net.mjs';
 import { preloadLookup, preloadVerdict } from '../hsts-preload.mjs';
 import net from 'node:net';
 import { isPlatformHost } from '../cli.mjs';
@@ -63,37 +63,7 @@ export default {
       return out;
     }
 
-    // --- DNS for the host
-    const d = await dnsRecords(hostname);
-    out.push(result('dns.records', 'info', 'DNS records', `A ${d.a.join(', ') || '—'} · AAAA ${d.aaaa.join(', ') || '— (no IPv6)'} · NS ${d.ns.slice(0, 4).join(', ') || '—'}`, { data: d }));
-    const apex = ctx.apexHost;
-    const apexD = apex !== hostname ? await dnsRecords(apex) : d;
-    const caa = d.caa.length ? d.caa : apexD.caa;
-    const platform = isPlatformHost(hostname);
-    const platformNote = platform ? ' — platform hostname, its DNS is the host\'s; re-check on the production domain' : '';
-    out.push(caa.length
-      ? result('dns.caa', 'pass', 'CAA', caa.map((c) => `${c.tag} ${c.value}`).join('; '))
-      : result('dns.caa', platform ? 'info' : 'warn', 'CAA', `no CAA record on ${hostname}${apex !== hostname ? ` or ${apex}` : ''}${platformNote}`, { fix: 'Add CAA records naming your CA (e.g. `0 issue "letsencrypt.org"`) so no other CA can be tricked into issuing for the domain.' }));
-    out.push(result('dns.mx', 'info', 'MX', apexD.mx.length ? apexD.mx.map((m) => `${m.priority} ${m.exchange}`).join(', ') : `no MX on ${apex} (no inbound mail)`));
-    const sec = await dnssecStatus(hostname);
-    out.push(result('dns.dnssec', 'info', 'DNSSEC', sec.validated === null ? `could not determine (${sec.error || 'no answer'})` : sec.validated ? `validated (AD flag set by ${sec.provider})` : 'not signed', { fix: sec.validated ? '' : 'Optional: enable DNSSEC at the registrar/DNS host; check dnsviz.net after.' }));
-
-    // --- email authentication on the email domain
-    const e = emailDomain === apex ? apexD : await dnsRecords(emailDomain);
-    const hasMx = e.mx.length > 0;
-    const emailPlatform = isPlatformHost(emailDomain) && !hasMx;
-    if (emailPlatform) {
-      out.push(result('email.spf', 'info', `SPF (${emailDomain})`, 'platform hostname without MX — mail records belong to the production domain; re-run with --email-domain <domain>'));
-      out.push(result('email.dmarc', 'info', `DMARC (${emailDomain})`, 'not applicable to a platform hostname; check the production domain with --email-domain'));
-    } else {
-      const spf = evaluateSpf(e.txt, { hasMx });
-      out.push(result('email.spf', spf.status, `SPF (${emailDomain})`, spf.text, { fix: spf.fix || '' }));
-      const dm = await dnsRecords(`_dmarc.${emailDomain}`);
-      const dmarc = evaluateDmarc(dm.txt, { hasMx });
-      out.push(result('email.dmarc', dmarc.status, `DMARC (${emailDomain})`, dmarc.text, { fix: dmarc.fix || '' }));
-      const dk = await dkimProbe(emailDomain);
-      out.push(result('email.dkim', 'info', `DKIM (${emailDomain})`, dk.found.length ? `selectors found: ${dk.found.map((f) => f.selector).join(', ')}` : 'no common selector found (google, selector1/2, default, k1, mail…) — DKIM may still exist under another selector', { fix: dk.found.length ? '' : 'Confirm the mail provider\'s DKIM selector is published; send a test mail and check the headers.' }));
-    }
+    out.push(...await dnsRows(ctx));
 
     // --- HSTS preload: header requirements plus the real list (hstspreload.org, Chromium list as fallback)
     const header = page.headers['strict-transport-security'];
@@ -103,3 +73,71 @@ export default {
     return out;
   },
 };
+
+/**
+ * DNS, DNSSEC and mail rows. `ctx.net` may inject { resolver, doh } (tests). A local resolver that
+ * answers addresses only is caught first (see pickResolver): its empty answers would otherwise read
+ * as "no SPF, no DMARC, no CAA, no MX".
+ */
+export async function dnsRows(ctx) {
+  const { hostname, emailDomain } = ctx;
+  const inject = ctx.net || {};
+  const out = [];
+  const zone = zoneOf(hostname);
+  const pick = await pickResolver(zone, inject);
+  const via = pick.mode === 'doh' ? ` (read over DNS-over-HTTPS: ${pick.note})` : '';
+  if (pick.mode === 'blind') {
+    const why = `not checked: ${pick.note}`;
+    const fix = 'Run the audit from a network whose resolver answers TXT, MX, NS and CAA (or where cloudflare-dns.com / dns.google are reachable).';
+    out.push(result('dns.records', 'skip', 'DNS records', why, { fix }));
+    for (const [id, title] of [['dns.caa', 'CAA'], ['dns.mx', 'MX'], ['dns.dnssec', 'DNSSEC'], ['email.spf', `SPF (${emailDomain})`], ['email.dmarc', `DMARC (${emailDomain})`], ['email.dkim', `DKIM (${emailDomain})`]]) out.push(result(id, 'skip', title, why));
+    return out;
+  }
+  const opt = { resolver: pick.resolver, ...(inject.doh ? { doh: inject.doh } : {}) };
+
+  // --- DNS for the host
+  const d = await dnsRecords(hostname, opt);
+  const apex = ctx.apexHost;
+  const apexD = apex !== hostname ? await dnsRecords(apex, opt) : d;
+  // NS of the domain, not of www: a www CNAME answers with the hosting platform's name servers.
+  const ns = apexD.ns.length ? apexD.ns : d.ns;
+  out.push(result('dns.records', 'info', 'DNS records', `A ${d.a.join(', ') || '—'} · AAAA ${d.aaaa.join(', ') || '— (no IPv6)'} · NS ${ns.slice(0, 4).join(', ') || '—'}${via}`, { data: d }));
+  const caa = d.caa.length ? d.caa : apexD.caa;
+  const platform = isPlatformHost(hostname);
+  const platformNote = platform ? ' — platform hostname, its DNS is the host\'s; re-check on the production domain' : '';
+  out.push(caa.length
+    ? result('dns.caa', 'pass', 'CAA', caa.map((c) => `${c.tag} ${c.value}`).join('; '))
+    : result('dns.caa', platform ? 'info' : 'warn', 'CAA', `no CAA record on ${hostname}${apex !== hostname ? ` or ${apex}` : ''}${platformNote}`, { fix: 'Add CAA records naming your CA (e.g. `0 issue "letsencrypt.org"`) so no other CA can be tricked into issuing for the domain.' }));
+  out.push(result('dns.mx', 'info', 'MX', apexD.mx.length ? apexD.mx.map((m) => `${m.priority} ${m.exchange}`).join(', ') : `no MX on ${apex} (no inbound mail)`));
+
+  // DNSSEC on the zone, not the host: www.example.com as a CNAME to a platform carries the platform zone's AD flag.
+  const dohOpt = inject.doh ? { doh: inject.doh } : {};
+  const sec = await dnssecStatus(zone, { type: 'NS', ...dohOpt });
+  const hostSec = hostname !== zone && sec.validated ? await dnssecStatus(hostname, dohOpt) : null;
+  let secText;
+  if (sec.validated === null) secText = `could not determine (${sec.error || 'no answer'})`;
+  else if (!sec.validated) secText = `${zone} is not signed`;
+  else {
+    secText = `${zone} validated (AD flag set by ${sec.provider})`;
+    if (hostSec && hostSec.validated === false) secText += hostSec.cname ? `; ${hostname} is a CNAME to ${hostSec.cname}, whose zone is not signed (normal for a hosting platform)` : `; ${hostname} itself does not validate`;
+  }
+  out.push(result('dns.dnssec', 'info', 'DNSSEC', secText, { fix: sec.validated ? '' : 'Optional: enable DNSSEC at the registrar/DNS host; check dnsviz.net after.' }));
+
+  // --- email authentication on the email domain
+  const e = emailDomain === apex ? apexD : await dnsRecords(emailDomain, opt);
+  const hasMx = e.mx.length > 0;
+  const emailPlatform = isPlatformHost(emailDomain) && !hasMx;
+  if (emailPlatform) {
+    out.push(result('email.spf', 'info', `SPF (${emailDomain})`, 'platform hostname without MX — mail records belong to the production domain; re-run with --email-domain <domain>'));
+    out.push(result('email.dmarc', 'info', `DMARC (${emailDomain})`, 'not applicable to a platform hostname; check the production domain with --email-domain'));
+  } else {
+    const spf = evaluateSpf(e.txt, { hasMx });
+    out.push(result('email.spf', spf.status, `SPF (${emailDomain})`, spf.text, { fix: spf.fix || '' }));
+    const dm = await dnsRecords(`_dmarc.${emailDomain}`, opt);
+    const dmarc = evaluateDmarc(dm.txt, { hasMx });
+    out.push(result('email.dmarc', dmarc.status, `DMARC (${emailDomain})`, dmarc.text, { fix: dmarc.fix || '' }));
+    const dk = await dkimProbe(emailDomain, { resolver: pick.resolver });
+    out.push(result('email.dkim', 'info', `DKIM (${emailDomain})`, dk.found.length ? `selectors found: ${dk.found.map((f) => f.selector).join(', ')}` : 'no common selector found (google, selector1/2, default, k1, mail…) — DKIM may still exist under another selector', { fix: dk.found.length ? '' : 'Confirm the mail provider\'s DKIM selector is published; send a test mail and check the headers.' }));
+  }
+  return out;
+}

@@ -8,6 +8,7 @@
 import { result } from './checks.mjs';
 import { isAllowed } from './robotsmatch.mjs';
 import { isoDate } from './content.mjs';
+import { headThenGet } from './crawl.mjs';
 
 /**
  * AI crawlers by what blocking them costs. `answer` bots fetch pages to cite them in AI search
@@ -81,8 +82,7 @@ export async function fetchGeo(http, origin, { maxLinks = 20 } = {}) {
       .map((l) => { try { return new URL(l.url, origin).toString(); } catch { return null; } })
       .filter((u) => u && new URL(u).host === host);
     for (const url of [...new Set(own)].slice(0, maxLinks)) {
-      let r = await http.head(url, { redirect: 'follow', timeout: 10000 });
-      if (r.status === 405 || r.status === 403 || r.status === 0) r = await http.get(url, { redirect: 'follow', timeout: 10000, maxBytes: 0 });
+      const r = await headThenGet(http, url);
       out.linkChecks.push({ url, status: r.status, error: r.error || null });
     }
   }
@@ -260,20 +260,53 @@ export function renderedTextRow({ pages = [], render = null }) {
 const MONTH = 30 * 24 * 3600 * 1000;
 const isIndexable = (p) => p.status >= 200 && p.status < 300 && p.title !== undefined && !p.noindex && p.sig;
 
+const NEWS_SECTION = /^(news|nyheder|nyhed|blog|blogs|insights?|articles?|press|press-releases?|presse|pressemeddelelser|stories|perspectives|thought-leadership)$/i;
+const LISTING = /^(tag|tags|category|categories|author|authors|page|side|archive|arkiv|topics?)$/i;
+const YEAR_SEG = /^(19|20)\d\d$/;
+
+/**
+ * newsUrl(url) -> null | { dated }: a page under a news, blog or insights section with a slug of its
+ * own (not the section index, a year listing, a tag or a page number). `dated` when a /YYYY/ segment
+ * sits in the path, as in /about-us/news/2022/SimCorp-and-Diligend-partner.
+ */
+export function newsUrl(url) {
+  let segs;
+  try { segs = new URL(url).pathname.split('/').filter(Boolean); } catch { return null; }
+  const i = segs.findIndex((x) => NEWS_SECTION.test(x));
+  if (i < 0) return null;
+  const rest = segs.slice(i + 1);
+  const last = rest[rest.length - 1];
+  if (!rest.length || YEAR_SEG.test(last) || /^\d{1,3}$/.test(last) || rest.some((x) => LISTING.test(x))) return null;
+  return { dated: rest.some((x) => YEAR_SEG.test(x)) };
+}
+
+/**
+ * A page with no article markup that still reads as one: a news/blog/insights URL with a year in
+ * the path or a date written on the page. Sitecore and other CMS news templates often ship this way.
+ */
+export function articleLikeWithoutMarkup(p) {
+  if (p.sig?.articleLike) return false;
+  const n = newsUrl(p.url);
+  return Boolean(n && (n.dated || p.sig?.visibleDate));
+}
+
 /** seo.freshness, seo.author and seo.sitemap-lastmod. `today` is YYYY-MM-DD (for tests). */
 export function freshnessRows({ pages = [], sitemap = null, today = new Date().toISOString().slice(0, 10) }) {
   const out = [];
   const idx = pages.filter(isIndexable);
-  const articles = idx.filter((p) => p.sig.articleLike);
+  const implicit = new Set(idx.filter(articleLikeWithoutMarkup));
+  const articles = idx.filter((p) => p.sig.articleLike || implicit.has(p));
   const now = new Date(today).getTime();
   const dated = (p) => p.sig.modified || p.sig.published;
   if (articles.length) {
     const undated = articles.filter((p) => !dated(p));
+    const undatedImplicit = undated.filter((p) => implicit.has(p));
     const stale = articles.filter((p) => dated(p) && now - new Date(dated(p)).getTime() > 24 * MONTH);
     const noModified = articles.filter((p) => p.sig.published && !p.sig.modified);
-    const detail = `${articles.length - undated.length} of ${plural(articles.length, 'article page')} carry a machine-readable date${noModified.length ? `, ${noModified.length} without dateModified` : ''}${stale.length ? `; ${stale.length} last dated over two years ago` : ''}`;
+    const detail = `${articles.length - undated.length} of ${plural(articles.length, 'article page')} carry a machine-readable date${noModified.length ? `, ${noModified.length} without dateModified` : ''}${stale.length ? `; ${stale.length} last dated over two years ago` : ''}${undatedImplicit.length ? `; ${plural(undatedImplicit.length, 'article-like page')} (news URL${undatedImplicit.some((p) => p.sig.visibleDate) ? ', date shown as plain text' : ''}) without a machine-readable date and without article markup` : ''}`;
+    const note = (p) => (implicit.has(p) ? `article-like, no article markup${p.sig.visibleDate ? `; the page shows "${p.sig.visibleDate}" as plain text` : ''}` : 'no date in JSON-LD, meta or <time>');
     out.push(undated.length
-      ? result('seo.freshness', 'warn', 'Dates on articles', detail, { fix: 'Answer engines prefer content they can date. Put datePublished and dateModified in the Article (or BlogPosting/NewsArticle) JSON-LD, or article:published_time and article:modified_time meta tags, and show the date on the page in a <time datetime> element. Update dateModified only when the content really changes.', urls: undated.map((p) => ({ url: p.url, note: 'no date in JSON-LD, meta or <time>' })) })
+      ? result('seo.freshness', 'warn', 'Dates on articles', detail, { fix: 'Answer engines prefer content they can date. Put datePublished and dateModified in the Article (or BlogPosting/NewsArticle) JSON-LD, or article:published_time and article:modified_time meta tags, and show the date on the page in a <time datetime> element. Update dateModified only when the content really changes.', urls: undated.map((p) => ({ url: p.url, note: note(p) })) })
       : result('seo.freshness', stale.length || noModified.length ? 'info' : 'pass', 'Dates on articles', detail, { urls: [...stale.map((p) => ({ url: p.url, note: `dated ${dated(p)}` })), ...noModified.filter((p) => !stale.includes(p)).map((p) => ({ url: p.url, note: `published ${p.sig.published}, no dateModified` }))] }));
     const anonymous = articles.filter((p) => !p.sig.author);
     out.push(anonymous.length
@@ -281,7 +314,7 @@ export function freshnessRows({ pages = [], sitemap = null, today = new Date().t
       : result('seo.author', 'pass', 'Authors on articles', `every article page (${articles.length}) names its author`));
   } else if (idx.length) {
     const withDate = idx.filter(dated).length;
-    out.push(result('seo.freshness', 'info', 'Dates on articles', `no article pages recognised among ${plural(idx.length, 'indexable page')} (Article/BlogPosting JSON-LD, og:type article or a dated <article>); ${withDate} carry a machine-readable date`, { fix: 'If the site has news, insights or blog pages, mark them up as Article (or BlogPosting/NewsArticle) with datePublished, dateModified and author, so search and AI engines can tell them from evergreen pages and date them.' }));
+    out.push(result('seo.freshness', 'info', 'Dates on articles', `no article pages recognised among ${plural(idx.length, 'indexable page')} (Article/BlogPosting JSON-LD, og:type article, a dated <article>, or a news/blog URL with a date); ${withDate} carry a machine-readable date`, { fix: 'If the site has news, insights or blog pages, mark them up as Article (or BlogPosting/NewsArticle) with datePublished, dateModified and author, so search and AI engines can tell them from evergreen pages and date them.' }));
   }
 
   if (sitemap && sitemap.urls?.length) {
@@ -318,7 +351,7 @@ export function schemaOpportunitiesRow({ pages = [] }) {
   for (const p of idx) {
     const t = types(p);
     const notes = [];
-    if (p.sig.articleLike && ![...t].some((x) => /Article|BlogPosting|Report/.test(x))) notes.push('Article');
+    if ((p.sig.articleLike || articleLikeWithoutMarkup(p)) && ![...t].some((x) => /Article|BlogPosting|Report/.test(x))) notes.push('Article');
     if (p.sig.questionHeadings >= 3 && !t.has('FAQPage') && !t.has('QAPage')) notes.push(`FAQPage (${p.sig.questionHeadings} questions)`);
     if (p.sig.breadcrumbNav && !t.has('BreadcrumbList')) notes.push('BreadcrumbList');
     if (notes.length) hits.push({ url: p.url, note: notes.join(', ') });
@@ -343,14 +376,31 @@ export function bingRow({ robots = {}, start = null }) {
 
 // ---------------------------------------------------------------- the GEO view and its score
 
-/** Rows from the other areas that decide what AI crawlers can reach and read. */
-export const GEO_RELATED = new Set(['seo.start', 'seo.robots-txt', 'seo.noindex', 'seo.thin', 'seo.sitemap', 'seo.jsonld-parse', 'seo.jsonld-client-side', 'seo.schema-validator', 'seo.rich-required', 'seo.canonical-host', 'seo.h1', 'seo.lang']);
+/**
+ * Rows from the other areas that decide what AI crawlers can reach and read: robots.txt, noindex,
+ * the sitemap (and what it wrongly lists), canonicals, JSON-LD, titles, h1, lang.
+ */
+export const GEO_RELATED = new Set([
+  'seo.start', 'seo.robots-txt', 'seo.noindex', 'seo.thin', 'seo.h1', 'seo.lang', 'seo.title-duplicate',
+  'seo.sitemap', 'seo.sitemap-noindex', 'seo.sitemap-blocked',
+  'seo.canonical-host', 'seo.canonical-target',
+  'seo.jsonld-parse', 'seo.jsonld-coverage', 'seo.jsonld-client-side', 'seo.schema-validator', 'seo.rich-required',
+]);
 export const isGeoRow = (r) => r.area === 'geo' || GEO_RELATED.has(r.id);
 
 /**
- * GEO readiness: 0–100 over the GEO rows (pass and info 1, warn 0.5, fail 0; skipped rows are
- * left out). A summary of the rows, not a prediction of AI visibility.
- * -> { score, counted, counts: { pass, info, warn, fail, skip } } or null when no row counts.
+ * Info rows that point at something missing (markup, a file, dates) rather than just describing the
+ * site. They count ¾ in the score instead of a full pass, and the report lists them as opportunities.
+ */
+const OPPORTUNITY_IDS = new Set(['seo.llms-txt', 'seo.schema-opportunities', 'seo.freshness', 'seo.author', 'seo.sitemap-lastmod', 'seo.jsonld-coverage', 'seo.entity-markup']);
+export const isOpportunity = (r) => r.status === 'info' && OPPORTUNITY_IDS.has(r.id) && Boolean(r.fix);
+export const OPPORTUNITY_WEIGHT = 0.75;
+
+/**
+ * GEO readiness: 0–100 over the GEO rows (pass and plain info 1, an info opportunity ¾, warn ½,
+ * fail 0; skipped rows are left out). A summary of the rows, not a prediction of AI visibility.
+ * -> { score, counted, counts: { pass, info, warn, fail, skip }, opportunities: [{ id, title }] }
+ *    or null when no row counts.
  */
 export function geoScore(rows) {
   const geo = rows.filter(isGeoRow);
@@ -358,6 +408,8 @@ export function geoScore(rows) {
   for (const r of geo) counts[r.status] = (counts[r.status] || 0) + 1;
   const counted = geo.filter((r) => r.status !== 'skip');
   if (!counted.length) return null;
-  const pts = counted.reduce((n, r) => n + ({ pass: 1, info: 1, warn: 0.5, fail: 0 }[r.status] ?? 0), 0);
-  return { score: Math.round((pts / counted.length) * 100), counted: counted.length, counts };
+  const weight = (r) => (isOpportunity(r) ? OPPORTUNITY_WEIGHT : ({ pass: 1, info: 1, warn: 0.5, fail: 0 }[r.status] ?? 0));
+  const pts = counted.reduce((n, r) => n + weight(r), 0);
+  const opportunities = counted.filter(isOpportunity).map((r) => ({ id: r.id, title: r.title }));
+  return { score: Math.round((pts / counted.length) * 100), counted: counted.length, counts, opportunities };
 }

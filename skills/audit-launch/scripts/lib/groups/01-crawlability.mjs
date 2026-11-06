@@ -9,6 +9,7 @@ import { isStagingHost } from '../cli.mjs';
 import { hostOf, sameUrlModuloSlash, pLimit } from '../http.mjs';
 import { extractHosts, extractLinks, extractAssets, extractMeta } from '../html.mjs';
 import { isDisallowedForAll } from '../robots.mjs';
+import { headThenGet } from '../crawl.mjs';
 
 const LANG_RE = /^([a-z]{2,3}(-[A-Za-z]{2,4}(-[A-Za-z0-9]{2,8})?)?|x-default)$/;
 
@@ -65,7 +66,7 @@ export default {
         out.push(result('crawl.sitemap-hosts', 'pass', 'Sitemap hosts', 'every sitemap URL is on this host'));
       }
       const sample = sitemap.urls.filter((u) => !sameUrlModuloSlash(u, finalUrl)).slice(0, 10);
-      const statuses = await Promise.all(sample.map((u) => limit(async () => ({ url: u, status: (await http.head(u, { redirect: 'follow', timeout: 10000 })).status }))));
+      const statuses = await Promise.all(sample.map((u) => limit(async () => ({ url: u, status: (await headThenGet(http, u)).res.status }))));
       const bad = statuses.filter((s) => s.status !== 200);
       out.push(bad.length
         ? result('crawl.sitemap-sample', bad.every((s) => s.status >= 300 && s.status < 400) ? 'warn' : 'fail', 'Sitemap URLs answer 200', `${bad.length} of ${statuses.length} sampled: ${bad.slice(0, 4).map((s) => `${s.status} ${s.url}`).join('; ')}`, { fix: 'A sitemap must list final, 200 URLs — no redirects, no 404s.' })

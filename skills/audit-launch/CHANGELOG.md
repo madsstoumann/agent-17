@@ -2,6 +2,14 @@
 
 All notable changes to the `audit-launch` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.4.0] - 2026-11-06
+
+### Fixed
+- DNS and mail rows from a resolver that answers addresses only. The Claude cloud container's resolver returns ENODATA for TXT, MX, NS, CAA and DS, so simcorp.com was reported without SPF, DMARC, DKIM, CAA, MX and NS. Every registered domain has NS records, so when the local resolver returns none for the domain, audit-launch asks DNS-over-HTTPS (Cloudflare, then Google) and reads every record there; `dns.records` says so. When DoH cannot be reached either, the DNS and mail rows are skipped with "the local resolver returned no records" instead of reported as missing.
+- `dns.dnssec` checks the domain's zone, not the host. www.simcorp.com is a CNAME to Vercel, whose zone is unsigned, so the row said "not signed" for a signed domain; it now says the domain validates and that the host is a CNAME into an unsigned zone.
+- `links.external-broken`, internal links past the crawl and the sitemap sample fall back to GET (body discarded) when HEAD answers any 4xx/5xx, not only 403/405/5xx. Two edge.sitecorecloud.io images on simcorp.com answered HEAD 404 and GET 200.
+- `dns.records` shows the domain's name servers, not those of a www CNAME target.
+
 ## [2.3.1] - 2026-11-06
 
 ### Changed

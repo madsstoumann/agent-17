@@ -33,6 +33,22 @@ export function isoDate(s) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
+const MONTHS = 'january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|januar|februar|marts|maj|juni|juli|oktober';
+const YEAR = '(?:19|20)\\d{2}';
+/** Dates as people write them: "November 24, 2022", "24 Nov 2022", "24. november 2022", 2022-11-24, 24.11.2022, 24/11/2022. */
+const VISIBLE_DATE = new RegExp([
+  `\\b(?:${MONTHS})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+${YEAR}\\b`,
+  `\\b\\d{1,2}(?:st|nd|rd|th)?\\.?\\s+(?:${MONTHS})\\.?,?\\s+${YEAR}\\b`,
+  `\\b${YEAR}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])\\b`,
+  `\\b(?:0?[1-9]|[12]\\d|3[01])[./](?:0?[1-9]|1[0-2])[./]${YEAR}\\b`,
+].join('|'), 'i');
+
+/** The first date written as text in `html` (tags stripped), or null. */
+export function visibleDate(html) {
+  const m = VISIBLE_DATE.exec(stripTags(html));
+  return m ? m[0] : null;
+}
+
 /** The body without scripts, styles, templates, SVG and the page chrome (nav, header, footer, aside). */
 function contentHtml(html) {
   const body = String(html || '').replace(/^[\s\S]*?<body[^>]*>/i, '');
@@ -44,7 +60,7 @@ function contentHtml(html) {
 /**
  * pageSignals(html, jsonLd) -> {
  *   headings, headingsAll, questionHeadings, lists, tables, paragraphs, longParagraphs,
- *   published, modified, dateSource, timeTags, author, articleLike, breadcrumbNav, bingVerify
+ *   published, modified, dateSource, timeTags, visibleDate, author, articleLike, breadcrumbNav, bingVerify
  * }
  * `jsonLd` is html.mjs's parsed blocks (`{ types, data, error }`).
  */
@@ -107,6 +123,8 @@ export function pageSignals(html, jsonLd = []) {
     modified,
     dateSource,
     timeTags: timeTags.length,
+    // A date shown as plain text in the content ("November 24, 2022"): a reader can date the page, a machine cannot.
+    visibleDate: visibleDate(main),
     author,
     articleLike,
     breadcrumbNav: /aria-label=["'][^"']*breadcrumb/i.test(src) || /\b(class|id)=["'][^"']*breadcrumb/i.test(src),
