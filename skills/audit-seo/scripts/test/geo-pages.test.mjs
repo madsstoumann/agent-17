@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pageSignals } from '../lib/content.mjs';
 import { extractMeta } from '../lib/html.mjs';
-import { judgeFetch, botAccessRow, renderedTextRow, freshnessRows, answerStructureRow, schemaOpportunitiesRow, bingRow, geoScore, isGeoRow } from '../lib/geo.mjs';
+import { judgeFetch, botAccessRow, renderedTextRow, freshnessRows, answerStructureRow, schemaOpportunitiesRow, bingRow, geoScore, isGeoRow, newsUrl, articleLikeWithoutMarkup } from '../lib/geo.mjs';
+import { visibleDate } from '../lib/content.mjs';
 import { parseRobotsTxt } from '../lib/robots.mjs';
 import { renderMarkdown, findings } from '../lib/report.mjs';
 import { pickRenderPages } from '../lib/checks.mjs';
@@ -172,4 +173,48 @@ test('pickRenderPages fills up with one page per section that has JSON-LD', () =
   const pg = (url, jsonLd = []) => ({ url, status: 200, title: 't', noindex: false, canonical: null, jsonLd });
   const pages = [pg('https://x.dk/', ld), pg('https://x.dk/blog/1'), pg('https://x.dk/news/1', ld), pg('https://x.dk/news/2', ld)];
   assert.deepEqual(pickRenderPages(pages, 'https://x.dk/', 8), ['https://x.dk/', 'https://x.dk/blog/1', 'https://x.dk/news/1']);
+});
+
+test('news pages without article markup: dated URL or a date written on the page (simcorp.com)', () => {
+  assert.deepEqual(newsUrl('https://www.simcorp.com/about-us/news/2022/SimCorp-and-Diligend-partner'), { dated: true });
+  assert.deepEqual(newsUrl('https://x.dk/insights/how-to-buy'), { dated: false });
+  for (const listing of ['https://x.dk/news', 'https://x.dk/news/2022', 'https://x.dk/blog/tag/ai', 'https://x.dk/blog/page/2', 'https://x.dk/about-us']) assert.equal(newsUrl(listing), null, listing);
+  assert.equal(visibleDate('<p>Copenhagen, <span>November 24, 2022</span></p>'), 'November 24, 2022');
+  assert.equal(visibleDate('<p>24. november 2022</p>'), '24. november 2022');
+  assert.equal(visibleDate('<p>Founded in 2022, 400 clients</p>'), null);
+  const html = '<html><head><title>SimCorp and Diligend partner</title></head><body><main><h1>SimCorp and Diligend partner</h1><p>November 24, 2022</p><p>Text.</p></main></body></html>';
+  const s = sig(html);
+  assert.equal(s.articleLike, false);
+  assert.equal(s.visibleDate, 'November 24, 2022');
+  const news = page('https://www.simcorp.com/about-us/news/2022/SimCorp-and-Diligend-partner', { visibleDate: 'November 24, 2022' });
+  const insight = page('https://www.simcorp.com/insights/buy-side-trends', { visibleDate: 'March 3, 2024' });
+  const undatedInsight = page('https://www.simcorp.com/insights/what-is-ibor', {});
+  assert.equal(articleLikeWithoutMarkup(news), true);
+  assert.equal(articleLikeWithoutMarkup(insight), true);
+  assert.equal(articleLikeWithoutMarkup(undatedInsight), false, 'an insights page with no date anywhere may be evergreen');
+  const rows = freshnessRows({ pages: [news, insight, undatedInsight, page('https://www.simcorp.com/', {})], today: '2026-11-06' });
+  const f = byId(rows, 'seo.freshness');
+  assert.equal(f.status, 'warn');
+  assert.match(f.evidence, /0 of 2 article pages carry a machine-readable date; 2 article-like pages \(news URL, date shown as plain text\) without a machine-readable date/);
+  assert.match(f.urls[0].note, /shows "November 24, 2022" as plain text/);
+  assert.equal(byId(rows, 'seo.author').status, 'warn', 'no author on any article-like page');
+  assert.match(schemaOpportunitiesRow({ pages: [news] }).evidence, /Article 1/);
+});
+
+test('GEO view counts JSON-LD coverage and sitemap rows; info opportunities count three quarters', () => {
+  const row = (id, status, area = 'geo', fix = '') => ({ id, area, status, title: id, evidence: '', fix, urls: [] });
+  for (const id of ['seo.jsonld-coverage', 'seo.sitemap-noindex', 'seo.sitemap-blocked', 'seo.canonical-target', 'seo.title-duplicate']) assert.equal(isGeoRow(row(id, 'pass', 'x')), true, id);
+  assert.equal(isGeoRow(row('seo.og-image', 'fail', 'social')), false);
+  // simcorp.com: 18 rows passing, then no JSON-LD anywhere and 9 noindex URLs in the sitemap
+  const base = Array.from({ length: 18 }, (_, i) => row(`seo.x${i}`, 'pass'));
+  const before = geoScore([...base, row('seo.ai-bot-access', 'warn'), row('seo.answer-structure', 'warn'), row('seo.jsonld-coverage', 'warn', 'schema'), row('seo.sitemap-noindex', 'fail', 'sitemap')]);
+  assert.equal(before.counted, 22);
+  assert.equal(before.score, Math.round(((18 + 1.5) / 22) * 100));
+  const opp = geoScore([row('seo.ai-crawlers', 'info'), row('seo.llms-txt', 'info', 'geo', 'add one'), row('seo.schema-opportunities', 'info', 'geo', 'mark up'), row('seo.llms-full', 'info')]);
+  assert.equal(opp.score, Math.round(((1 + 0.75 + 0.75 + 1) / 4) * 100));
+  assert.deepEqual(opp.opportunities.map((o) => o.id), ['seo.llms-txt', 'seo.schema-opportunities']);
+  const report = { site: { host: 'x.dk', finalUrl: 'https://x.dk/' }, stats: { html: 1, other: 0, redirects: 0, errors: 0, indexable: 1, sitemapMissing: 0 }, env: {}, date: '2026-11-06', version: 't', geo: { score: opp }, rows: [], pages: [] };
+  const md = renderMarkdown(report, { geo: true });
+  assert.match(md, /4 info, 2 of them opportunities/);
+  assert.match(md, /\*\*Opportunities\*\* .*: seo\.llms-txt, seo\.schema-opportunities\./);
 });

@@ -107,21 +107,28 @@ export async function crawlSite(http, { startUrl, seeds = [], maxPages = 100, co
 }
 
 /**
+ * headThenGet(http, url, { timeout }) -> { res, method }
+ * HEAD first; GET (body discarded) when HEAD answers nothing or any 4xx/5xx. Image edges (Sitecore's
+ * edge.sitecorecloud.io) answer HEAD 404 for a resized variant they have not generated yet and GET 200,
+ * and browsers and social scrapers use GET, so the GET answer is the one that counts.
+ */
+export async function headThenGet(http, url, { timeout = 10000 } = {}) {
+  const res = await http.head(url, { timeout, redirect: 'follow' });
+  if (res.status > 0 && res.status < 400) return { res, method: 'HEAD' };
+  return { res: await http.get(url, { timeout, redirect: 'follow', maxBytes: 0 }), method: 'GET' };
+}
+
+/**
  * checkLinks(http, urls, { concurrency, timeout, max, external })
  *   -> [{ url, status, ok, blocked, error, method }]
- * HEAD first, GET (body discarded) when HEAD is refused. For external links a
- * 403/429/999 is "blocked, verify by hand" rather than broken.
+ * HEAD first, GET (body discarded) when HEAD fails or answers 4xx/5xx (see headThenGet). For
+ * external links a 400/401/403/405/429/999 on the GET is "blocked, verify by hand" rather than broken.
  */
 export async function checkLinks(http, urls, { concurrency = 6, timeout = 10000, max = 200, external = false } = {}) {
   const limit = pLimit(concurrency);
   const list = urls.slice(0, max);
   return Promise.all(list.map((url) => limit(async () => {
-    let res = await http.head(url, { timeout, redirect: 'follow' });
-    let method = 'HEAD';
-    if (res.status === 0 || [403, 405, 500, 501].includes(res.status)) {
-      res = await http.get(url, { timeout, redirect: 'follow', maxBytes: 0 });
-      method = 'GET';
-    }
+    const { res, method } = await headThenGet(http, url, { timeout });
     // A 400/401/403/405/429/999 on a plain GET is a bot wall (Facebook, LinkedIn, X…), not a dead link.
     const blocked = external && [400, 401, 403, 405, 429, 999].includes(res.status);
     const ok = (res.status >= 200 && res.status < 400) || blocked;

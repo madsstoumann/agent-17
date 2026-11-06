@@ -23,7 +23,7 @@ import { diffRows } from './lib/diff.mjs';
 import { createHttp, isPrivateHost, isPrivateAddress, siblingHost, challengeVendor, pLimit, VERSION } from './lib/http.mjs';
 import { parseRobotsTxt, loadSitemaps } from './lib/robots.mjs';
 import { followChain } from './lib/redirects.mjs';
-import { crawlSite, checkExternal, checkInternal, normalise } from './lib/crawl.mjs';
+import { crawlSite, checkExternal, checkInternal, headThenGet, normalise } from './lib/crawl.mjs';
 import { runChecks, schemaChecks, pickSchemaPages, pickRenderPages, htmlPages } from './lib/checks.mjs';
 import { extractMeta } from './lib/html.mjs';
 import { richOf } from './lib/rich.mjs';
@@ -100,8 +100,8 @@ async function fullAudit(opts, http, siteHosts, log) {
   const ogUrls = [...new Set(html.map((p) => p.og?.image).filter((x) => x && /^https?:\/\//i.test(x)))].slice(0, 40);
   const lim = pLimit(opts.concurrency);
   const ogImages = await Promise.all(ogUrls.map((img) => lim(async () => {
-    let r = await http.head(img, { redirect: 'follow', timeout: 10000 });
-    if (r.status === 405 || r.status === 403 || r.status === 0) r = await http.get(img, { redirect: 'follow', timeout: 10000, maxBytes: 0 });
+    // HEAD can 404 where GET (what Facebook, LinkedIn and Slack send) answers 200: trust the GET.
+    const r = await headThenGet(http, img);
     return { url: img, status: r.status, contentType: r.contentType, error: r.error || null };
   })));
 

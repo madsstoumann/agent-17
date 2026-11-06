@@ -245,22 +245,32 @@ export async function checkInternal(http, { pages, inlinks }, { max = 300, concu
   for (let i = 0; picked.length < Math.min(max, todo.length); i++) for (const l of lists) if (l[i] && picked.length < max) picked.push(l[i]);
   const lim = pLimit(concurrency);
   const checked = await Promise.all(picked.map((url) => lim(async () => {
-    let r = await http.head(url, { redirect: 'follow', timeout });
-    if (r.status === 0 || r.status === 405 || r.status === 501) r = await http.get(url, { redirect: 'follow', timeout, maxBytes: 0 });
+    const r = await headThenGet(http, url, { timeout });
     return { url, status: r.status, error: r.error || null };
   })));
   return { checked, unchecked: todo.length - picked.length };
 }
 
 /**
- * checkLinks(http, urls, { concurrency, timeout }) -> [{ url, status, ok, blocked, error }]
- * HEAD first, GET when HEAD is refused. A 400/401/403/405/429/999 is a bot wall, not a dead link.
+ * headThenGet(http, url, { timeout }) -> the response that counts
+ * HEAD first; GET (body discarded) when HEAD answers nothing or any 4xx/5xx. Image edges (Sitecore's
+ * edge.sitecorecloud.io) answer HEAD 404 for a resized variant they have not generated yet and GET 200
+ * image/png, and browsers and social scrapers use GET, so the GET answer is the one that counts.
+ */
+export async function headThenGet(http, url, { timeout = 10000 } = {}) {
+  const res = await http.head(url, { timeout, redirect: 'follow' });
+  if (res.status > 0 && res.status < 400) return res;
+  return http.get(url, { timeout, redirect: 'follow', maxBytes: 0 });
+}
+
+/**
+ * checkExternal(http, urls, { concurrency, timeout }) -> [{ url, status, ok, blocked, error }]
+ * headThenGet per link. A 400/401/403/405/429/999 on the GET is a bot wall, not a dead link.
  */
 export async function checkExternal(http, urls, { concurrency = 6, timeout = 10000 } = {}) {
   const limit = pLimit(concurrency);
   return Promise.all(urls.map((url) => limit(async () => {
-    let res = await http.head(url, { timeout, redirect: 'follow' });
-    if (res.status === 0 || [403, 405, 500, 501].includes(res.status)) res = await http.get(url, { timeout, redirect: 'follow', maxBytes: 0 });
+    const res = await headThenGet(http, url, { timeout });
     const blocked = [400, 401, 403, 405, 429, 999].includes(res.status);
     return { url, status: res.status, ok: (res.status >= 200 && res.status < 400) || blocked, blocked, error: res.error || null };
   })));

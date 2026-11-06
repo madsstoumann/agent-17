@@ -353,3 +353,18 @@ test('tlsChecks reports no interception when the public roots trust the chain', 
   assert.equal(rows.find((r) => r.id === 'tls.chain').status, 'pass');
   assert.equal(calls.length, 1);
 });
+
+test('a local resolver that answers addresses only, with DoH unreachable, skips DNS and mail rows (simcorp.com)', async () => {
+  const enodata = () => Promise.reject(Object.assign(new Error('queryTxt ENODATA'), { code: 'ENODATA' }));
+  const system = { resolve4: async () => ['76.76.21.21'], resolve6: enodata, resolveNs: enodata, resolveCname: enodata, resolveMx: enodata, resolveTxt: enodata, resolveCaa: enodata, resolveSoa: enodata };
+  const dohDown = async () => { throw Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNREFUSED' } }); };
+  const resolver = createResolver({ fetch: dohDown, system });
+  const report = await run({ target: 'https://www.simcorp.com/', only: ['domain', 'email'], skip: [] }, { resolver, fetch: noFetch });
+  const dnsRows = report.results.filter((r) => /^(dns|email)\./.test(r.id));
+  assert.ok(dnsRows.length >= 5);
+  assert.ok(dnsRows.every((r) => r.status === 'skip'), dnsRows.filter((r) => r.status !== 'skip').map((r) => `${r.id} ${r.status}`).join(', '));
+  assert.match(report.results.find((r) => r.id === 'email.spf').evidence, /local resolver returned no records for simcorp\.com/);
+  // The same resolver with DoH reachable is trusted.
+  const fine = await run({ target: 'https://x.dk/', only: ['domain'], skip: [] }, { resolver: fakeResolver(ZONE), fetch: noFetch });
+  assert.ok(fine.results.some((r) => r.id.startsWith('dns.') && r.status !== 'skip'));
+});

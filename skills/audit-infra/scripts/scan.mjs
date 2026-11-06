@@ -11,7 +11,7 @@ import { SECTIONS, domainChecks, emailChecks, tlsChecks, edgeChecks, ctChecks } 
 import { DKIM_SELECTORS } from './lib/email.mjs';
 import { result, countStatuses, prepareRun, finishRun, consoleItems, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, settle, GLYPH } from './lib/common.mjs';
 
-export const VERSION = '2.4.0';
+export const VERSION = '2.4.1';
 const UA = `Mozilla/5.0 (compatible; audit-infra/${VERSION})`;
 
 const USAGE = `audit-infra ${VERSION}: domain, DNS, email, TLS and subdomain audit
@@ -122,14 +122,41 @@ export async function run(args, deps = {}) {
     log(`${id}: ${rows.length} checks in ${((Date.now() - t) / 1000).toFixed(1)}s`);
     return rows;
   };
+  // A local resolver that answers addresses only (some sandboxes, VPNs, cloud containers) is used
+  // only when both DoH providers are unreachable; its empty answers must not read as missing records.
+  const blind = platform ? null : await blindResolver(ctx.resolver, apex);
   // domain first (CAA and addresses feed tls and ct), edge before ct (HSTS feeds the no-https verdict).
   const results = [...await runGroup(GROUPS[0])];
   if (platform) results.push(result('dns.platform', 'warn', 'Hosting platform address', `${host} is an address on ${platform}, a hosting platform: its domain, DNS, mail and subdomains are the platform's, so those checks were skipped`, { fix: `Run audit-infra on the site's own domain (the live URL), not the platform address. Use --platform-ok only to audit ${platform} itself.` }));
   const [email, tls, edge] = await Promise.all([runGroup(GROUPS[1]), runGroup(GROUPS[2]), runGroup(GROUPS[3])]);
   results.push(...email, ...tls, ...edge, ...await runGroup(GROUPS[4]));
   markIntercepted(results);
+  if (blind) markBlindResolver(results, blind);
   const counts = countStatuses(results);
   return { tool: 'audit-infra', version: VERSION, generatedAt: now.toISOString(), target: { url, host, apex, emailDomain: ctx.emailDomain, sibling: ctx.sibling, ...(platform ? { platform } : {}) }, counts, results };
+}
+
+/**
+ * blindResolver(resolver, apex) -> null, or why the DNS answers cannot be trusted: every registered
+ * domain has NS records, so an apex with none, answered by the system resolver because DNS-over-HTTPS
+ * was unreachable, means the local resolver is not returning records (ENODATA for all but A/AAAA).
+ */
+export async function blindResolver(resolver, apex) {
+  const ns = await resolver.query(apex, 'NS');
+  if (ns.provider !== 'system' || ns.answers.some((a) => a.type === 'NS')) return null;
+  return `DNS-over-HTTPS (Cloudflare, Google) could not be reached and the local resolver returned no records for ${apex}, not even NS`;
+}
+
+/** With a blind resolver, every DNS and mail row describes the resolver: turn them into skips. */
+export function markBlindResolver(results, why) {
+  for (const r of results) {
+    if (!/^(dns|email)\./.test(r.id) || r.id === 'dns.platform' || r.status === 'skip') continue;
+    r.evidence = `not checked: ${why}; seen: ${r.evidence}`;
+    r.status = 'skip';
+    r.fix = 'Run audit-infra from a network where cloudflare-dns.com or dns.google is reachable, or whose resolver answers TXT, MX, NS and CAA.';
+    delete r.blocker;
+  }
+  return results;
 }
 
 /** With TLS inspection on the network, certificate rows describe the proxy: turn them into skips. */

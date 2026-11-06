@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runChecks, chainFrom, pickSchemaPages, looksSchemeless } from '../lib/checks.mjs';
-import { pageRecord, wordCount, crawlSite, checkInternal, localeOf, sampleSpread } from '../lib/crawl.mjs';
+import { pageRecord, wordCount, crawlSite, checkInternal, checkExternal, headThenGet, localeOf, sampleSpread } from '../lib/crawl.mjs';
 import { isAllowed } from '../lib/robotsmatch.mjs';
 import { parseRobotsTxt } from '../lib/robots.mjs';
 import { parseSchemaAnswer } from '../lib/schema.mjs';
@@ -229,4 +229,21 @@ test('sampleSpread shares the sitemap sample across language sections', () => {
   assert.deepEqual([count('/en/'), count('/es-ES/'), count('/de-DE/')], [9, 9, 2]);
   assert.equal(sampleSpread(en.slice(0, 5), 50).length, 5);
   assert.deepEqual(sampleSpread(en, 4), [en[0], en[25], en[50], en[75]]);
+});
+
+test('headThenGet: Sitecore\'s image edge answers HEAD 404 and GET 200 image/png; the GET counts', async () => {
+  const img = 'https://edge.sitecorecloud.io/simcorp/og.png?h=1080&iar=0&w=1920';
+  const calls = [];
+  const http = {
+    head: async (url) => { calls.push('HEAD'); return { url, status: 404, contentType: 'text/plain', headers: {}, error: null }; },
+    get: async (url, o) => { calls.push(`GET ${o.maxBytes}`); return { url, status: 200, contentType: 'image/png', headers: { 'content-type': 'image/png' }, body: null, error: null }; },
+  };
+  const r = await headThenGet(http, img);
+  assert.equal(r.status, 200);
+  assert.equal(r.contentType, 'image/png');
+  assert.deepEqual(calls, ['HEAD', 'GET 0']);
+  const [ext] = await checkExternal(http, [img]);
+  assert.equal(ext.ok, true);
+  const ok = { head: async (url) => ({ url, status: 200, contentType: 'image/png' }), get: async () => { throw new Error('no GET after a good HEAD'); } };
+  assert.equal((await headThenGet(ok, img)).status, 200);
 });

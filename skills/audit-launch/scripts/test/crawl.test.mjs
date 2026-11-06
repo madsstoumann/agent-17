@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pageRecordFromHtml, extractCrawlLinks, crawlSite, checkLinks } from '../lib/crawl.mjs';
+import { pageRecordFromHtml, extractCrawlLinks, crawlSite, checkLinks, headThenGet } from '../lib/crawl.mjs';
 
 const site = {
   'https://ex.com/': '<html lang="en"><head><title>Home</title><meta name="description" content="d"><link rel="canonical" href="https://ex.com/"></head><body><h1>Hi</h1><img src="a.png"><img src="http://cdn.ex.com/b.png" alt=""><a href="/about">About</a><a href="/about#team">Team</a><a href="mailto:x@y.z">m</a><a href="https://other.com/x">ext</a><a href="/file.pdf">pdf</a></body></html>',
@@ -52,8 +52,24 @@ test('checkLinks falls back to GET and marks blocked externals', async () => {
   const r = await checkLinks(fakeHttp, ['https://ex.com/about', 'https://ex.com/missing', 'https://other.com/x', 'https://nowhere.test/'], { external: true });
   assert.deepEqual(r.map((x) => [x.url, x.status, x.ok, x.method]), [
     ['https://ex.com/about', 200, true, 'HEAD'],
-    ['https://ex.com/missing', 404, false, 'HEAD'],
+    ['https://ex.com/missing', 404, false, 'GET'],
     ['https://other.com/x', 0, false, 'GET'],
     ['https://nowhere.test/', 0, false, 'GET'],
   ]);
+});
+
+test('headThenGet: a HEAD 404 that GET answers 200 is not broken (Sitecore image edge, simcorp.com)', async () => {
+  const img = 'https://edge.sitecorecloud.io/simcorp/hero.png?h=1080&iar=0&w=1920';
+  const calls = [];
+  const sitecore = {
+    head: async (url) => { calls.push('HEAD'); return { url, finalUrl: url, status: 404, headers: {}, contentType: 'text/plain', error: null }; },
+    get: async (url, o) => { calls.push(`GET ${o.maxBytes}`); return { url, finalUrl: url, status: 200, headers: { 'content-type': 'image/png' }, contentType: 'image/png', body: null, error: null }; },
+  };
+  const { res, method } = await headThenGet(sitecore, img);
+  assert.equal(res.status, 200);
+  assert.equal(method, 'GET');
+  assert.deepEqual(calls, ['HEAD', 'GET 0'], 'the GET discards the body');
+  const [link] = await checkLinks(sitecore, [img], { external: true });
+  assert.equal(link.ok, true);
+  assert.equal(link.status, 200);
 });

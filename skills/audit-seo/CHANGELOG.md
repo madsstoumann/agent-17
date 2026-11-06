@@ -2,6 +2,16 @@
 
 All notable changes to the `audit-seo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.5.0] - 2026-11-06
+
+### Fixed
+- `seo.og-image` no longer fails images whose host answers HEAD with 404 and GET with 200. og:image, external and internal link checks and llms.txt links now fall back to GET (body discarded) on any 4xx/5xx or no answer, and trust the GET. Sitecore's image edge (edge.sitecorecloud.io) answers HEAD 404 for a resized variant (`?h=1080&iar=0&w=1920`) it has not generated yet; all 40 og:images on simcorp.com were reported as "not served as an image".
+- `--geo` and the GEO readiness score now count `seo.jsonld-coverage`, `seo.sitemap-noindex`, `seo.sitemap-blocked`, `seo.canonical-target` and `seo.title-duplicate`. On simcorp.com (no JSON-LD on any page, 9 noindex URLs in the sitemap) the GEO report said 95/100 with two warnings, and audit-all's compact PDF said structured data passed.
+- `seo.freshness`, `seo.author` and `seo.schema-opportunities` recognise article-like pages without article markup: a news, blog or insights URL with its own slug and either a year in the path or a date written on the page ("November 24, 2022", "24. november 2022", 24.11.2022). Without a machine-readable date they are reported as "article-like pages without a machine-readable date" (warning). simcorp.com's news pages were "no article pages recognised".
+
+### Changed
+- GEO readiness: info rows that point at something missing (llms.txt, structured data opportunities, dates and authors, sitemap lastmod, JSON-LD coverage, entity markup) are opportunities and count 0.75 instead of a full pass. The report lists them under the score.
+
 ## [2.4.0] - 2026-11-06
 
 ### Added

@@ -43,7 +43,8 @@ function localeNote(locales) {
 export function geoLine(score) {
   if (!score) return null;
   const c = score.counts;
-  return `${score.score}/100 over ${score.counted} AI search checks (${c.fail} fail, ${c.warn} warn, ${c.pass} pass, ${c.info} info${c.skip ? `, ${c.skip} skipped` : ''})`;
+  const opp = score.opportunities?.length || 0;
+  return `${score.score}/100 over ${score.counted} AI search checks (${c.fail} fail, ${c.warn} warn, ${c.pass} pass, ${c.info} info${opp ? `, ${opp} of them opportunities` : ''}${c.skip ? `, ${c.skip} skipped` : ''})`;
 }
 
 export function renderMarkdown(report, { levels, geo = false } = {}) {
@@ -59,7 +60,11 @@ export function renderMarkdown(report, { levels, geo = false } = {}) {
   out.push(`**Site:** ${site.finalUrl} · **Date:** ${report.date} · **Tool:** audit-seo ${report.version}${geo ? ' (--geo)' : ''}`, '');
   out.push(`**Result:** ${resultLine(counts)}`, '');
   const gl = report.mode === 'schema' ? null : geoLine(report.geo?.score);
-  if (gl) out.push(`**GEO readiness:** ${gl}. A summary of the checks below, not a measure of how often AI engines cite the site.`, '');
+  if (gl) {
+    out.push(`**GEO readiness:** ${gl}. A summary of the checks below, not a measure of how often AI engines cite the site.`, '');
+    const opp = report.geo.score.opportunities || [];
+    if (opp.length) out.push(`**Opportunities** (info rows that point at missing markup, files or dates; each counts ¾ in the score, not as a pass): ${opp.map((o) => o.title).join(', ')}.`, '');
+  }
   if (geo) out.push('**Scope:** AI search (GEO) only: AI crawler access in robots.txt and at the edge, text and JSON-LD without JavaScript, llms.txt, entity and article markup, dates and authors, answer structure, plus the indexing rows that decide what any crawler can reach. Run without --geo for the full SEO audit.', '');
   if (filtered) out.push(levelNote(levels, { hidden: report.rows.length - rows.length }), '');
   if (report.mode === 'schema') out.push(`**Checked:** structured data on this one page only (${/^file:|^\//.test(site.finalUrl) || !/^https?:/.test(site.finalUrl) ? 'a local file' : '--schema-only'}); nothing was crawled. Run without --schema-only for the full SEO audit.`, '');
