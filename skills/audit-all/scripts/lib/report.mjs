@@ -42,6 +42,16 @@ export const KINDS = {
 };
 const ORDER = Object.keys(KINDS);
 
+// audit-seo run with --geo writes a GEO audit: same folder and data, its own title.
+const GEO_KIND = {
+  title: 'GEO audit',
+  standfirst: 'The site seen the way AI search and answer engines see it: which AI crawlers robots.txt and the edge let in, what text and structured data a crawler gets without JavaScript, llms.txt, entity and article markup, dates and authors, and how quotable the pages are.',
+};
+/** The section title and standfirst for a report: KINDS, or the GEO ones for audit-seo --geo. */
+export function kindOf(r) {
+  return r.kind === 'audit-seo' && /^#\s+GEO audit\b/m.test(r.md || '') ? GEO_KIND : KINDS[r.kind];
+}
+
 /** Sub-folders named `<kind>` or `<kind>-<target>` that hold a report.md, in kind order then name order. */
 export function discoverReports(runDir) {
   const found = [];
@@ -121,8 +131,10 @@ export function headline(report) {
     h.figures = [[h.counts.fail, 'fail'], [h.counts.warn, 'warn']];
     if (kind === 'audit-seo') {
       const crawled = md.match(/\*\*Crawled:\*\*\s*(\d+) HTML pages/);
+      const geo = md.match(/\*\*GEO readiness:\*\*\s*(\d+)\/100/);
       h.result = line ? plain(line[1]) : null;
-      h.what = crawled ? `${crawled[1]} pages crawled.` : null;
+      h.geo = geo ? Number(geo[1]) : undefined;
+      h.what = crawled ? `${crawled[1]} pages crawled.${geo ? ` GEO readiness ${geo[1]}/100.` : ''}` : null;
     } else {
       const start = line && line[1].match(/start page ([\d.]+) g CO2e per view \(rating ([A-F]\+?)\)/);
       h.result = start ? `${start[1]} g CO2e per view (${start[2]}) · ${plain(line[1]).split(' · ')[0]}` : (line ? plain(line[1]) : null);
@@ -153,7 +165,7 @@ export function siteMismatches(reports, heads, subject) {
   if (!want) return [];
   return reports.map((r, i) => ({ r, host: hostOf(heads[i].target) }))
     .filter(({ r, host }) => SITE_KINDS.has(r.kind) && host && baseDomain(host) !== baseDomain(want))
-    .map(({ r, host }) => ({ kind: r.kind, title: KINDS[r.kind].title, target: host, subject: want }));
+    .map(({ r, host }) => ({ kind: r.kind, title: kindOf(r).title, target: host, subject: want }));
 }
 const mismatchNote = (m) => `${m.title} checked ${m.target}, not ${m.subject}: its findings may belong to another site or a hosting platform. Run it again on ${m.subject}.`;
 
@@ -206,7 +218,7 @@ export function combinedMarkdown({ summary, reports, heads, date, version, stack
   const body = summary.raw ? summary.raw.trim() : '';
   if (body) out.push(body, '');
   out.push('## At a glance', '', '| Audit | Target | Result | Report |', '|---|---|---|---|');
-  reports.forEach((r, i) => out.push(`| ${KINDS[r.kind].title} | ${heads[i].target || ''} | ${(heads[i].result || '').replace(/\|/g, '\\|')} | \`${r.folder}/report.md\` |`));
+  reports.forEach((r, i) => out.push(`| ${kindOf(r).title} | ${heads[i].target || ''} | ${(heads[i].result || '').replace(/\|/g, '\\|')} | \`${r.folder}/report.md\` |`));
   out.push('');
   for (const m of siteMismatches(reports, heads, summary.meta.subject)) out.push(`> ⚠️ ${mismatchNote(m)}`, '');
   for (const r of reports) {
@@ -262,7 +274,7 @@ function renderSummary(summary) {
 function glanceTable(reports, heads) {
   const rows = reports.map((r, i) => {
     const h = heads[i];
-    return `<tr><td>${KINDS[r.kind].title}${h.target ? `<span class="sub mono">${escapeHtml(h.target)}</span>` : ''}</td><td>${escapeHtml(h.result || '')}</td><td class="mono">${escapeHtml(r.folder)}/report.md</td></tr>`;
+    return `<tr><td>${kindOf(r).title}${h.target ? `<span class="sub mono">${escapeHtml(h.target)}</span>` : ''}</td><td>${escapeHtml(h.result || '')}</td><td class="mono">${escapeHtml(r.folder)}/report.md</td></tr>`;
   }).join('\n');
   return `<div class="tbl-wrap"><table class="glance"><thead><tr><th>Audit</th><th>Result</th><th>Full report</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -287,7 +299,7 @@ export function clipSentences(text, max = 140) {
 /** Contents page: the summary, then every audit with its section number. `pages` maps an id to its page. */
 function tocPage(reports, heads, pages = {}) {
   const entry = (id, no, title, target) => `<li><a href="#${id}"><span class="no">${no}</span><span class="t">${title}${target ? ` <span class="sub mono">${escapeHtml(target)}</span>` : ''}</span><span class="pg">${pages[id] ?? ''}</span></a></li>`;
-  const items = [entry('summary', '', 'Summary'), ...reports.map((r, i) => entry(`audit-${i + 1}`, i + 1, KINDS[r.kind].title, reports.filter((x) => x.kind === r.kind).length > 1 ? heads[i].target : null))];
+  const items = [entry('summary', '', 'Summary'), ...reports.map((r, i) => entry(`audit-${i + 1}`, i + 1, kindOf(r).title, reports.filter((x) => x.kind === r.kind).length > 1 ? heads[i].target : null))];
   return `<section class="toc" id="contents">${row('Contents', `<ol class="toc-list">${items.join('\n')}</ol>`)}</section>`;
 }
 
@@ -295,7 +307,7 @@ function coverMeta(reports, heads) {
   return reports.map((r, i) => {
     const h = heads[i];
     const figs = (h.figures || []).filter(([n]) => n !== undefined).map(([n, w]) => `${n} <small>${w}</small>`).join(' ');
-    const label = `${KINDS[r.kind].title}${reports.filter((x) => x.kind === r.kind).length > 1 && h.target ? ` · <span class="mono">${escapeHtml(h.target)}</span>` : ''}`;
+    const label = `${kindOf(r).title}${reports.filter((x) => x.kind === r.kind).length > 1 && h.target ? ` · <span class="mono">${escapeHtml(h.target)}</span>` : ''}`;
     return `<div><div class="label">${label}</div>${figs ? `<div class="n">${figs}</div>` : ''}${h.what ? `<div class="what">${escapeHtml(clipSentences(h.what, reports.length > 6 ? 110 : 140))}</div>` : ''}</div>`;
   }).join('\n');
 }
@@ -312,14 +324,14 @@ const PAGE_FONT = { serif: '"AA Newsreader", "Iowan Old Style", Charter, Georgia
 export function combinedHtml({ summary, reports, heads, date, version, css, style, toolVersions = {}, compact = false, pages = {}, stack = [] }) {
   const subject = summary.meta.subject || heads.find((h) => h.target)?.target || 'Audit';
   const title = summary.meta.title || `Audit report: ${subject}`;
-  const names = [...new Set(reports.map((r) => KINDS[r.kind].title))].map((t, i) => (i ? t.toLowerCase() : t));
+  const names = [...new Set(reports.map((r) => kindOf(r).title))].map((t, i) => (i ? t.toLowerCase() : t));
   const deck = summary.meta.deck || `${names.join(', ').replace(/, ([^,]*)$/, ' and $1')}, checked on ${fmtDate(date)}.`;
   const tools = [`audit-all ${version}`, ...Object.entries(toolVersions).map(([k, v]) => `${k} ${v}`)].join(' · ');
 
   const audits = reports.map((r, i) => {
     const split = splitReport(r.md);
     const { intro, sections } = compact ? compactReport(split) : split;
-    const kind = KINDS[r.kind];
+    const kind = kindOf(r);
     const target = heads[i].target;
     const meta = intro.length ? `<div class="result-line">${renderBlocks(intro)}</div>` : '';
     const opener = `<div class="row opener"><div class="margin"><div class="sec-no">${i + 1}</div></div><div class="body"><h2>${kind.title}${target ? ` <span class="target mono">${escapeHtml(target)}</span>` : ''}</h2><p class="standfirst">${kind.standfirst}</p>${meta}</div></div>`;

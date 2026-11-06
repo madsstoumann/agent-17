@@ -258,11 +258,11 @@ export function sampleSitemapUrls(urls, { startUrl, n, exclude = [] }) {
  * @returns {Promise<{
  *   urls: string[],
  *   sources: Array<{ url: string, status: number|null, kind: 'urlset'|'sitemapindex'|'unknown'|'skipped', count: number, error: string|null }>,
- *   truncated: boolean, indexes: string[]
+ *   truncated: boolean, indexes: string[], lastmod: Record<string, string>
  * }>}
  */
 export async function loadSitemaps(http, sitemapUrls, { maxChildren = 5, maxUrls = 5000, maxBytes = 10 * 1024 * 1024, log = () => {} } = {}) {
-  const out = { urls: [], sources: [], truncated: false, indexes: [] };
+  const out = { urls: [], sources: [], truncated: false, indexes: [], lastmod: {} };
   const collected = new Set();
   const visited = new Set();
   const reserved = new Map(); // a child's source row, placed in index order before it is fetched
@@ -306,10 +306,11 @@ export async function loadSitemaps(http, sitemapUrls, { maxChildren = 5, maxUrls
       queue.unshift(...kids);
       continue;
     }
-    for (const { loc } of parsed.urls) {
+    for (const { loc, lastmod } of parsed.urls) {
       if (collected.has(loc)) continue;
       if (collected.size >= maxUrls) { out.truncated = true; break; }
       collected.add(loc);
+      if (lastmod) out.lastmod[loc] = lastmod;
     }
   }
   for (const url of queue) if (!visited.has(url) && !reserved.has(url)) out.sources.push({ url, status: null, kind: 'unknown', count: 0, error: null });

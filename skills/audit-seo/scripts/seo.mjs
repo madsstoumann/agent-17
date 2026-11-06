@@ -9,7 +9,8 @@
  * Start page and redirects → robots.txt and sitemaps → crawl (links, then a sitemap sample) →
  * Chrome render of the start page and pages without JSON-LD (JSON-LD added by JavaScript) →
  * og:image and external link checks → validator.schema.org on one page per template →
- * llms.txt, llms-full.txt and ai.txt → checks → report.md, report.json, findings.json, pages.csv.
+ * llms.txt, llms-full.txt and ai.txt → a few pages fetched as each AI crawler → checks →
+ * report.md, report.json, findings.json, pages.csv.
  */
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
@@ -26,9 +27,9 @@ import { crawlSite, checkExternal, checkInternal, normalise } from './lib/crawl.
 import { runChecks, schemaChecks, pickSchemaPages, pickRenderPages, htmlPages } from './lib/checks.mjs';
 import { extractMeta } from './lib/html.mjs';
 import { richOf } from './lib/rich.mjs';
-import { findChrome, launch, render } from './lib/render.mjs';
+import { findChrome, launch, render, TEXT_MEASURE } from './lib/render.mjs';
 import { schemaValidate } from './lib/schema.mjs';
-import { fetchGeo, geoChecks } from './lib/geo.mjs';
+import { fetchGeo, geoChecks, fetchBotAccess, botAccessRow, renderedTextRow, freshnessRows, answerStructureRow, schemaOpportunitiesRow, bingRow, geoScore } from './lib/geo.mjs';
 import { renderMarkdown, renderStdout, findings, pagesCsv, consoleItems } from './lib/report.mjs';
 import { consoleList, scratchDir, removeScratch } from './lib/levels.mjs';
 
@@ -141,11 +142,26 @@ async function fullAudit(opts, http, siteHosts, log) {
   log('llms.txt, llms-full.txt, ai.txt');
   const geo = await fetchGeo(http, u.origin);
 
+  // What the edge does to AI crawlers: no --header bypass here, since that would skip the very
+  // rule being tested. Start page first, then one page per section.
+  let botAccess = null;
+  if (opts.botPages > 0) {
+    const botUrls = pickRenderPages(crawl.pages, finalUrl, opts.botPages);
+    log(`AI crawler user agents: ${botUrls.length} page${botUrls.length === 1 ? '' : 's'}`);
+    const plain = createHttp({ timeout: opts.timeout, concurrency: opts.concurrency });
+    botAccess = await fetchBotAccess(plain, botUrls, { robots: opts.ignoreRobots ? null : robots.parsed, challengeVendor });
+  }
+
   const rows = runChecks({
     finalUrl, hosts: siteHosts, productionHost: opts.productionHost, pages: crawl.pages, inlinks: crawl.inlinks, blocked: crawl.blocked,
     truncated: crawl.truncated, robots, sitemap, external, externalFrom: crawl.external, internal, ogImages: ogUrls.length ? ogImages : null, schema, render: renderInfo.summary,
   });
-  rows.push(...geoChecks({ robots, robotsText, geo, start: crawl.pages.find((p) => p.url === finalUrl) }));
+  const startPage = crawl.pages.find((p) => p.url === finalUrl);
+  rows.push(...geoChecks({ robots, robotsText, geo, start: startPage }));
+  rows.push(botAccessRow(botAccess));
+  rows.push(renderedTextRow({ pages: crawl.pages, render: renderInfo.summary }));
+  rows.push(...freshnessRows({ pages: crawl.pages, sitemap }));
+  rows.push(...[answerStructureRow({ pages: crawl.pages }), schemaOpportunitiesRow({ pages: crawl.pages }), bingRow({ robots, start: startPage })].filter(Boolean));
 
   const date = new Date().toISOString().slice(0, 10);
   return { inlinks: crawl.inlinks, report: {
@@ -160,6 +176,7 @@ async function fullAudit(opts, http, siteHosts, log) {
       linksChecked: internal?.checked.length || 0, linksUnchecked: internal?.unchecked || 0, locales: crawl.locales,
       seconds: Math.round((Date.now() - startedAt) / 1000),
     },
+    geo: { score: geoScore(rows), botAccess },
     rows,
     pages: crawl.pages,
   } };
@@ -174,16 +191,20 @@ async function renderPass(urls, pages, { opts, siteHosts, log }) {
   const html = new Map();
   if (!urls.length) return { summary: { ran: false, error: opts.renderPages ? 'no HTML page to render' : null, pages: [] }, html };
   if (!findChrome()) return { summary: { ran: false, error: 'no Chrome, Chromium or Edge found (install one or set CHROME_PATH)', pages: [] }, html };
-  log(`Chrome: rendering ${urls.length} page${urls.length === 1 ? '' : 's'} for JSON-LD added by JavaScript`);
+  log(`Chrome: rendering ${urls.length} page${urls.length === 1 ? '' : 's'} (JSON-LD and text added by JavaScript)`);
   let browser;
   try { browser = await launch({ insecure: opts.insecure }); } catch (e) { return { summary: { ran: false, error: e.message, pages: [] }, html }; }
   const out = [];
   try {
     for (const url of urls) {
-      const r = await render(browser, url, { headers: opts.headers, hosts: siteHosts, timeout: Math.max(opts.timeout * 2, 20000) });
+      const r = await render(browser, url, { headers: opts.headers, hosts: siteHosts, timeout: Math.max(opts.timeout * 2, 20000), measure: TEXT_MEASURE });
       if (!r.ok) { out.push({ url, ok: false, added: 0, error: r.error }); continue; }
       const blocks = extractMeta(r.html, url).jsonLd;
       const page = pages.find((p) => p.url === url);
+      if (page && r.measured && Number.isFinite(r.measured.words)) {
+        page.renderedWords = r.measured.words;
+        page.renderedHeadings = r.measured.headings;
+      }
       const before = page?.jsonLd?.length || 0;
       const added = Math.max(0, blocks.length - before);
       if (added && page) {
@@ -264,14 +285,14 @@ async function writeOut(opts, report, inlinks) {
     }
   }
   const paths = { md: path.join(dir, 'report.md'), json: path.join(dir, 'report.json'), findings: path.join(dir, 'findings.json'), csv: path.join(dir, 'pages.csv') };
-  await fs.writeFile(paths.md, renderMarkdown(report, { levels: opts.levels }));
+  await fs.writeFile(paths.md, renderMarkdown(report, { levels: opts.levels, geo: opts.geo && report.mode !== 'schema' }));
   await fs.writeFile(paths.json, `${JSON.stringify(report, null, 2)}\n`);
   await fs.writeFile(paths.findings, `${JSON.stringify(findings(report), null, 2)}\n`);
   await fs.writeFile(paths.csv, pagesCsv(report.pages, inlinks));
   await fs.writeFile(path.join(stateDir, lastName), JSON.stringify(report));
   const head = opts.console
-    ? `${consoleList({ title: `audit-seo ${report.site.host}`, items: consoleItems(report), levels: opts.levels })}${opts.report ? `\nReport: ${paths.md}` : ''}`
-    : renderStdout(report, paths, { levels: opts.levels });
+    ? `${consoleList({ title: `audit-seo ${report.site.host}`, items: consoleItems(report, { geo: opts.geo && report.mode !== 'schema' }), levels: opts.levels })}${opts.report ? `\nReport: ${paths.md}` : ''}`
+    : renderStdout(report, paths, { levels: opts.levels, geo: opts.geo && report.mode !== 'schema' });
   removeScratch(scratch);
   process.stdout.write(`${head}\nState: ${stateDir}\nCompared with: ${baselineFile || 'nothing (first run for this host)'}${notes ? '\nNotes: notes.md included in the report' : ''}\n`);
 }

@@ -139,6 +139,7 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 |---|---|
 | `--url URL` / `--no-site` | The live site to audit, or code audits only. |
 | `--only`, `--skip`, `--add` | Which audits run: `a11y`, `infra`, `launch`, `privacy`, `security`, `seo`, `health`, `eco` (or `all`). Default: infra, launch, privacy, security, health. |
+| `--geo` | A GEO audit: SEO / GEO (audit-seo `--geo`, with its GEO readiness score) plus Launch, and a summary that leads with AI search. |
 | `--yes` | No questions: the default audits, Editorial, level all, the detected URL. |
 | `--style serif\|sans` | Report look: Editorial (`serif`, default) or Modern (`sans`). |
 | `--level`, `--console` | As above. The level is passed to every audit and applied to `fix/TODO.md`; `--console` prints the fix plan as a list instead of the combined report and PDFs. |
@@ -191,7 +192,9 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 | Flag | What it does |
 |---|---|
 | `--schema-only` | Structured data on the given page only: validator.schema.org, Google rich-result rules, JSON-LD added by JavaScript, every issue on its own line. No crawl. Implied for a local file. |
-| `--render-pages N` | Pages rendered in headless Chrome to find JSON-LD that JavaScript adds (default 8, 0 to skip). Uses `CHROME_PATH` or finds Chrome. |
+| `--geo` | GEO view: `report.md` titled "GEO audit", showing the AI search rows and the indexing rows that decide what AI crawlers reach, under a GEO readiness score. `report.json` and `findings.json` keep everything. |
+| `--render-pages N` | Pages rendered in headless Chrome (start page, pages without JSON-LD, then one per section) to find JSON-LD and text that JavaScript adds; the text is compared with the served HTML that AI crawlers read (default 8, 0 to skip). Uses `CHROME_PATH` or finds Chrome. |
+| `--bot-pages N` | Pages fetched with each AI crawler's user agent (OAI-SearchBot, ChatGPT-User, Claude-SearchBot, PerplexityBot…), bingbot and Googlebot, to find CDN or WAF rules that refuse them (default 3, 0 to skip). |
 | `--pages N` | Pages to crawl (default 150), shared across language sections. |
 | `--sitemap-sample N` | Extra sitemap URLs the crawl did not reach (default 50). |
 | `--internal-links N` | Internal link targets past the `--pages` cap, checked for a status only (default 300, 0 to skip). |

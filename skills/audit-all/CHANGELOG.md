@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.15.0] - 2026-11-06
+
+### Added
+- `--geo` ("GEO audit", "AI search readiness"): runs audit-seo with `--geo` plus audit-launch, asks only Look and Show, and leads summary.md and tasks.json with the AI search findings. The combined report titles audit-seo's section "GEO audit" when it ran with `--geo`.
+- audit-seo's GEO readiness score in the at-a-glance line ("GEO readiness 93/100").
+
 ## [1.14.0] - 2026-11-06
 
 ### Fixed

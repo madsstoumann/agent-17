@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { parseBlocks, renderBlocks, inline, plain } from '../lib/markdown.mjs';
-import { discoverReports, headline, parseSummary, parseAction, statusClass, splitReport, clipSentences, combinedHtml, siteMismatches } from '../lib/report.mjs';
+import { discoverReports, headline, kindOf, parseSummary, parseAction, statusClass, splitReport, clipSentences, combinedHtml, siteMismatches } from '../lib/report.mjs';
 import { findChrome, buildPrintArgs, pdfDestPages } from '../lib/pdf.mjs';
 import { parseArgs, reportsRoot, safeName, combine, VERSION } from '../combine.mjs';
 
@@ -100,7 +100,8 @@ test('headline: audit-seo and audit-eco figures', () => {
   const seo = headline({ kind: 'audit-seo', target: null, md: sample('audit-seo') });
   assert.equal(typeof seo.counts.fail, 'number');
   assert.equal(typeof seo.counts.warn, 'number');
-  assert.match(seo.what, /^\d+ pages crawled\.$/);
+  assert.match(seo.what, /^\d+ pages crawled\. GEO readiness \d+\/100\.$/);
+  assert.equal(typeof seo.geo, 'number');
   const eco = headline({ kind: 'audit-eco', target: null, md: sample('audit-eco') });
   assert.equal(typeof eco.counts.warn, 'number');
   assert.match(eco.result, /^[\d.]+ g CO2e per view \(A\+\) · \d+ fail/);
@@ -363,4 +364,11 @@ test('<details>/<summary> from the sub-audits render as an open block, not as es
   assert.doesNotMatch(html, /&lt;details|&lt;summary/);
   // Other raw HTML is still escaped.
   assert.match(renderBlocks(parseBlocks('<script>x</script>')), /&lt;script&gt;/);
+});
+
+test('kindOf: audit-seo run with --geo is titled GEO audit', () => {
+  const md = sample('audit-seo');
+  assert.equal(kindOf({ kind: 'audit-seo', md }).title, 'SEO / GEO audit');
+  assert.equal(kindOf({ kind: 'audit-seo', md: md.replace(/^# SEO audit/, '# GEO audit') }).title, 'GEO audit');
+  assert.equal(kindOf({ kind: 'audit-eco', md: '# GEO audit — x' }).title, 'Sustainability audit');
 });

@@ -13,7 +13,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { normaliseUrl, parseHeaderLines, VERSION } from './http.mjs';
 import { targetDir, stamp } from './target-state.mjs';
 
-export const DEFAULTS = { pages: 150, sitemapSample: 50, externalLinks: 150, internalLinks: 300, schemaPages: 8, renderPages: 8, concurrency: 6, timeout: 15000 };
+export const DEFAULTS = { pages: 150, sitemapSample: 50, externalLinks: 150, internalLinks: 300, schemaPages: 8, renderPages: 8, botPages: 3, concurrency: 6, timeout: 15000 };
 
 export function parseCli(argv, env = process.env, { cwd = process.cwd() } = {}) {
   let values, positionals;
@@ -29,6 +29,8 @@ export function parseCli(argv, env = process.env, { cwd = process.cwd() } = {}) 
         'schema-pages': { type: 'string' },
         'render-pages': { type: 'string' },
         'schema-only': { type: 'boolean' },
+        'bot-pages': { type: 'string' },
+        geo: { type: 'boolean' },
         'production-host': { type: 'string' },
         out: { type: 'string' },
         state: { type: 'string' },
@@ -77,6 +79,8 @@ export function parseCli(argv, env = process.env, { cwd = process.cwd() } = {}) 
       internalLinks: int(values['internal-links'], DEFAULTS.internalLinks, 'internal-links'),
       schemaPages: int(values['schema-pages'], DEFAULTS.schemaPages, 'schema-pages'),
       renderPages: int(values['render-pages'], DEFAULTS.renderPages, 'render-pages'),
+      botPages: int(values['bot-pages'], DEFAULTS.botPages, 'bot-pages'),
+      geo: Boolean(values.geo),
       concurrency: Math.max(1, int(values.concurrency, DEFAULTS.concurrency, 'concurrency')),
       timeout: int(values.timeout, DEFAULTS.timeout, 'timeout'),
       productionHost: values['production-host'] ? values['production-host'].toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '') : null,
@@ -166,8 +170,13 @@ Usage: node seo.mjs <url> [flags]
   --internal-links N     Internal link targets the crawl found but did not fetch (past --pages), checked for a
                          status so broken links on every crawled page are found (default ${DEFAULTS.internalLinks}, 0 to skip).
   --schema-pages N       Pages (one per template) sent to validator.schema.org (default ${DEFAULTS.schemaPages}, 0 to skip).
-  --render-pages N       Pages rendered in headless Chrome to find JSON-LD that JavaScript adds: the start page plus
-                         pages without JSON-LD in the served HTML, one per section (default ${DEFAULTS.renderPages}, 0 to skip).
+  --render-pages N       Pages rendered in headless Chrome: the start page, pages without JSON-LD in the served HTML,
+                         then one page per section. Finds JSON-LD that JavaScript adds and compares the served text with
+                         the rendered text, as AI crawlers that do not run JavaScript see it (default ${DEFAULTS.renderPages}, 0 to skip).
+  --bot-pages N          Pages fetched as each AI crawler (OAI-SearchBot, Claude-SearchBot, PerplexityBot…), bingbot and
+                         Googlebot, to find CDN or WAF rules that refuse them (default ${DEFAULTS.botPages}, 0 to skip).
+  --geo                  GEO view: report.md and the summary show the AI search rows and the rows that decide what AI
+                         crawlers can reach, under a GEO readiness score. report.json and findings.json keep everything.
   --schema-only          Only the structured-data checks, on the given page alone, every validator error listed.
                          Implied for a local HTML file.
   --production-host H    The future live host; canonical, og:url and hreflang on it are not "another host".

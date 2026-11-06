@@ -1,10 +1,10 @@
 ---
 name: audit-seo
-description: Use when someone wants an SEO or content audit of a whole website, not just the start page — titles and meta descriptions (missing, too long, duplicated), Open Graph and share previews, structured data (JSON-LD that does not parse, validator.schema.org errors, Google rich-result required and recommended properties, JSON-LD that only JavaScript adds — pages are rendered in headless Chrome to find it), sitemap and robots.txt consistency (noindex, redirecting, blocked or missing URLs, orphan pages), canonical and hreflang problems, broken internal and external links and redirect chains, plus GEO (AI search readiness): llms.txt and llms-full.txt, AI crawler rules in robots.txt (OAI-SearchBot, ClaudeBot, GPTBot, PerplexityBot, Google-Extended…), Content-Signal and ai.txt, and Organization/WebSite entity markup for answer engines. Also for validating the schema.org / JSON-LD markup of a single URL or a local HTML file (`--schema-only`), "why is this page not indexed", re-checking after SEO fixes, or comparing with the last run. Any stack, public or local URLs.
-argument-hint: "<url | file.html> [--schema-only] [--pages N] [--sitemap-sample N] [--external-links N] [--internal-links N] [--schema-pages N] [--render-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
+description: Use when someone wants an SEO, content or GEO (AI search) audit of a whole website, not just the start page. Titles and descriptions, Open Graph, structured data (JSON-LD that does not parse, validator.schema.org errors, Google rich-result properties, JSON-LD only JavaScript adds), sitemap and robots.txt consistency, canonical and hreflang, broken links and redirect chains. GEO with a readiness score covers AI crawler rules in robots.txt and whether the CDN or WAF lets OAI-SearchBot, Claude-SearchBot or PerplexityBot in, text only JavaScript builds, llms.txt, entity markup, dates and authors, sitemap lastmod, answer structure, missing markup, Bing. Also for a client's technical GEO audit (`--geo`), validating one URL's or a local HTML file's JSON-LD (`--schema-only`), "why is this page not indexed", or re-checking after fixes. Any stack, public or local URLs.
+argument-hint: "<url | file.html> [--geo] [--schema-only] [--pages N] [--sitemap-sample N] [--external-links N] [--internal-links N] [--schema-pages N] [--render-pages N] [--bot-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "2.3.1"
+  version: "2.4.0"
 ---
 
 # SEO audit
@@ -40,7 +40,9 @@ the findings; non-zero means the script failed (read the last stderr lines).
 | `--internal-links N` (default 300) | Internal link targets the crawl found but did not fetch (past `--pages`), checked for a status so a broken footer link in any crawled section is reported. `0` to skip. |
 | `--external-links N` (default 150) | Outbound links to check. `0` to skip. 403/429/999 answers are bot walls, reported as "verify by hand". |
 | `--schema-pages N` (default 8) | Pages sent to validator.schema.org, one per distinct JSON-LD type set. Private hosts get their HTML posted instead. `0` or `--no-remote` skips it. |
-| `--render-pages N` (default 8) | Pages rendered in headless Chrome after the crawl: the start page, then pages whose served HTML has no JSON-LD, one per section. JSON-LD that appears only after JavaScript runs is adopted for every structured-data check, posted to the validator as the rendered DOM, and reported as "JSON-LD added by JavaScript" (Google sees it; Bing, social scrapers and most AI crawlers do not). Needs Chrome, Chromium or Edge (found automatically, or `CHROME_PATH`); without one the row is skipped. `0` turns it off. |
+| `--render-pages N` (default 8) | Pages rendered in headless Chrome after the crawl: the start page, then pages whose served HTML has no JSON-LD, one per section, then one page per section not picked yet. JSON-LD that appears only after JavaScript runs is adopted for every structured-data check, posted to the validator as the rendered DOM, and reported as "JSON-LD added by JavaScript" (Google sees it; Bing, social scrapers and most AI crawlers do not). Each rendered page's text (consent banners left out) is compared with its served HTML for "Text without JavaScript". Needs Chrome, Chromium or Edge (found automatically, or `CHROME_PATH`); without one those rows are skipped. `0` turns it off. Raise it (16–24) for a GEO audit of a site with many templates. |
+| `--bot-pages N` (default 3) | Pages (start page, then one per section) fetched once as a browser and once with each AI crawler's user agent (OAI-SearchBot, ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, GPTBot, ClaudeBot), bingbot and Googlebot, without the `--header` bypass, to find CDN or WAF rules that refuse crawlers robots.txt lets in. Crawlers robots.txt shuts out are not fetched. `0` skips it. |
+| `--geo` | The user wants a GEO audit, AI search readiness, "is the site ready for ChatGPT / AI answers", or the technical part of a GEO proposal. `report.md` becomes a "GEO audit" with the AI search rows first and only the indexing rows that decide what AI crawlers reach (robots.txt, noindex, thin pages, sitemap, JSON-LD, h1, lang). `report.json` and `findings.json` keep every row (`"geo": true` marks the GEO findings). |
 | `--schema-only` | The user only wants the structured data of one page checked ("validate the schema on …", "is my JSON-LD valid?"). Fetches that URL alone, renders it, validates it and runs the Google rich-result rules, and lists every validator error and warning on its own line. No crawl, robots, sitemap or GEO. |
 | `<file.html>` instead of a URL | A local HTML file: the same as `--schema-only` on the file (rendered from `file://`, its HTML posted to the validator). |
 | `--production-host www.example.com` | Auditing staging: canonicals, sitemap URLs and hreflang on the future live host are then not "another host". |
@@ -114,6 +116,22 @@ Honesty rules:
   health sites and no longer shows HowTo; do not promise them.
 - Duplicate titles across language versions are fine when hreflang ties them together.
 - The crawl is a sample when the cap was hit. Say "in the 150 pages crawled", not "on the site".
+- **GEO readiness** (on every full run, at the top of the report) is the share of GEO rows that
+  pass: pass and info count 1, warn 0.5, fail 0, skipped rows are left out. It sums up the rows;
+  it does not measure whether AI engines cite the site. Say so whenever you quote it.
+- **AI crawlers at the edge** sends each crawler's user agent from this machine, not from the
+  crawler's published IP ranges. When a Googlebot user agent is refused too, the edge checks
+  crawlers by IP and the row is info ("cannot tell from here"): point to the CDN's bot settings
+  and the server logs. A refusal of AI search crawlers while Googlebot gets through is a real rule
+  (Cloudflare "Block AI bots" / AI Crawl Control, a Vercel or Akamai bot rule, a security plugin).
+- **Text without JavaScript** compares the rendered pages only (`--render-pages`), one per section.
+  Name it a sample; a site that fails it builds its content in the browser, which most AI
+  crawlers do not run.
+- Dates, authors, answer structure and structured data opportunities are heuristics over the
+  served HTML. "Article pages" are pages with Article/BlogPosting/NewsArticle JSON-LD, og:type
+  article, article:published_time or a dated `<article>`; question headings end in "?". Present
+  them as where to look, not as defects, except undated or anonymous articles.
+- IndexNow and Bing Webmaster Tools cannot be seen from outside: the Bing row says what to ask.
 - GEO rows are about readiness, not results. Blocking an AI *search* crawler (OAI-SearchBot,
   ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot) keeps the site out of AI answers and
   is a warning; blocking only *training* crawlers (GPTBot, ClaudeBot, Google-Extended, CCBot) is
@@ -121,6 +139,18 @@ Honesty rules:
   sell it as a ranking factor. Nothing here shows whether an AI engine actually cites the site.
 - Nothing here sees rankings, traffic, backlinks or Search Console. Offer Search Console's page
   indexing report as the next step for "why is X not indexed".
+
+## GEO audit for a client
+
+For a technical GEO audit (crawlability, content accessibility for AI crawlers, structured data, a
+prioritised plan), run `seo.mjs <url> --geo --render-pages 16` (or audit-all with `--geo`, which
+adds audit-launch and the combined PDF and fix plan). Then lead the write-up with what keeps AI
+crawlers out (robots.txt or edge rules, text only JavaScript builds), then what makes the content
+hard to use (no dates or authors, no entity markup, walls of text), then the nice-to-haves
+(llms.txt, more markup). Two things stay manual and should be offered: a check of the server or
+CDN logs for real AI crawler visits, and a spot-check of how ChatGPT, Perplexity, Gemini and Google
+AI Overviews answer the client's key questions (does the site appear or get cited). Nothing here
+measures that.
 
 ## Fix plan
 
@@ -139,6 +169,8 @@ Check the structured data and share previews across https://shop.example.dk
 Validate the schema.org markup on https://shop.example.dk/products/mug   (--schema-only)
 Is the JSON-LD in ./dist/index.html valid? Will Google show product stars?   (local file)
 Is https://www.example.dk ready for AI search? Do we have an llms.txt?
+GEO audit of https://www.example.dk for the client proposal   (--geo)
+Do Cloudflare or our WAF block ChatGPT or Perplexity from https://www.example.dk?
 Crawl 500 pages of https://www.example.dk and give me the duplicate titles as a spreadsheet   (pages.csv)
 Run the SEO audit again after the fixes
 ```
@@ -151,7 +183,10 @@ Run the SEO audit again after the fixes
   (identical copy in audit-launch; a test in each skill checks it); `lib/rich.mjs` — Google
   rich-result rules; `lib/render.mjs` — headless Chrome over the DevTools protocol (no
   `--user-data-dir`: it hangs); `lib/robotsmatch.mjs` — robots.txt matching;
-  `lib/geo.mjs` — llms.txt, ai.txt, AI crawlers and entity markup.
+  `lib/geo.mjs` — llms.txt, ai.txt, AI crawlers in robots.txt and at the edge, entity markup,
+  text without JavaScript, dates and authors, sitemap lastmod, answer structure, structured data
+  opportunities, Bing, and the GEO readiness score; `lib/content.mjs` — the per-page signals those
+  rows read (dates, author, headings, lists, tables, paragraph length).
 - `scripts/lib/http.mjs`, `html.mjs`, `robots.mjs`, `redirects.mjs` — copies of audit-launch's;
   `target-state.mjs` — the shared target-folder layout; keep the copies in step.
 - Tests: `cd scripts && node --test test/*.test.mjs`.

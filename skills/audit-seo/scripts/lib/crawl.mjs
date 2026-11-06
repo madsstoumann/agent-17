@@ -11,6 +11,7 @@
  */
 import { extractLinks, extractMeta, stripTags, tokenize } from './html.mjs';
 import { richOf } from './rich.mjs';
+import { pageSignals } from './content.mjs';
 import { hostOf, pLimit } from './http.mjs';
 import { isAllowed } from './robotsmatch.mjs';
 
@@ -80,6 +81,7 @@ export function pageRecord(url, res, html) {
     jsonLd: meta.jsonLd.map((j) => ({ types: j.types, error: j.error })),
     ...richOf(meta.jsonLd),
     words: wordCount(html),
+    sig: pageSignals(html, meta.jsonLd),
     imgNoAlt: imgs.filter((t) => !('alt' in t.attrs)).length,
     bytes: Buffer.byteLength(html),
   });

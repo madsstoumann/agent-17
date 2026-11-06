@@ -68,7 +68,7 @@ cd agent-17 && git checkout <commit>   # pin it
 | audit-solution-health | `node skills/audit-solution-health/scripts/check.mjs --root <solution path>`, then `finalize.mjs` (see below) |
 | audit-launch | `node skills/audit-launch/scripts/audit.mjs <url>` |
 | audit-a11y | `node skills/audit-a11y/scripts/a11y.mjs <url>` |
-| audit-seo | `node skills/audit-seo/scripts/seo.mjs <url>` |
+| audit-seo | `node skills/audit-seo/scripts/seo.mjs <url>` (add `--geo` for the GEO view) |
 | audit-eco | `node skills/audit-eco/scripts/eco.mjs <url>` |
 | audit-privacy | `node skills/audit-privacy/scripts/scan.mjs <url>` |
 | audit-infra | `node skills/audit-infra/scripts/scan.mjs <domain>` |

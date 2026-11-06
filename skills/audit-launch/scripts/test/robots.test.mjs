@@ -245,7 +245,7 @@ test('loadSitemaps caps index children, caps URLs with truncated: true, and neve
   assert.match(dead.sources[0].error, /ECONNREFUSED/);
 
   const none = await loadSitemaps(http, []);
-  assert.deepEqual(none, { urls: [], sources: [], truncated: false, indexes: [] });
+  assert.deepEqual(none, { urls: [], sources: [], truncated: false, indexes: [], lastmod: {} });
   const bad = await loadSitemaps({ async get() { throw new Error('boom'); } }, ['https://example.com/sitemap.xml']);
   assert.match(bad.sources[0].error, /boom/);
 });
