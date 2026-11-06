@@ -1,10 +1,10 @@
 ---
 name: audit-all
 description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, accessibility, SEO and AI search (GEO), sustainability (carbon footprint), privacy and consent, domain and mail infrastructure, code security and dependency health. Runs audit-launch, audit-a11y (WCAG 2.2 / EN 301 549), audit-seo, audit-eco, audit-privacy and audit-infra on the live URL, audit-security and audit-solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security or audit-solution-health reports into one.
-argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--yes] [--style serif|sans|editorial|modern] [--level error|warn|error,warn|all] [--console] [--out DIR]"
+argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--geo] [--yes] [--style serif|sans|editorial|modern] [--level error|warn|error,warn|all] [--console] [--out DIR]"
 allowed-tools: AskUserQuestion, Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.14.0"
+  version: "1.15.0"
 ---
 
 # Audit all
@@ -41,6 +41,14 @@ other way, invoke them by name instead (`skills:audit-launch` in the plugin, `au
   exactly those, `--skip health` drops one from the default set and `--add seo` adds an opt-in
   one. "only launch and security", "also check accessibility", "no SEO", "skip the carbon check"
   and the like mean the same; "everything" or `--only all` runs all eight.
+- **GEO audit.** `--geo` (or "GEO audit", "AI search readiness", "is the site ready for ChatGPT /
+  AI answers") runs SEO / GEO with audit-seo's `--geo` flag, plus Launch unless the user said
+  only GEO. Treat it as `--only seo,launch`; it settles the audit questions, so ask only Look and
+  Show. audit-seo's report becomes a "GEO audit" with a GEO readiness score (its section in the
+  combined report and PDF is titled GEO audit), and summary.md and tasks.json lead with the AI
+  search findings (`"geo": true` in audit-seo's `findings.json`). The verdict says what keeps AI
+  crawlers out (robots.txt or edge rules, text only JavaScript builds) before anything else, and
+  says the score sums up the checks: it does not measure how often AI engines cite the site.
 - **Show (level).** Which findings the reports show: **All** (the default), **Errors and
   warnings** (`--level error,warn`), **Errors only** (`--level error`) or **Warnings only**
   (`--level warn`). Errors are fail, blocker, high and red; warnings are warn, medium, low and
@@ -171,7 +179,7 @@ folder name.
 |---|---|---|
 | audit-launch | Follow audit-launch's SKILL.md with `--out "<run>/audit-launch"` (one folder per URL: `audit-launch-<host>`). Add `--skip privacy` when audit-privacy runs and `--skip tls` when audit-infra runs: those two own the cookie/tracker and TLS/DNS/email checks, so each finding appears once | `report.md`, `report.json` |
 | audit-a11y | Follow audit-a11y's SKILL.md with `--out "<run>/audit-a11y"` (one folder per URL: `audit-a11y-<host>`). Run it after audit-launch and pass `--from "<run>/audit-launch/report.json"` so it samples the pages the crawl found; pass `--repo <name>` when one of the repos renders the site | `report.md`, `report.json`, `tasks.json` |
-| audit-seo | Follow audit-seo's SKILL.md with `--out "<run>/audit-seo"` (pass `--production-host` and `--header` as for audit-launch) | `report.md`, `findings.json`, `pages.csv` |
+| audit-seo | Follow audit-seo's SKILL.md with `--out "<run>/audit-seo"` (pass `--production-host` and `--header` as for audit-launch; add `--geo` for a GEO audit) | `report.md`, `findings.json`, `pages.csv` |
 | audit-eco | Follow audit-eco's SKILL.md with `--out "<run>/audit-eco"`. Add `--grid` and `--views` only when the user gives a country or traffic | `report.md`, `findings.json` |
 | audit-privacy | Follow audit-privacy's SKILL.md with `--out "<run>/audit-privacy"`, including the policy review it asks you to add to `report.md` | `report.md`, `report.json`, `banner.png`, `policy-*.txt` |
 | audit-infra | Follow audit-infra's SKILL.md with `--out "<run>/audit-infra"` | `report.md`, `report.json` |

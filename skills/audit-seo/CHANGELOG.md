@@ -2,6 +2,24 @@
 
 All notable changes to the `audit-seo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.4.0] - 2026-11-06
+
+### Added
+- GEO readiness score at the top of every full report and summary: the share of GEO rows that pass (pass and info 1, warn 0.5, fail 0, skipped left out). A summary of the checks, not a measure of AI citations.
+- `--geo`: a GEO audit. report.md is titled "GEO audit" and shows the AI search rows first plus the indexing rows that decide what AI crawlers reach; report.json and findings.json keep everything, and each finding carries `"geo": true|false`.
+- `seo.ai-bot-access` (AI crawlers at the edge), with `--bot-pages N` (default 3): the start page and one page per section fetched as a browser and with each AI crawler's user agent (OAI-SearchBot, ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, GPTBot, ClaudeBot), bingbot and Googlebot, without the `--header` bypass. A refused AI search crawler while Googlebot gets through is a warning (a CDN or WAF rule); a refused Googlebot means the edge checks bots by IP and the row says it cannot tell. On browser.style the edge refuses PerplexityBot on every page.
+- `seo.ai-rendered-text` (Text without JavaScript): each rendered page's text, consent banners left out, against its served HTML. Pages that serve less than half of their text are a warning; a site where most rendered pages serve under a fifth fails (it builds its content in the browser, which most AI crawlers do not run).
+- `seo.freshness` and `seo.author`: datePublished/dateModified (JSON-LD, article:* meta or a `<time datetime>` on an article) and an author on article pages; stale dates (over two years) as info.
+- `seo.sitemap-lastmod`: no `<lastmod>` (info), or every lastmod the same day, a build stamp (warning).
+- `seo.answer-structure` (info): question headings, lists and tables, walls of long paragraphs, long pages without subheadings.
+- `seo.schema-opportunities` (info): pages that look like articles, FAQs or breadcrumb trails without the matching markup.
+- `seo.bingbot`: bingbot blocked in robots.txt (warning, since ChatGPT search and Copilot draw on Bing), Bing verification tag, and what to ask about IndexNow.
+- pages.csv: rendered_words, date_published, date_modified, author and question_headings columns.
+
+### Changed
+- `--render-pages` fills its remaining slots with one page per section that already has JSON-LD, so the text comparison sees every template.
+- The skill description is under claude.ai's 1,024-character limit again.
+
 ## [2.3.1] - 2026-11-06
 
 ### Fixed

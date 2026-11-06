@@ -124,12 +124,23 @@ const hostOf = (u) => { try { return new URL(u).host.toLowerCase(); } catch { re
 const LD_COUNT = 'document.querySelectorAll(\'script[type="application/ld+json" i]\').length';
 const DOM = '(document.doctype ? new XMLSerializer().serializeToString(document.doctype) + "\\n" : "") + document.documentElement.outerHTML';
 
+// Runs in the page: the words and headings a reader sees once JavaScript has run, with consent
+// banners left out (they are added by script on almost every site and say nothing about the page).
+export const TEXT_MEASURE = `(() => {
+  const b = document.body ? document.body.cloneNode(true) : null;
+  if (!b) return { words: 0, headings: 0 };
+  b.querySelectorAll('script,style,noscript,template,svg,[id^="onetrust" i],[id*="cookiebot" i],[id*="usercentrics" i],[id*="didomi" i],[id*="cookie-consent" i],[id*="cookieconsent" i],[class*="cookie-consent" i],[class*="cookieconsent" i],[id*="cookie-banner" i],[class*="cookie-banner" i],[aria-label*="cookie" i][role="dialog"]').forEach((e) => e.remove());
+  const t = (b.textContent || '').replace(/\\s+/g, ' ').trim();
+  return { words: t ? t.split(' ').filter((w) => /[\\p{L}\\p{N}]/u.test(w)).length : 0, headings: b.querySelectorAll('h1,h2,h3,h4,h5,h6').length };
+})()`;
+
 /**
- * render(browser, url, { headers, hosts, timeout, settleMs }) -> { ok, url, finalUrl, status, html, error? }
+ * render(browser, url, { headers, hosts, timeout, settleMs, measure }) -> { ok, url, finalUrl, status, html, measured?, error? }
  * Waits for the load event, then until the JSON-LD count has been steady for `settleMs`
- * (at most 8 s more), and returns the serialised DOM.
+ * (at most 8 s more), and returns the serialised DOM. `measure` is an expression evaluated in the
+ * page after that; its value comes back as `measured`.
  */
-export async function render(browser, url, { headers = {}, hosts = [], timeout = 30000, settleMs = 1200 } = {}) {
+export async function render(browser, url, { headers = {}, hosts = [], timeout = 30000, settleMs = 1200, measure = null } = {}) {
   let targetId;
   let off = () => {};
   try {
@@ -166,7 +177,8 @@ export async function render(browser, url, { headers = {}, hosts = [], timeout =
     }
     const html = (await send('Runtime.evaluate', { expression: DOM, returnByValue: true })).result?.value;
     if (typeof html !== 'string') return { ok: false, url, error: 'could not read the rendered DOM' };
-    return { ok: true, url, finalUrl, status, html };
+    const measured = measure ? (await send('Runtime.evaluate', { expression: measure, returnByValue: true }).catch(() => null))?.result?.value ?? null : null;
+    return { ok: true, url, finalUrl, status, html, measured };
   } catch (e) {
     return { ok: false, url, error: e.message };
   } finally {

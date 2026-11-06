@@ -43,6 +43,8 @@ const AREA_OF = {
   'seo.og-missing': 'social', 'seo.og-image': 'social', 'seo.og-url': 'social', 'seo.twitter-card': 'social',
   'seo.jsonld-parse': 'schema', 'seo.jsonld-coverage': 'schema', 'seo.schema-validator': 'schema', 'seo.jsonld-client-side': 'schema', 'seo.rich-required': 'schema', 'seo.rich-recommended': 'schema', 'seo.rich-notes': 'schema',
   'seo.ai-crawlers': 'geo', 'seo.content-signal': 'geo', 'seo.llms-txt': 'geo', 'seo.llms-full': 'geo', 'seo.ai-txt': 'geo', 'seo.entity-markup': 'geo',
+  'seo.ai-bot-access': 'geo', 'seo.ai-rendered-text': 'geo', 'seo.freshness': 'geo', 'seo.author': 'geo', 'seo.sitemap-lastmod': 'geo',
+  'seo.answer-structure': 'geo', 'seo.schema-opportunities': 'geo', 'seo.bingbot': 'geo',
 };
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -385,8 +387,9 @@ function richChecks(html, detailed) {
 }
 
 /**
- * Pages to render in Chrome, as a fallback for JSON-LD the served HTML lacks: the start page
- * first, then indexable pages without JSON-LD, one per first path segment, up to `n`.
+ * Pages to render in Chrome: the start page first, then indexable pages without JSON-LD (the
+ * fallback for JSON-LD the served HTML lacks), one per first path segment, then one page per
+ * section not picked yet, so the served-versus-rendered text check sees every template, up to `n`.
  */
 export function pickRenderPages(pages, startUrl, n) {
   if (n <= 0) return [];
@@ -398,6 +401,14 @@ export function pickRenderPages(pages, startUrl, n) {
   for (const p of html.filter(indexable)) {
     if (picked.length >= n) break;
     if (picked.includes(p.url) || p.jsonLd?.length) continue;
+    let key;
+    try { key = new URL(p.url).pathname.split('/').filter(Boolean)[0] || '/'; } catch { key = p.url; }
+    if (seen.has(key)) continue;
+    seen.add(key); picked.push(p.url);
+  }
+  for (const p of html.filter(indexable)) {
+    if (picked.length >= n) break;
+    if (picked.includes(p.url)) continue;
     let key;
     try { key = new URL(p.url).pathname.split('/').filter(Boolean)[0] || '/'; } catch { key = p.url; }
     if (seen.has(key)) continue;

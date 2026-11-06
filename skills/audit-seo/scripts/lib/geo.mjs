@@ -7,6 +7,7 @@
  */
 import { result } from './checks.mjs';
 import { isAllowed } from './robotsmatch.mjs';
+import { isoDate } from './content.mjs';
 
 /**
  * AI crawlers by what blocking them costs. `answer` bots fetch pages to cite them in AI search
@@ -145,4 +146,218 @@ export function geoChecks({ robots = {}, robotsText = '', geo = null, start = nu
       : result('seo.entity-markup', 'pass', 'Entity markup for answer engines', `start page: ${[...types].filter((t) => ENTITY_TYPES.test(t) || t === 'WebSite').join(', ')}`));
   }
   return out;
+}
+
+// ---------------------------------------------------------------- what AI crawlers actually get
+
+/**
+ * User agents for the access test, as each crawler sends it. Googlebot is the control: no site
+ * means to refuse Google, so a refused Googlebot user agent means the edge checks bots by IP
+ * address, and every refusal from this machine is then inconclusive.
+ */
+export const BOT_UAS = [
+  { agent: 'OAI-SearchBot', kind: 'answer', ua: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot' },
+  { agent: 'ChatGPT-User', kind: 'answer', ua: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot' },
+  { agent: 'Claude-SearchBot', kind: 'answer', ua: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-SearchBot/1.0; +https://www.anthropic.com)' },
+  { agent: 'Claude-User', kind: 'answer', ua: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-User/1.0; +https://www.anthropic.com)' },
+  { agent: 'PerplexityBot', kind: 'answer', ua: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)' },
+  { agent: 'Perplexity-User', kind: 'answer', ua: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Perplexity-User/1.0; +https://perplexity.ai/perplexity-user)' },
+  { agent: 'bingbot', kind: 'search', ua: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm) Chrome/131.0.0.0 Safari/537.36' },
+  { agent: 'GPTBot', kind: 'training', ua: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.1; +https://openai.com/gptbot' },
+  { agent: 'ClaudeBot', kind: 'training', ua: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ClaudeBot/1.0; +claudebot@anthropic.com)' },
+  { agent: 'Googlebot', kind: 'control', ua: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Chrome/131.0.0.0 Safari/537.36' },
+];
+
+const textWords = (html) => {
+  const body = String(html || '').replace(/^[\s\S]*?<body[^>]*>/i, '').replace(/<(script|style|svg|noscript|template)\b[\s\S]*?<\/\1\s*>/gi, ' ');
+  const t = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return t ? t.split(' ').filter((w) => /[\p{L}\p{N}]/u.test(w)).length : 0;
+};
+
+/** One fetch as the verdict needs it: refused (status, challenge or a stub of the page) or not. */
+export function judgeFetch(res, baselineWords, challengeVendor = () => null) {
+  if (!res || res.status === 0) return { refused: true, why: res?.error || 'no answer' };
+  if (res.status >= 400) return { refused: true, why: `HTTP ${res.status}` };
+  const vendor = challengeVendor(res.status, res.body, res.headers || {});
+  if (vendor) return { refused: true, why: `${vendor} challenge` };
+  const w = textWords(res.body);
+  if (baselineWords >= 100 && w < baselineWords * 0.3) return { refused: true, why: `${w} words instead of ${baselineWords}` };
+  return { refused: false, why: `HTTP ${res.status}, ${w} words` };
+}
+
+/**
+ * Fetches each of `urls` once as a browser (the baseline) and once per crawler in BOT_UAS that
+ * robots.txt lets in. `http` must not send the --header bypass: the point is what the edge does
+ * to a crawler. -> { pages: [{ url, baseline, bots: { <agent>: { refused, why } | { robots: true } } }] }
+ */
+export async function fetchBotAccess(http, urls, { robots = null, challengeVendor = () => null } = {}) {
+  const pages = [];
+  for (const url of urls) {
+    const path = (() => { try { const u = new URL(url); return u.pathname + u.search; } catch { return '/'; } })();
+    const base = await http.get(url, { redirect: 'follow', maxBytes: 2 * 1024 * 1024 });
+    const baseWords = textWords(base.body);
+    const baseline = judgeFetch(base, 0, challengeVendor);
+    const bots = {};
+    await Promise.all(BOT_UAS.map(async (b) => {
+      if (robots && !isAllowed(robots, path, b.agent.toLowerCase())) { bots[b.agent] = { robots: true }; return; }
+      const r = await http.get(url, { redirect: 'follow', maxBytes: 2 * 1024 * 1024, headers: { 'user-agent': b.ua } });
+      bots[b.agent] = judgeFetch(r, baseWords, challengeVendor);
+    }));
+    pages.push({ url, baseline: { ...baseline, words: baseWords }, bots });
+  }
+  return { pages };
+}
+
+/** The seo.ai-bot-access row from fetchBotAccess's output (null: not run). */
+export function botAccessRow(access, { skipped = null } = {}) {
+  const T = 'AI crawlers at the edge';
+  if (!access) return result('seo.ai-bot-access', 'skip', T, skipped || 'not run (--bot-pages 0)');
+  const ok = access.pages.filter((p) => !p.baseline.refused);
+  if (!ok.length) return result('seo.ai-bot-access', 'skip', T, `a browser request was refused too (${access.pages.map((p) => p.baseline.why).join(', ')}), so the crawler test says nothing; check the CDN's bot settings or the server logs`);
+  const refusedBy = (agent) => ok.filter((p) => p.bots[agent]?.refused);
+  const control = refusedBy('Googlebot');
+  const kindOf = Object.fromEntries(BOT_UAS.map((b) => [b.agent, b.kind]));
+  const refused = BOT_UAS.filter((b) => b.kind !== 'control' && refusedBy(b.agent).length).map((b) => b.agent);
+  const urls = ok.flatMap((p) => Object.entries(p.bots).filter(([, v]) => v.refused).map(([agent, v]) => ({ url: p.url, note: `${agent}: ${v.why}` })));
+  const pages = plural(ok.length, 'page');
+  if (control.length) {
+    return result('seo.ai-bot-access', 'info', T, `a Googlebot user agent from this machine was refused too, so the edge checks crawlers by IP address and the test cannot tell${refused.length ? `; also refused here: ${refused.join(', ')}` : ''}`, { fix: 'Check the CDN or WAF bot settings (Cloudflare: Security > Bots and "Block AI bots"; Vercel Firewall; Akamai Bot Manager) and the server logs for OAI-SearchBot, PerplexityBot and Claude-SearchBot answers.', urls });
+  }
+  const answer = refused.filter((a) => kindOf[a] === 'answer' || kindOf[a] === 'search');
+  const training = refused.filter((a) => kindOf[a] === 'training');
+  if (answer.length) {
+    return result('seo.ai-bot-access', 'warn', T, `robots.txt lets them in, but the edge refuses ${answer.join(', ')} on ${plural(new Set(urls.filter((u) => answer.includes(u.note.split(':')[0])).map((u) => u.url)).size, 'page')} of ${ok.length}, while a Googlebot user agent gets the page${training.length ? `; training crawlers refused too: ${training.join(', ')}` : ''}`, { fix: 'A CDN or WAF rule is blocking AI search crawlers by user agent (Cloudflare "Block AI bots" or AI Crawl Control, a Vercel or Akamai bot rule, a security plugin). Allow the search and user-triggered crawlers (OAI-SearchBot, ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User) and bingbot, and keep blocking only the training crawlers if that is the policy. Confirm in the CDN logs afterwards: the real crawlers come from published IP ranges.', urls });
+  }
+  if (training.length) return result('seo.ai-bot-access', 'info', T, `AI search crawlers get the page on ${pages}; the edge refuses training crawlers (a policy choice): ${training.join(', ')}`, { urls });
+  return result('seo.ai-bot-access', 'pass', T, `every AI crawler user agent got the same page as a browser on ${pages}${ok.some((p) => Object.values(p.bots).some((v) => v.robots)) ? ' (crawlers robots.txt shuts out were not fetched)' : ''}`);
+}
+
+// ---------------------------------------------------------------- the page as a crawler without JavaScript reads it
+
+/**
+ * seo.ai-rendered-text: served HTML against the rendered page. `render` is seo.mjs's render
+ * summary; pages carry `renderedWords` and `renderedHeadings` when Chrome measured them.
+ */
+export function renderedTextRow({ pages = [], render = null }) {
+  const T = 'Text without JavaScript';
+  if (!render?.ran) return result('seo.ai-rendered-text', 'skip', T, render?.error ? `not rendered: ${render.error}` : 'not rendered (--render-pages 0)');
+  const measured = pages.filter((p) => Number.isFinite(p.renderedWords));
+  if (!measured.length) return result('seo.ai-rendered-text', 'skip', T, 'Chrome rendered no page it could measure');
+  const lossOf = (p) => (p.renderedWords ? 1 - Math.min(p.words || 0, p.renderedWords) / p.renderedWords : 0);
+  const losing = measured.filter((p) => p.renderedWords - (p.words || 0) >= 100 && lossOf(p) >= 0.5);
+  const empty = losing.filter((p) => lossOf(p) >= 0.8);
+  const note = (p) => `served ${p.words || 0} words, ${p.renderedWords} after JavaScript (${Math.round((1 - lossOf(p)) * 100)}% in the HTML)${p.renderedHeadings > (p.sig?.headingsAll ?? 0) ? `; headings ${p.sig?.headingsAll ?? 0} → ${p.renderedHeadings}` : ''}`;
+  const urls = losing.map((p) => ({ url: p.url, note: note(p) }));
+  const fix = 'GPTBot, ClaudeBot, PerplexityBot and most AI answer crawlers read the served HTML and do not run JavaScript, so text the browser builds is invisible to them (Googlebot renders, most others do not). Render the main content on the server (SSR or static generation; in a headless CMS front end, server components or prerendering), or at least serve the headline, intro and key facts in the HTML.';
+  if (empty.length && empty.length >= measured.length / 2) return result('seo.ai-rendered-text', 'fail', T, `${plural(empty.length, 'page')} of ${measured.length} rendered serve less than a fifth of their text without JavaScript: the site builds its content in the browser`, { fix, urls });
+  if (losing.length) return result('seo.ai-rendered-text', 'warn', T, `${plural(losing.length, 'page')} of ${measured.length} rendered serve less than half of their text without JavaScript`, { fix, urls });
+  const share = Math.round((measured.reduce((n, p) => n + Math.min(p.words || 0, p.renderedWords), 0) / Math.max(1, measured.reduce((n, p) => n + p.renderedWords, 0))) * 100);
+  return result('seo.ai-rendered-text', 'pass', T, `the served HTML holds ${share}% of the rendered text on ${plural(measured.length, 'page')} checked in Chrome`);
+}
+
+// ---------------------------------------------------------------- freshness, authorship and structure
+
+const MONTH = 30 * 24 * 3600 * 1000;
+const isIndexable = (p) => p.status >= 200 && p.status < 300 && p.title !== undefined && !p.noindex && p.sig;
+
+/** seo.freshness, seo.author and seo.sitemap-lastmod. `today` is YYYY-MM-DD (for tests). */
+export function freshnessRows({ pages = [], sitemap = null, today = new Date().toISOString().slice(0, 10) }) {
+  const out = [];
+  const idx = pages.filter(isIndexable);
+  const articles = idx.filter((p) => p.sig.articleLike);
+  const now = new Date(today).getTime();
+  const dated = (p) => p.sig.modified || p.sig.published;
+  if (articles.length) {
+    const undated = articles.filter((p) => !dated(p));
+    const stale = articles.filter((p) => dated(p) && now - new Date(dated(p)).getTime() > 24 * MONTH);
+    const noModified = articles.filter((p) => p.sig.published && !p.sig.modified);
+    const detail = `${articles.length - undated.length} of ${plural(articles.length, 'article page')} carry a machine-readable date${noModified.length ? `, ${noModified.length} without dateModified` : ''}${stale.length ? `; ${stale.length} last dated over two years ago` : ''}`;
+    out.push(undated.length
+      ? result('seo.freshness', 'warn', 'Dates on articles', detail, { fix: 'Answer engines prefer content they can date. Put datePublished and dateModified in the Article (or BlogPosting/NewsArticle) JSON-LD, or article:published_time and article:modified_time meta tags, and show the date on the page in a <time datetime> element. Update dateModified only when the content really changes.', urls: undated.map((p) => ({ url: p.url, note: 'no date in JSON-LD, meta or <time>' })) })
+      : result('seo.freshness', stale.length || noModified.length ? 'info' : 'pass', 'Dates on articles', detail, { urls: [...stale.map((p) => ({ url: p.url, note: `dated ${dated(p)}` })), ...noModified.filter((p) => !stale.includes(p)).map((p) => ({ url: p.url, note: `published ${p.sig.published}, no dateModified` }))] }));
+    const anonymous = articles.filter((p) => !p.sig.author);
+    out.push(anonymous.length
+      ? result('seo.author', anonymous.length === articles.length ? 'warn' : 'info', 'Authors on articles', `${plural(anonymous.length, 'article page')} of ${articles.length} name no author (JSON-LD author, meta author or rel=author)`, { fix: 'Name the author: an author property (Person with name and url, or the Organization) in the Article JSON-LD, and a visible byline linking to an author page. AI answers and Google weigh who stands behind a text.', urls: anonymous.map((p) => ({ url: p.url })) })
+      : result('seo.author', 'pass', 'Authors on articles', `every article page (${articles.length}) names its author`));
+  } else if (idx.length) {
+    const withDate = idx.filter(dated).length;
+    out.push(result('seo.freshness', 'info', 'Dates on articles', `no article pages recognised among ${plural(idx.length, 'indexable page')} (Article/BlogPosting JSON-LD, og:type article or a dated <article>); ${withDate} carry a machine-readable date`, { fix: 'If the site has news, insights or blog pages, mark them up as Article (or BlogPosting/NewsArticle) with datePublished, dateModified and author, so search and AI engines can tell them from evergreen pages and date them.' }));
+  }
+
+  if (sitemap && sitemap.urls?.length) {
+    const lm = Object.values(sitemap.lastmod || {});
+    const total = sitemap.urls.length;
+    const days = new Set(lm.map((d) => isoDate(d)).filter(Boolean));
+    if (!lm.length) out.push(result('seo.sitemap-lastmod', 'info', 'Sitemap lastmod', `none of the ${total} sitemap URLs has a <lastmod>`, { fix: 'Add an accurate <lastmod> per URL (the date the content last changed). Bing, which feeds ChatGPT search and Copilot, uses it to decide what to recrawl; Google uses it when it is consistently right.' }));
+    else if (lm.length >= 10 && days.size === 1) out.push(result('seo.sitemap-lastmod', 'warn', 'Sitemap lastmod', `all ${lm.length} <lastmod> dates are the same day (${[...days][0]}): the sitemap stamps its build time, not when pages changed`, { fix: 'Set <lastmod> from each page\'s own last content change. A date that changes on every build teaches crawlers to ignore it.' }));
+    else out.push(result('seo.sitemap-lastmod', 'pass', 'Sitemap lastmod', `${lm.length} of ${total} sitemap URLs carry <lastmod> (${days.size} distinct days)`));
+  }
+  return out;
+}
+
+/** seo.answer-structure: how quotable the pages are. Always info: a guide, never a fail. */
+export function answerStructureRow({ pages = [] }) {
+  const idx = pages.filter(isIndexable).filter((p) => (p.words || 0) >= 150);
+  if (!idx.length) return null;
+  const q = idx.filter((p) => p.sig.questionHeadings > 0);
+  const lists = idx.filter((p) => p.sig.lists > 0 || p.sig.tables > 0);
+  const walls = idx.filter((p) => p.sig.paragraphs && p.sig.longParagraphs / p.sig.paragraphs >= 0.5);
+  const flat = idx.filter((p) => !p.sig.headings && (p.words || 0) >= 300);
+  return result('seo.answer-structure', 'info', 'Answer-friendly structure', `${plural(idx.length, 'page')} with text: question headings on ${q.length}, lists or tables on ${lists.length}, mostly paragraphs over 120 words on ${walls.length}, no subheadings on ${flat.length} of the long ones`, {
+    fix: 'AI answers quote passages that stand on their own: a heading that asks or names the question, a direct one- or two-sentence answer under it, then the detail; facts as lists or tables; paragraphs short enough to lift. Start with the pages listed (walls of text and long pages without subheadings).',
+    urls: [...flat.map((p) => ({ url: p.url, note: `${p.words} words, no subheadings` })), ...walls.filter((p) => !flat.includes(p)).map((p) => ({ url: p.url, note: `${p.sig.longParagraphs} of ${p.sig.paragraphs} paragraphs over 120 words` }))],
+  });
+}
+
+/** seo.schema-opportunities: markup the pages look like they could carry and do not. Info. */
+export function schemaOpportunitiesRow({ pages = [] }) {
+  const idx = pages.filter(isIndexable);
+  if (!idx.length) return null;
+  const types = (p) => new Set((p.jsonLd || []).flatMap((j) => j.types || []));
+  const hits = [];
+  for (const p of idx) {
+    const t = types(p);
+    const notes = [];
+    if (p.sig.articleLike && ![...t].some((x) => /Article|BlogPosting|Report/.test(x))) notes.push('Article');
+    if (p.sig.questionHeadings >= 3 && !t.has('FAQPage') && !t.has('QAPage')) notes.push(`FAQPage (${p.sig.questionHeadings} questions)`);
+    if (p.sig.breadcrumbNav && !t.has('BreadcrumbList')) notes.push('BreadcrumbList');
+    if (notes.length) hits.push({ url: p.url, note: notes.join(', ') });
+  }
+  const count = (name) => hits.filter((h) => h.note.includes(name)).length;
+  if (!hits.length) return result('seo.schema-opportunities', 'pass', 'Structured data opportunities', `no page looks like an article, FAQ or breadcrumb trail without the matching markup (${plural(idx.length, 'page')})`);
+  return result('seo.schema-opportunities', 'info', 'Structured data opportunities', `pages that look like they could carry more markup: Article ${count('Article')}, FAQPage ${count('FAQPage')}, BreadcrumbList ${count('BreadcrumbList')}`, {
+    fix: 'Article (with datePublished, dateModified, author) on articles; BreadcrumbList where a breadcrumb trail is shown; FAQPage where a page answers several questions. Google shows FAQ rich results only for government and health sites, but the markup still tells AI engines which text answers which question. Mark up only what is visible on the page.',
+    urls: hits,
+  });
+}
+
+/** seo.bingbot: bingbot in robots.txt, plus whether the start page carries Bing's site verification. */
+export function bingRow({ robots = {}, start = null }) {
+  const parsed = robots.parsed || null;
+  if (!parsed) return null;
+  const blocked = !isAllowed(parsed, '/', 'bingbot');
+  const verified = start?.sig?.bingVerify;
+  if (blocked) return result('seo.bingbot', 'warn', 'Bing (feeds ChatGPT search and Copilot)', 'robots.txt blocks bingbot', { fix: 'Allow bingbot. ChatGPT search and Microsoft Copilot draw on Bing\'s index, so a site Bing cannot crawl is missing from them too.', urls: [{ url: '/robots.txt', note: 'bingbot: Disallow /' }] });
+  return result('seo.bingbot', 'info', 'Bing (feeds ChatGPT search and Copilot)', `bingbot allowed${verified ? '; the start page carries a Bing Webmaster Tools verification tag' : '; no Bing verification tag on the start page (it may be verified by DNS or a file instead)'}`, { fix: 'Verify the site in Bing Webmaster Tools, submit the sitemap there, and turn on IndexNow (a CMS plugin, or Cloudflare Crawler Hints) so changes reach Bing, ChatGPT search and Copilot within hours. IndexNow cannot be seen from outside; ask whoever runs the site.' });
+}
+
+// ---------------------------------------------------------------- the GEO view and its score
+
+/** Rows from the other areas that decide what AI crawlers can reach and read. */
+export const GEO_RELATED = new Set(['seo.start', 'seo.robots-txt', 'seo.noindex', 'seo.thin', 'seo.sitemap', 'seo.jsonld-parse', 'seo.jsonld-client-side', 'seo.schema-validator', 'seo.rich-required', 'seo.canonical-host', 'seo.h1', 'seo.lang']);
+export const isGeoRow = (r) => r.area === 'geo' || GEO_RELATED.has(r.id);
+
+/**
+ * GEO readiness: 0–100 over the GEO rows (pass and info 1, warn 0.5, fail 0; skipped rows are
+ * left out). A summary of the rows, not a prediction of AI visibility.
+ * -> { score, counted, counts: { pass, info, warn, fail, skip } } or null when no row counts.
+ */
+export function geoScore(rows) {
+  const geo = rows.filter(isGeoRow);
+  const counts = { pass: 0, info: 0, warn: 0, fail: 0, skip: 0 };
+  for (const r of geo) counts[r.status] = (counts[r.status] || 0) + 1;
+  const counted = geo.filter((r) => r.status !== 'skip');
+  if (!counted.length) return null;
+  const pts = counted.reduce((n, r) => n + ({ pass: 1, info: 1, warn: 0.5, fail: 0 }[r.status] ?? 0), 0);
+  return { score: Math.round((pts / counted.length) * 100), counted: counted.length, counts };
 }
