@@ -57,7 +57,7 @@ test('lookalikes catch typos, homoglyphs, combos and brand subdomains', () => {
 });
 
 test('lookalikes leave official and unrelated domains alone', () => {
-  for (const d of ['paypal.com', 'www.paypal.com', 'postnord.dk', 'apple.com', 'support.apple.com', 'apple.dk', 'login.microsoftonline.com', 'glyptoteket.dk', 'dr.dk', 'nordnet.dk', 'elgiganten.dk', 'pineapple.dk', 'skatepark.dk', 'stoumann.dk', 'github.com', 'mads.github.io']) {
+  for (const d of ['paypal.com', 'www.paypal.com', 'postnord.dk', 'apple.com', 'support.apple.com', 'apple.dk', 'login.microsoftonline.com', 'example.dk', 'dr.dk', 'nordnet.dk', 'elgiganten.dk', 'pineapple.dk', 'skatepark.dk', 'stoumann.dk', 'github.com', 'mads.github.io']) {
     assert.deepEqual(kinds(d), [], d);
   }
   assert.equal(officialBrand(parseTarget('www.paypal.com')).how, 'listed');
@@ -119,7 +119,7 @@ test('parsers for RDAP, crt.sh, whois, OpenPhish and Trustpilot', () => {
   const ct = parseCrtSh([{ not_before: '2020-01-02T00:00:00' }, { not_before: '2018-05-06T00:00:00' }], new Date('2026-11-01'));
   assert.equal(ct.firstSeen, '2018-05-06T00:00:00.000Z');
   assert.equal(ct.certs, 2);
-  assert.equal(whoisCreated('Domain: glyptoteket.dk\nRegistered:          1998-01-21\n').slice(0, 10), '1998-01-21');
+  assert.equal(whoisCreated('Domain: example.dk\nRegistered:          1998-01-21\n').slice(0, 10), '1998-01-21');
   assert.equal(whoisCreated('Creation Date: 1999-07-15T05:32:11Z').slice(0, 10), '1999-07-15');
   assert.equal(whoisCreated('nothing here'), null);
   const feed = 'https://netflix-trial.vercel.app/\nhttps://paypal.com.evil.xyz/x\nhttps://other.vercel.app/\n';
@@ -133,7 +133,7 @@ test('parsers for RDAP, crt.sh, whois, OpenPhish and Trustpilot', () => {
 
 test('whoisLookup asks the TLD whois server and falls back to the binary', async () => {
   const asked = [];
-  const r = await whoisLookup('glyptoteket.dk', { now: new Date('2026-11-01'), query: async (server, q) => { asked.push(server); return 'Registered: 1998-01-21\n'; } });
+  const r = await whoisLookup('example.dk', { now: new Date('2026-11-01'), query: async (server, q) => { asked.push(server); return 'Registered: 1998-01-21\n'; } });
   assert.equal(r.ok, true);
   assert.deepEqual(asked, ['whois.punktum.dk']);
   const r2 = await whoisLookup('x.io', { query: async () => { throw new Error('port 43 blocked'); }, exec: async () => 'Creation Date: 2020-02-02' });

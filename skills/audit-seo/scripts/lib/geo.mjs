@@ -267,7 +267,7 @@ const YEAR_SEG = /^(19|20)\d\d$/;
 /**
  * newsUrl(url) -> null | { dated }: a page under a news, blog or insights section with a slug of its
  * own (not the section index, a year listing, a tag or a page number). `dated` when a /YYYY/ segment
- * sits in the path, as in /about-us/news/2022/SimCorp-and-Diligend-partner.
+ * sits in the path, as in /about-us/news/2022/Example-signs-new-partner.
  */
 export function newsUrl(url) {
   let segs;

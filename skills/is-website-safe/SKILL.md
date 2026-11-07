@@ -4,7 +4,7 @@ description: Use when someone asks whether a website or link is safe, real, legi
 argument-hint: "<url or domain> [--brand <real site or brand name>] [--no-page] [--json]"
 allowed-tools: Bash(node:*), WebFetch, WebSearch
 metadata:
-  version: "2.0.0"
+  version: "2.0.1"
 ---
 
 # Is this website safe?

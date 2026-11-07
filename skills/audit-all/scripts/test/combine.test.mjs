@@ -319,15 +319,15 @@ test('pdfDestPages: named destinations mapped to page numbers through the page t
 });
 
 test('siteMismatches: a site audit run on another domain than the subject is flagged', () => {
-  const infra = { kind: 'audit-infra', target: null, folder: 'audit-infra', md: '# Infrastructure audit — helm-live.euwest01.umbraco.io\n\n**Result:** 3 pass · 2 warn · 0 fail\n' };
-  const launch = { kind: 'audit-launch', target: null, folder: 'audit-launch', md: '# Launch audit — www.helmsecurity.ai\n\n**Result:** 3 pass · 0 warn · 0 fail\n' };
+  const infra = { kind: 'audit-infra', target: null, folder: 'audit-infra', md: '# Infrastructure audit — example-live.euwest01.umbraco.io\n\n**Result:** 3 pass · 2 warn · 0 fail\n' };
+  const launch = { kind: 'audit-launch', target: null, folder: 'audit-launch', md: '# Launch audit — www.example.org\n\n**Result:** 3 pass · 0 warn · 0 fail\n' };
   const security = { kind: 'audit-security', target: 'helm', folder: 'audit-security-helm', md: SECURITY };
   const reports = [launch, infra, security];
   const heads = reports.map(headline);
-  assert.deepEqual(siteMismatches(reports, heads, 'helmsecurity.ai').map((m) => [m.kind, m.target]), [['audit-infra', 'helm-live.euwest01.umbraco.io']]);
+  assert.deepEqual(siteMismatches(reports, heads, 'example.org').map((m) => [m.kind, m.target]), [['audit-infra', 'example-live.euwest01.umbraco.io']]);
   assert.deepEqual(siteMismatches(reports, heads, 'Helm'), [], 'a subject that is not a host name is not compared');
-  const html = combinedHtml({ summary: parseSummary(SUMMARY.replace('shop.example.dk', 'helmsecurity.ai')), reports, heads, date: new Date(), version: VERSION, css: '', style: 'sans' });
-  assert.match(html, /class="mismatch">.*Infrastructure audit checked helm-live\.euwest01\.umbraco\.io, not helmsecurity\.ai/);
+  const html = combinedHtml({ summary: parseSummary(SUMMARY.replace('shop.example.dk', 'example.org')), reports, heads, date: new Date(), version: VERSION, css: '', style: 'sans' });
+  assert.match(html, /class="mismatch">.*Infrastructure audit checked example-live\.euwest01\.umbraco\.io, not example\.org/);
 });
 
 test('Built with: check-tech-stack results on the cover and under the title', async () => {
@@ -350,8 +350,8 @@ test('Built with: check-tech-stack results on the cover and under the title', as
   assert.doesNotMatch(combinedHtml({ ...args, stack: [] }), /class="stack"/);
 });
 
-test('<details>/<summary> from the sub-audits render as an open block, not as escaped text (3.dk, wpp.com)', () => {
-  const md = ['## Cookies', '', '<details>', '<summary>Cookies before any choice (13)</summary>', '', '| Name | Domain |', '|---|---|', '| _ga | .3.dk |', '', '</details>', '',
+test('<details>/<summary> from the sub-audits render as an open block, not as escaped text (example.dk, example.com)', () => {
+  const md = ['## Cookies', '', '<details>', '<summary>Cookies before any choice (13)</summary>', '', '| Name | Domain |', '|---|---|', '| _ga | .example.dk |', '', '</details>', '',
     '<details><summary>2 packages with updates available</summary>', '', '- npm a: 1.0 → 2.0', '', '</details>', '', 'After.'].join('\n');
   const blocks = parseBlocks(md);
   assert.deepEqual(blocks.map((b) => b.type), ['heading', 'details', 'details', 'para']);

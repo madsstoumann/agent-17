@@ -2,12 +2,17 @@
 
 All notable changes to the `audit-seo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.5.1] - 2026-11-07
+
+### Changed
+- Example hostnames in the docs, changelog and tests are placeholders now (example.com and similar).
+
 ## [2.5.0] - 2026-11-06
 
 ### Fixed
-- `seo.og-image` no longer fails images whose host answers HEAD with 404 and GET with 200. og:image, external and internal link checks and llms.txt links now fall back to GET (body discarded) on any 4xx/5xx or no answer, and trust the GET. Sitecore's image edge (edge.sitecorecloud.io) answers HEAD 404 for a resized variant (`?h=1080&iar=0&w=1920`) it has not generated yet; all 40 og:images on simcorp.com were reported as "not served as an image".
-- `--geo` and the GEO readiness score now count `seo.jsonld-coverage`, `seo.sitemap-noindex`, `seo.sitemap-blocked`, `seo.canonical-target` and `seo.title-duplicate`. On simcorp.com (no JSON-LD on any page, 9 noindex URLs in the sitemap) the GEO report said 95/100 with two warnings, and audit-all's compact PDF said structured data passed.
-- `seo.freshness`, `seo.author` and `seo.schema-opportunities` recognise article-like pages without article markup: a news, blog or insights URL with its own slug and either a year in the path or a date written on the page ("November 24, 2022", "24. november 2022", 24.11.2022). Without a machine-readable date they are reported as "article-like pages without a machine-readable date" (warning). simcorp.com's news pages were "no article pages recognised".
+- `seo.og-image` no longer fails images whose host answers HEAD with 404 and GET with 200. og:image, external and internal link checks and llms.txt links now fall back to GET (body discarded) on any 4xx/5xx or no answer, and trust the GET. Sitecore's image edge (edge.sitecorecloud.io) answers HEAD 404 for a resized variant (`?h=1080&iar=0&w=1920`) it has not generated yet; all 40 og:images on example.com were reported as "not served as an image".
+- `--geo` and the GEO readiness score now count `seo.jsonld-coverage`, `seo.sitemap-noindex`, `seo.sitemap-blocked`, `seo.canonical-target` and `seo.title-duplicate`. On example.com (no JSON-LD on any page, 9 noindex URLs in the sitemap) the GEO report said 95/100 with two warnings, and audit-all's compact PDF said structured data passed.
+- `seo.freshness`, `seo.author` and `seo.schema-opportunities` recognise article-like pages without article markup: a news, blog or insights URL with its own slug and either a year in the path or a date written on the page ("November 24, 2022", "24. november 2022", 24.11.2022). Without a machine-readable date they are reported as "article-like pages without a machine-readable date" (warning). example.com's news pages were "no article pages recognised".
 
 ### Changed
 - GEO readiness: info rows that point at something missing (llms.txt, structured data opportunities, dates and authors, sitemap lastmod, JSON-LD coverage, entity markup) are opportunities and count 0.75 instead of a full pass. The report lists them under the score.
@@ -33,7 +38,7 @@ All notable changes to the `audit-seo` skill. Format follows [Keep a Changelog](
 ## [2.3.1] - 2026-11-06
 
 ### Fixed
-- Sitemaps are read depth first: a sitemap index's children come before the next sitemap declared in robots.txt, and a child that is also declared is read in its index's place. On 3.dk the help centre's sitemap on another host (8,680 URLs) filled the 5,000-URL cap before www.3.dk/sitemap.xml was read, so only help pages could be sampled.
+- Sitemaps are read depth first: a sitemap index's children come before the next sitemap declared in robots.txt, and a child that is also declared is read in its index's place. On example.dk the help centre's sitemap on another host (8,680 URLs) filled the 5,000-URL cap before www.example.dk/sitemap.xml was read, so only help pages could be sampled.
 
 ## [2.3.0] - 2026-11-06
 
@@ -44,7 +49,7 @@ All notable changes to the `audit-seo` skill. Format follows [Keep a Changelog](
 - The `--pages` budget is shared across language sections: each crawl wave takes links from the sections with the fewest pages so far, and at most half of what is left, so a section found late still gets pages. The sitemap sample is spread over the sections the same way. The report lists pages per language section when there is more than one.
 
 ### Fixed
-- The crawl spent its whole budget on `/en/` pages of wpp.com and reported "every internal link answers" while the footer links of `/es-ES/` and `/de-DE/` pages returned 404 (audit-launch counted 161 such links). Both changes above fix it; a live re-run finds them.
+- The crawl spent its whole budget on `/en/` pages of example.com and reported "every internal link answers" while the footer links of `/es-ES/` and `/de-DE/` pages returned 404 (audit-launch counted 161 such links). Both changes above fix it; a live re-run finds them.
 
 ## [2.2.0] - 2026-11-01
 

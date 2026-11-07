@@ -181,7 +181,7 @@ export async function safeBrowsing(t, { fetch: f = globalThis.fetch, env = proce
   if (!key) return { ok: false, skipped: 'no GOOGLE_SAFE_BROWSING_KEY' };
   const urls = [...new Set([t.url, `https://${t.host}/`, `http://${t.host}/`])];
   const body = JSON.stringify({
-    client: { clientId: 'is-website-safe', clientVersion: '2.0.0' },
+    client: { clientId: 'is-website-safe', clientVersion: '2.0.1' },
     threatInfo: { threatTypes: ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE', 'POTENTIALLY_HARMFUL_APPLICATION'], platformTypes: ['ANY_PLATFORM'], threatEntryTypes: ['URL'], threatEntries: urls.map((url) => ({ url })) },
   });
   try {

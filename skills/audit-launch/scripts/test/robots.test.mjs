@@ -7,7 +7,7 @@ import {
 } from '../lib/robots.mjs';
 
 const fixture = (dir, name) => readFileSync(new URL(`./fixtures/${dir}/${name}`, import.meta.url), 'utf8');
-const ioiRobots = fixture('robots', 'ioi.txt');
+const studioRobots = fixture('robots', 'studio.txt');
 const perAgent = fixture('robots', 'per-agent.txt');
 const indexXml = fixture('sitemaps', 'index.xml');
 const urlsetXml = fixture('sitemaps', 'urlset.xml');
@@ -16,7 +16,7 @@ const urls282 = fixture('sitemaps', 'urls-282.txt').split('\n').filter(Boolean);
 // ---------------------------------------------------------------- robots.txt
 
 test('parseRobotsTxt reads the nuxt-robots "indexing disabled" file', () => {
-  const p = parseRobotsTxt(ioiRobots);
+  const p = parseRobotsTxt(studioRobots);
   assert.deepEqual(p, {
     groups: [{ agents: ['*'], allow: [], disallow: ['/'], crawlDelay: null }],
     sitemaps: [],
@@ -92,7 +92,7 @@ test('parseSitemap reads a urlset with CDATA, entities, whitespace, lastmod and 
     ],
   });
   assert.deepEqual(s.urls[1], { loc: 'https://example.com/search?q=a&lang=en', lastmod: '2026-09-21T08:30:00Z', alternates: [] });
-  assert.deepEqual(s.urls[2], { loc: 'https://example.com/hitman/world-of-assassination/', lastmod: null, alternates: [] }, 'image:loc is not the loc');
+  assert.deepEqual(s.urls[2], { loc: 'https://example.com/shadow/world-of-shadows/', lastmod: null, alternates: [] }, 'image:loc is not the loc');
   assert.deepEqual(s.urls[3], { loc: 'https://example.com/careers/', lastmod: null, alternates: [] });
 });
 
@@ -262,18 +262,18 @@ test('loadSitemaps fetches each starting URL once and does not loop on an index 
   assert.deepEqual(r.urls, ['https://example.com/a/']);
 });
 
-test('loadSitemaps reads an index\'s children before the next declared sitemap, so a huge later one cannot fill the cap (3.dk)', async () => {
-  const index = '<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://www.3.dk/sitemap.xml</loc></sitemap><sitemap><loc>https://www.3.dk/tilbehoer/sitemap.xml</loc></sitemap></sitemapindex>';
-  const help = Array.from({ length: 10 }, (_, i) => `https://www.3.dk/hjalp/vejledninger/${i}`);
+test('loadSitemaps reads an index\'s children before the next declared sitemap, so a huge later one cannot fill the cap (example.dk)', async () => {
+  const index = '<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://www.example.dk/sitemap.xml</loc></sitemap><sitemap><loc>https://www.example.dk/tilbehoer/sitemap.xml</loc></sitemap></sitemapindex>';
+  const help = Array.from({ length: 10 }, (_, i) => `https://www.example.dk/hjalp/vejledninger/${i}`);
   const http = fakeHttp({
-    'https://www.3.dk/sitemap_index.xml': { body: index },
-    'https://www.3.dk/sitemap.xml': { body: urlsetOf('https://www.3.dk/shop', 'https://www.3.dk/business') },
-    'https://www.3.dk/tilbehoer/sitemap.xml': { body: urlsetOf('https://www.3.dk/tilbehoer/cover') },
-    'https://cdn.example.com/three-dk/sitemap.xml': { body: urlsetOf(...help) },
+    'https://www.example.dk/sitemap_index.xml': { body: index },
+    'https://www.example.dk/sitemap.xml': { body: urlsetOf('https://www.example.dk/shop', 'https://www.example.dk/business') },
+    'https://www.example.dk/tilbehoer/sitemap.xml': { body: urlsetOf('https://www.example.dk/tilbehoer/cover') },
+    'https://cdn.example.com/example-dk/sitemap.xml': { body: urlsetOf(...help) },
   });
   // robots.txt order, plus the /sitemap.xml fallback the audit always adds.
-  const r = await loadSitemaps(http, ['https://www.3.dk/sitemap_index.xml', 'https://cdn.example.com/three-dk/sitemap.xml', 'https://www.3.dk/sitemap.xml'], { maxUrls: 5 });
-  assert.deepEqual(r.urls.slice(0, 3), ['https://www.3.dk/shop', 'https://www.3.dk/business', 'https://www.3.dk/tilbehoer/cover']);
+  const r = await loadSitemaps(http, ['https://www.example.dk/sitemap_index.xml', 'https://cdn.example.com/example-dk/sitemap.xml', 'https://www.example.dk/sitemap.xml'], { maxUrls: 5 });
+  assert.deepEqual(r.urls.slice(0, 3), ['https://www.example.dk/shop', 'https://www.example.dk/business', 'https://www.example.dk/tilbehoer/cover']);
   assert.equal(r.urls.length, 5);
-  assert.deepEqual(r.sources.map((s) => s.url), ['https://www.3.dk/sitemap_index.xml', 'https://www.3.dk/sitemap.xml', 'https://www.3.dk/tilbehoer/sitemap.xml', 'https://cdn.example.com/three-dk/sitemap.xml']);
+  assert.deepEqual(r.sources.map((s) => s.url), ['https://www.example.dk/sitemap_index.xml', 'https://www.example.dk/sitemap.xml', 'https://www.example.dk/tilbehoer/sitemap.xml', 'https://cdn.example.com/example-dk/sitemap.xml']);
 });

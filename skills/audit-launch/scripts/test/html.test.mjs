@@ -6,8 +6,8 @@ import {
 } from '../lib/html.mjs';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/html/${name}`, import.meta.url), 'utf8');
-const IOI_URL = 'https://akqa-dk-ioi-nuxt-dev-yij8m.ondigitalocean.app/';
-const ioi = fixture('ioi-like.html');
+const SITE_URL = 'https://site-dev-a1b2c.ondigitalocean.app/';
+const studio = fixture('studio-like.html');
 const multi = fixture('multilang.html');
 
 // ---------------------------------------------------------------- primitives
@@ -57,13 +57,13 @@ test('tokenize treats the ld+json type case-insensitively and with other attrs f
 
 // ---------------------------------------------------------------- extractMeta
 
-test('extractMeta on the ioi-like page', () => {
-  const m = extractMeta(ioi, IOI_URL);
-  assert.equal(m.title, 'IO Interactive – Home');
-  assert.equal(m.description, 'IO Interactive is the independent studio behind HITMAN & Project 007.');
+test('extractMeta on the studio-like page', () => {
+  const m = extractMeta(studio, SITE_URL);
+  assert.equal(m.title, 'Example Studio – Home');
+  assert.equal(m.description, 'Example Studio is the independent studio behind SHADOW & Project Spy.');
   assert.equal(m.robots, 'noindex, nofollow', 'meta name is matched case-insensitively');
   assert.equal(m.googlebot, null);
-  assert.equal(m.canonical, 'https://akqa-dk-ioi-nuxt-dev-yij8m.ondigitalocean.app/', 'absolute; the URL class adds the root slash');
+  assert.equal(m.canonical, 'https://site-dev-a1b2c.ondigitalocean.app/', 'absolute; the URL class adds the root slash');
   assert.equal(m.lang, 'en');
   assert.equal(m.viewport, 'width=device-width, initial-scale=1');
   assert.equal(m.charset, 'utf-8');
@@ -74,30 +74,30 @@ test('extractMeta on the ioi-like page', () => {
   assert.deepEqual(m.h1s, ['We make worlds & assassins']);
   assert.deepEqual(m.hreflang, []);
   assert.deepEqual(m.og, {
-    title: 'IO Interactive',
-    description: 'The studio behind HITMAN & Project 007.',
+    title: 'Example Studio',
+    description: 'The studio behind SHADOW & Project Spy.',
     type: 'website',
-    site_name: 'IO Interactive',
+    site_name: 'Example Studio',
     locale: 'en_US',
-    url: 'https://akqa-dk-ioi-nuxt-dev-yij8m.ondigitalocean.app/',
+    url: 'https://site-dev-a1b2c.ondigitalocean.app/',
     image: 'https://images.ctfassets.net/abc123/og.jpg',
   });
   assert.deepEqual(m.twitter, {
     card: 'summary_large_image',
-    title: 'IO Interactive',
-    description: 'The studio behind HITMAN & Project 007.',
+    title: 'Example Studio',
+    description: 'The studio behind SHADOW & Project Spy.',
     image: 'https://images.ctfassets.net/abc123/twitter.jpg',
   });
   assert.deepEqual(m.icons, [
-    { rel: 'icon', href: `${IOI_URL}favicon.ico`, sizes: '32x32', type: null },
-    { rel: 'icon', href: `${IOI_URL}favicon.svg`, sizes: null, type: 'image/svg+xml' },
-    { rel: 'icon', href: `${IOI_URL}favicon-192.png`, sizes: '192x192', type: 'image/png' },
-    { rel: 'apple-touch-icon', href: `${IOI_URL}apple-touch-icon.png`, sizes: '180x180', type: null },
+    { rel: 'icon', href: `${SITE_URL}favicon.ico`, sizes: '32x32', type: null },
+    { rel: 'icon', href: `${SITE_URL}favicon.svg`, sizes: null, type: 'image/svg+xml' },
+    { rel: 'icon', href: `${SITE_URL}favicon-192.png`, sizes: '192x192', type: 'image/png' },
+    { rel: 'apple-touch-icon', href: `${SITE_URL}apple-touch-icon.png`, sizes: '180x180', type: null },
   ]);
-  assert.equal(m.manifest, `${IOI_URL}site.webmanifest`);
+  assert.equal(m.manifest, `${SITE_URL}site.webmanifest`);
   assert.equal(m.jsonLd.length, 1);
   assert.deepEqual(m.jsonLd[0].types, ['WebSite']);
-  assert.equal(m.jsonLd[0].data.name, 'IO Interactive');
+  assert.equal(m.jsonLd[0].data.name, 'Example Studio');
   assert.equal(m.jsonLd[0].error, null);
   assert.equal(typeof m.jsonLd[0].raw, 'string');
 });
@@ -155,21 +155,21 @@ test('extractMeta takes the head title, never an inline SVG title in the body', 
 // ---------------------------------------------------------------- links
 
 test('extractLinks resolves, strips fragments, dedupes and drops non-http schemes', () => {
-  const links = extractLinks(ioi, IOI_URL);
+  const links = extractLinks(studio, SITE_URL);
   const hrefs = links.map((l) => l.href);
   assert.deepEqual(hrefs, [
-    IOI_URL,
-    `${IOI_URL}hitman/`,
-    `${IOI_URL}careers?team=engineering`,
-    'https://www.youtube.com/@ioi',
-  ], 'mailto, #main and the /hitman/#trailer duplicate are gone');
+    SITE_URL,
+    `${SITE_URL}shadow/`,
+    `${SITE_URL}careers?team=engineering`,
+    'https://www.youtube.com/@studio',
+  ], 'mailto, #main and the /shadow/#trailer duplicate are gone');
   const yt = links.find((l) => l.href.includes('youtube'));
   assert.equal(yt.text, 'YouTube');
   assert.equal(yt.rel, 'nofollow noopener');
   assert.equal(yt.nofollow, true);
   assert.equal(links[0].nofollow, false);
   assert.equal(links[0].rel, null);
-  assert.equal(links[1].text, 'Hitman');
+  assert.equal(links[1].text, 'Shadow');
 });
 
 test('extractLinks honours <base href> and skips javascript:, tel:, data:', () => {
@@ -184,20 +184,20 @@ test('extractLinks honours <base href> and skips javascript:, tel:, data:', () =
 
 // ---------------------------------------------------------------- assets
 
-test('extractAssets on the ioi-like page', () => {
-  const a = extractAssets(ioi, IOI_URL);
-  assert.deepEqual(a.scripts, [`${IOI_URL}_nuxt/entry.js`]);
-  assert.deepEqual(a.styles, [`${IOI_URL}_nuxt/entry.css`]);
+test('extractAssets on the studio-like page', () => {
+  const a = extractAssets(studio, SITE_URL);
+  assert.deepEqual(a.scripts, [`${SITE_URL}_nuxt/entry.js`]);
+  assert.deepEqual(a.styles, [`${SITE_URL}_nuxt/entry.css`]);
   assert.deepEqual(a.images, [
     'http://cdn.example.com/x.png',
-    `${IOI_URL}_nuxt/hero.webp`, `${IOI_URL}_nuxt/hero-480.webp`, `${IOI_URL}_nuxt/hero-960.webp`,
-    `${IOI_URL}_nuxt/hero.avif`, `${IOI_URL}_nuxt/hero@2x.avif`, `${IOI_URL}_nuxt/hero.jpg`,
+    `${SITE_URL}_nuxt/hero.webp`, `${SITE_URL}_nuxt/hero-480.webp`, `${SITE_URL}_nuxt/hero-960.webp`,
+    `${SITE_URL}_nuxt/hero.avif`, `${SITE_URL}_nuxt/hero@2x.avif`, `${SITE_URL}_nuxt/hero.jpg`,
   ]);
   assert.deepEqual(a.iframes, ['https://www.youtube-nocookie.com/embed/xyz']);
-  assert.deepEqual(a.media, [`${IOI_URL}media/teaser.mp4`, `${IOI_URL}media/teaser.webp`]);
-  assert.deepEqual(a.preloads, [{ href: `${IOI_URL}f.woff2`, as: 'font' }]);
+  assert.deepEqual(a.media, [`${SITE_URL}media/teaser.mp4`, `${SITE_URL}media/teaser.webp`]);
+  assert.deepEqual(a.preloads, [{ href: `${SITE_URL}f.woff2`, as: 'font' }]);
   assert.equal(a.all.some((x) => x.url === 'http://cdn.example.com/x.png' && x.tag === 'img' && x.attr === 'src'), true);
-  assert.equal(a.all.some((x) => x.url === `${IOI_URL}media/teaser.webp` && x.tag === 'video' && x.attr === 'poster'), true);
+  assert.equal(a.all.some((x) => x.url === `${SITE_URL}media/teaser.webp` && x.tag === 'video' && x.attr === 'poster'), true);
   assert.equal(new Set(a.all.map((x) => x.url)).size, a.all.length, 'all is deduped by url');
 });
 
@@ -214,9 +214,9 @@ test('extractAssets on the multilang page: base href, protocol-relative, data: s
 // ---------------------------------------------------------------- mixed content
 
 test('findMixedContent lists http:// resources on an https page and nothing on an http page', () => {
-  const mixed = findMixedContent(ioi, IOI_URL);
+  const mixed = findMixedContent(studio, SITE_URL);
   assert.deepEqual(mixed, [{ tag: 'img', attr: 'src', url: 'http://cdn.example.com/x.png' }]);
-  assert.deepEqual(findMixedContent(ioi, 'http://example.com/'), []);
+  assert.deepEqual(findMixedContent(studio, 'http://example.com/'), []);
 });
 
 test('findMixedContent covers srcset, data-src, action, link href — never <a>, alternate or xmlns', () => {

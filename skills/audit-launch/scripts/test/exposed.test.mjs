@@ -6,7 +6,7 @@ const umbraco = { path: '/umbraco', name: 'Umbraco backoffice', mark: /umbraco/i
 const admin = { path: '/admin', name: '/admin' };
 const origin = 'https://www.example.com';
 
-test('a locale redirect that ends in 404 is not a reachable backoffice (wpp.com)', () => {
+test('a locale redirect that ends in 404 is not a reachable backoffice (example.com)', () => {
   const v = classifyAdminProbe(umbraco, [
     { url: `${origin}/umbraco`, status: 307, location: '/en/umbraco' },
     { url: `${origin}/en/umbraco`, status: 404 },
@@ -46,13 +46,13 @@ test('a redirect to another host is an external sign-in, not a login on this sit
   assert.match(v.note, /login\.microsoftonline\.com/);
 });
 
-test('a trailing-slash 301 that ends in 404 is not a reachable backoffice (3.dk)', () => {
+test('a trailing-slash 301 that ends in 404 is not a reachable backoffice (example.dk)', () => {
   const sitecore = { path: '/sitecore', name: 'Sitecore login', mark: /sitecore/i };
   for (const [p, probe] of [['/umbraco', umbraco], ['/sitecore', sitecore]]) {
     const v = classifyAdminProbe(probe, [
-      { url: `https://www.3.dk${p}`, status: 301, location: `${p}/` },
-      { url: `https://www.3.dk${p}/`, status: 404 },
-    ], 'https://www.3.dk');
+      { url: `https://www.example.dk${p}`, status: 301, location: `${p}/` },
+      { url: `https://www.example.dk${p}/`, status: 404 },
+    ], 'https://www.example.dk');
     assert.equal(v.reachable, false, p);
     assert.equal(v.sso, false, p);
   }

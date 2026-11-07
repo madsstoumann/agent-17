@@ -10,7 +10,7 @@ test('isPrivateHost recognises loopback, private names and RFC1918 literals', ()
     '127.0.0.1', '127.5.5.5', '10.1.2.3', '172.16.0.1', '172.20.0.1', '172.31.255.255', '192.168.1.1', '169.254.1.1', '100.64.0.1', '0.0.0.0', '::1', '[::1]', 'fe80::1', 'fc00::1', 'fd12::1', '::ffff:10.0.0.1']) {
     assert.equal(isPrivateHost(h), true, h);
   }
-  for (const h of ['dev.example.com', 'browser.style', 'akqa-dk-ioi-nuxt-dev-yij8m.ondigitalocean.app', '8.8.8.8', '172.32.0.1', '172.15.0.1', '2606:4700::1111', 'localhost.example.com']) {
+  for (const h of ['dev.example.com', 'browser.style', 'site-dev-a1b2c.ondigitalocean.app', '8.8.8.8', '172.32.0.1', '172.15.0.1', '2606:4700::1111', 'localhost.example.com']) {
     assert.equal(isPrivateHost(h), false, h);
   }
 });

@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-infra` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.4.2] - 2026-11-07
+
+### Changed
+- Example hostnames in the docs, changelog and tests are placeholders now (example.com and similar).
+
 ## [2.4.1] - 2026-11-06
 
 ### Fixed
@@ -10,7 +15,7 @@ All notable changes to the `audit-infra` skill. Format follows [Keep a Changelog
 ## [2.4.0] - 2026-11-06
 
 ### Fixed
-- TLS interception is detected without crt.sh. Every handshake is verified against Node's built-in public roots only (`tls.rootCertificates`, ignoring `NODE_EXTRA_CA_CERTS` and the system store). When that fails for lack of a root while this machine's own store accepts the chain, `tls.interception` names the CA that re-signed it and the certificate rows are marked skipped. On 3.dk from a cloud session crt.sh timed out, so every row passed on the egress proxy's certificate and missed a real one expiring in 9 days. The CT comparison stays as a second signal.
+- TLS interception is detected without crt.sh. Every handshake is verified against Node's built-in public roots only (`tls.rootCertificates`, ignoring `NODE_EXTRA_CA_CERTS` and the system store). When that fails for lack of a root while this machine's own store accepts the chain, `tls.interception` names the CA that re-signed it and the certificate rows are marked skipped. On example.dk from a cloud session crt.sh timed out, so every row passed on the egress proxy's certificate and missed a real one expiring in 9 days. The CT comparison stays as a second signal.
 - `ct.certificates` (subdomain certificates) is judged against the public roots too, and is skipped with the other certificate rows when TLS is intercepted.
 
 ## [2.3.0] - 2026-11-06

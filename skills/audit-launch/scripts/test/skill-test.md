@@ -2,7 +2,7 @@
 
 Prompt used for both runs, verbatim:
 
-> We go live with https://akqa-dk-ioi-nuxt-dev-yij8m.ondigitalocean.app/ next week — test it and give me a report.
+> We go live with https://site-dev-a1b2c.ondigitalocean.app/ next week — test it and give me a report.
 
 ## RED — baseline, no skill (2026-09-24)
 
@@ -11,7 +11,7 @@ A general-purpose subagent with Bash, WebFetch and WebSearch, no skill.
 - Cost: 26 min wall clock, ~255k tokens, 45 tool calls (42 numbered steps in its command log).
 - What it did: curl/dig/openssl by hand, crawled all 318 sitemap URLs + locale prefixes,
   checked 379 external links, grepped 131 JS chunks for config, drove headless Chromium
-  through Playwright on 7 pages, compared with the current ioi.dk sitemap.
+  through Playwright on 7 pages, compared with the current example.dk sitemap.
 - What it found: genuinely useful, deep findings (dev CMS host baked into the bundle, empty
   GTM/reCAPTCHA keys, locale duplicates, the /umbraco proxy enumerating the content tree,
   edge cache bypassed by a Set-Cookie, 1,277 images without alt, transient 521s under load).
@@ -34,7 +34,7 @@ minutes of ad-hoc probing by default.
 
 - Cost: 20.7 min, ~189k tokens, 28 tool calls (baseline: 26 min, ~255k, 45).
 - Triggered the skill on its own (tool call 1: `Skill — audit-launch`), read sibling repos for the
-  production host, then ran `audit.mjs … --env dev --production-host ioi.dk --email-domain ioi.dk`
+  production host, then ran `audit.mjs … --env dev --production-host example.dk --email-domain example.dk`
   with `timeout 600000`. One script run, 110 s.
 - Answer followed the recipe: verdict → launch blockers ("none by the script's definition") →
   "Before production" checklist (noindex header/meta, robots Disallow, staging hostnames,

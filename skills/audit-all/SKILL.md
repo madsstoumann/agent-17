@@ -4,7 +4,7 @@ description: Use when someone wants the full audit of a site and its code in one
 argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--geo] [--yes] [--style serif|sans|editorial|modern] [--level error|warn|error,warn|all] [--console] [--out DIR]"
 allowed-tools: AskUserQuestion, Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.16.0"
+  version: "1.16.1"
 ---
 
 # Audit all
@@ -105,7 +105,7 @@ search: crawl, sitemap, structured data, llms.txt"; and so on).
 The **live URL rides in the first question's text**, so it needs no screen of its own, and
 "Other" becomes the place to change it:
 
-- One URL detected or given: "Run every audit on glyptoteket.dk, or pick? Type a different URL,
+- One URL detected or given: "Run every audit on example.dk, or pick? Type a different URL,
   or 'no site', under Other." A URL typed under Other replaces the detected one; then ask the
   All/Customize question again with the new URL in it.
 - None detected: "No live URL found. Type it under Other to include the site audits, or choose
@@ -124,7 +124,7 @@ Launch, Privacy, Security") and mark those "(Recommended)" in the pickers instea
 
 Read the answers literally: what is ticked runs, what is not is skipped. If every audit ends up
 unticked, say so and stop. Repeat the final list in one line ("Running Infrastructure, Launch,
-Privacy, Security and Solution health on glyptoteket.dk") and carry on without asking again; later steps (audit-solution-health's manifest, audit-security's triage)
+Privacy, Security and Solution health on example.dk") and carry on without asking again; later steps (audit-solution-health's manifest, audit-security's triage)
 may still ask their own questions.
 
 **Flags answer the questions,** so scripted runs and audit-fix never stop to ask. Only what is

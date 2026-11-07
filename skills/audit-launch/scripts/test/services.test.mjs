@@ -174,7 +174,7 @@ test('schemaValidate splits severe and non-severe property errors, and fails cle
 
 // ---------------------------------------------------------------- Observatory
 
-test('summariseObservatory on the real IOI responses: grade B, score 70, three failed tests', () => {
+test('summariseObservatory on the real Studio responses: grade B, score 70, three failed tests', () => {
   const s = summariseObservatory(scanFixture, analyzeFixture);
   assert.equal(s.ok, true);
   assert.equal(s.grade, 'B');
@@ -182,7 +182,7 @@ test('summariseObservatory on the real IOI responses: grade B, score 70, three f
   assert.equal(s.testsPassed, 9);
   assert.equal(s.testsFailed, 3);
   assert.equal(s.testsQuantity, 12);
-  assert.equal(s.detailsUrl, 'https://developer.mozilla.org/en-US/observatory/analyze?host=akqa-dk-ioi-nuxt-dev-yij8m.ondigitalocean.app');
+  assert.equal(s.detailsUrl, 'https://developer.mozilla.org/en-US/observatory/analyze?host=site-dev-a1b2c.ondigitalocean.app');
   assert.equal(s.scannedAt, '2026-09-24T07:23:16.515Z');
   assert.equal(s.failed.length, 3);
   const csp = s.failed.find((t) => t.name === 'content-security-policy');
@@ -210,7 +210,7 @@ test('summariseObservatory with the analyze response alone, and with nothing', (
 });
 
 test('observatoryScan POSTs a scan then GETs the analysis; a refused POST falls back to the GET alone', async () => {
-  const host = 'akqa-dk-ioi-nuxt-dev-yij8m.ondigitalocean.app';
+  const host = 'site-dev-a1b2c.ondigitalocean.app';
   const http = fakeHttp({
     [`https://observatory-api.mdn.mozilla.net/api/v2/scan?host=${host}`]: { body: JSON.stringify(scanFixture) },
     [`https://observatory-api.mdn.mozilla.net/api/v2/analyze?host=${host}`]: { body: JSON.stringify(analyzeFixture) },
@@ -378,7 +378,7 @@ test('schema.mjs is identical to audit-seo\'s copy', () => {
   if (existsSync(theirs)) assert.equal(readFileSync(theirs, 'utf8'), mine);
 });
 
-test('groupW3cMessages counts CSS errors for modern features apart, as info (3.dk: @container, @property, container-type)', () => {
+test('groupW3cMessages counts CSS errors for modern features apart, as info (example.dk: @container, @property, container-type)', () => {
   const e = (message, extract = '') => ({ type: 'error', message, extract });
   const msgs = [
     ...Array(3).fill(e('CSS: Unrecognized at-rule “@container”')),

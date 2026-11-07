@@ -30,7 +30,7 @@ import { launch, render, findChrome } from './lib/render.mjs';
 import { targetDir, claimTarget, newRun, markRun, RUN_MARKER } from './lib/target-state.mjs';
 import { writeFixPlan, validateTasks } from './lib/tasks.mjs';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.0.1';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const log = (...a) => process.stderr.write(`${a.join(' ')}\n`);

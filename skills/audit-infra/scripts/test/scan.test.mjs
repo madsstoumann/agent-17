@@ -37,7 +37,7 @@ test('parseDoh reads answers, joins TXT chunks and flags NXDOMAIN', () => {
 });
 
 test('apexOf handles plain and two-label suffixes', () => {
-  assert.equal(apexOf('www.glyptoteket.dk'), 'glyptoteket.dk');
+  assert.equal(apexOf('www.example.dk'), 'example.dk');
   assert.equal(apexOf('shop.example.co.uk'), 'example.co.uk');
   assert.equal(apexOf('example.com.'), 'example.com');
 });
@@ -197,14 +197,14 @@ test('run with --only domain,email writes a report with the result line and task
 });
 
 test('a hosting platform address (Umbraco Cloud) skips the platform domain, mail and subdomains', async () => {
-  assert.equal(platformOf('helm-live.euwest01.umbraco.io'), 'umbraco.io');
-  assert.equal(platformOf('helmsecurity.ai'), null);
+  assert.equal(platformOf('example-live.euwest01.umbraco.io'), 'umbraco.io');
+  assert.equal(platformOf('example.org'), null);
   assert.equal(platformOf('notumbraco.io'), null);
-  const report = await run({ target: 'https://helm-live.euwest01.umbraco.io/', only: ['domain', 'email', 'ct'], skip: [] }, { resolver: fakeResolver(ZONE), fetch: noFetch });
+  const report = await run({ target: 'https://example-live.euwest01.umbraco.io/', only: ['domain', 'email', 'ct'], skip: [] }, { resolver: fakeResolver(ZONE), fetch: noFetch });
   assert.equal(report.target.platform, 'umbraco.io');
   assert.deepEqual(report.results.map((r) => r.id), ['dns.platform']);
   assert.match(renderMarkdown(report), /Not the site's own domain/);
-  const forced = await run({ target: 'https://helm-live.euwest01.umbraco.io/', only: ['domain'], skip: [], platformOk: true }, { resolver: fakeResolver(ZONE), fetch: noFetch });
+  const forced = await run({ target: 'https://example-live.euwest01.umbraco.io/', only: ['domain'], skip: [], platformOk: true }, { resolver: fakeResolver(ZONE), fetch: noFetch });
   assert.equal(forced.target.platform, undefined);
   assert.equal(parseArgs(['x.umbraco.io', '--platform-ok']).platformOk, true);
 });
@@ -265,12 +265,12 @@ test('diffRows and carryOverSections', () => {
   assert.match(md, /SPF: pass → fail/);
 });
 
-test('spfTree does not read a macro include as a missing record (Proofpoint, wpp.com)', async () => {
+test('spfTree does not read a macro include as a missing record (Proofpoint, example.com)', async () => {
   const r = fakeResolver({
-    'wpp.com TXT': ['v=spf1 include:%{ir}.%{v}.%{d}.spf.has.pphosted.com include:spf.protection.outlook.com ~all'],
+    'example.com TXT': ['v=spf1 include:%{ir}.%{v}.%{d}.spf.has.pphosted.com include:spf.protection.outlook.com ~all'],
     'spf.protection.outlook.com TXT': ['v=spf1 ip4:40.92.0.0/15 -all'],
   });
-  const t = await spfTree('wpp.com', r);
+  const t = await spfTree('example.com', r);
   assert.equal(t.voids, 0);
   assert.equal(t.lookups, 2);
   assert.deepEqual(t.macros, ['%{ir}.%{v}.%{d}.spf.has.pphosted.com']);
@@ -281,7 +281,7 @@ test('spfTree does not read a macro include as a missing record (Proofpoint, wpp
   assert.doesNotMatch(j.evidence, /no SPF record/);
 });
 
-test('crtSh falls back to Cert Spotter when crt.sh answers 502 (wpp.com dry run)', async () => {
+test('crtSh falls back to Cert Spotter when crt.sh answers 502 (example.com dry run)', async () => {
   const calls = [];
   const fetch = async (url) => {
     calls.push(new URL(url).host);
@@ -319,7 +319,7 @@ function fakeConnect({ publicTrusted = false } = {}) {
     const sock = new EventEmitter();
     const root = { subject: { CN: 'Egress Gateway CA' }, issuer: { CN: 'Egress Gateway CA', O: 'Proxy Inc' }, raw: Buffer.from('r'), fingerprint256: 'R' };
     root.issuerCertificate = root;
-    const leaf = { subject: { CN: '3.dk' }, issuer: { CN: 'Egress Gateway SDS Issuing CA', O: 'Proxy Inc' }, subjectaltname: 'DNS:3.dk', valid_from: '2026-11-01T00:00:00Z', valid_to: '2026-12-06T00:00:00Z', serialNumber: 'AB', fingerprint256: 'L', raw: Buffer.from('l'), bits: 2048, issuerCertificate: root };
+    const leaf = { subject: { CN: 'example.dk' }, issuer: { CN: 'Egress Gateway SDS Issuing CA', O: 'Proxy Inc' }, subjectaltname: 'DNS:example.dk', valid_from: '2026-11-01T00:00:00Z', valid_to: '2026-12-06T00:00:00Z', serialNumber: 'AB', fingerprint256: 'L', raw: Buffer.from('l'), bits: 2048, issuerCertificate: root };
     const pub = Boolean(opts.ca);
     Object.assign(sock, {
       getPeerCertificate: () => leaf, getProtocol: () => 'TLSv1.3', alpnProtocol: 'h2', destroy() {},
@@ -331,13 +331,13 @@ function fakeConnect({ publicTrusted = false } = {}) {
   return { connect, calls };
 }
 
-test('tlsChecks reports TLS interception without crt.sh when only the local CA store trusts the chain (3.dk, cloud egress proxy)', async () => {
+test('tlsChecks reports TLS interception without crt.sh when only the local CA store trusts the chain (example.dk, cloud egress proxy)', async () => {
   const { connect, calls } = fakeConnect();
-  const ctx = { resolver: fakeResolver({}), host: '3.dk', sibling: null, now: new Date('2026-11-06'), shared: { ips: { '3.dk': { v4: ['80.251.200.7'], v6: [] } } }, connect, publicRoots: ['fake-root'] };
+  const ctx = { resolver: fakeResolver({}), host: 'example.dk', sibling: null, now: new Date('2026-11-06'), shared: { ips: { 'example.dk': { v4: ['192.0.2.7'], v6: [] } } }, connect, publicRoots: ['fake-root'] };
   const rows = await tlsChecks(ctx);
   const hit = rows.find((r) => r.id === 'tls.interception');
   assert.ok(hit, 'interception reported');
-  assert.match(hit.evidence, /3\.dk @ 80\.251\.200\.7.*Egress Gateway CA/);
+  assert.match(hit.evidence, /example\.dk @ 192\.0\.2\.7.*Egress Gateway CA/);
   assert.equal(ctx.shared.intercepted, true);
   assert.deepEqual(calls[0].ca, ['fake-root'], 'first handshake trusts the public roots only');
   assert.equal(calls[1].ca, undefined, 'second handshake uses the local store');
@@ -347,23 +347,23 @@ test('tlsChecks reports TLS interception without crt.sh when only the local CA s
 
 test('tlsChecks reports no interception when the public roots trust the chain', async () => {
   const { connect, calls } = fakeConnect({ publicTrusted: true });
-  const ctx = { resolver: fakeResolver({}), host: '3.dk', sibling: null, now: new Date('2026-11-06'), shared: { ips: { '3.dk': { v4: ['80.251.200.7'], v6: [] } } }, connect, publicRoots: ['fake-root'] };
+  const ctx = { resolver: fakeResolver({}), host: 'example.dk', sibling: null, now: new Date('2026-11-06'), shared: { ips: { 'example.dk': { v4: ['192.0.2.7'], v6: [] } } }, connect, publicRoots: ['fake-root'] };
   const rows = await tlsChecks(ctx);
   assert.equal(rows.find((r) => r.id === 'tls.interception'), undefined);
   assert.equal(rows.find((r) => r.id === 'tls.chain').status, 'pass');
   assert.equal(calls.length, 1);
 });
 
-test('a local resolver that answers addresses only, with DoH unreachable, skips DNS and mail rows (simcorp.com)', async () => {
+test('a local resolver that answers addresses only, with DoH unreachable, skips DNS and mail rows (example.com)', async () => {
   const enodata = () => Promise.reject(Object.assign(new Error('queryTxt ENODATA'), { code: 'ENODATA' }));
   const system = { resolve4: async () => ['76.76.21.21'], resolve6: enodata, resolveNs: enodata, resolveCname: enodata, resolveMx: enodata, resolveTxt: enodata, resolveCaa: enodata, resolveSoa: enodata };
   const dohDown = async () => { throw Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNREFUSED' } }); };
   const resolver = createResolver({ fetch: dohDown, system });
-  const report = await run({ target: 'https://www.simcorp.com/', only: ['domain', 'email'], skip: [] }, { resolver, fetch: noFetch });
+  const report = await run({ target: 'https://www.example.com/', only: ['domain', 'email'], skip: [] }, { resolver, fetch: noFetch });
   const dnsRows = report.results.filter((r) => /^(dns|email)\./.test(r.id));
   assert.ok(dnsRows.length >= 5);
   assert.ok(dnsRows.every((r) => r.status === 'skip'), dnsRows.filter((r) => r.status !== 'skip').map((r) => `${r.id} ${r.status}`).join(', '));
-  assert.match(report.results.find((r) => r.id === 'email.spf').evidence, /local resolver returned no records for simcorp\.com/);
+  assert.match(report.results.find((r) => r.id === 'email.spf').evidence, /local resolver returned no records for example\.com/);
   // The same resolver with DoH reachable is trusted.
   const fine = await run({ target: 'https://x.dk/', only: ['domain'], skip: [] }, { resolver: fakeResolver(ZONE), fetch: noFetch });
   assert.ok(fine.results.some((r) => r.id.startsWith('dns.') && r.status !== 'skip'));

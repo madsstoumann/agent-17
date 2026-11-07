@@ -24,7 +24,7 @@ function sample({ production }) {
     },
     results: [
       result('crawl.meta-robots', production ? 'fail' : 'info', 'Meta robots', 'noindex | nofollow', { fix: 'Remove noindex', beforeProduction: true, ...(production ? { blocker: true } : {}) }),
-      result('crawl.title', 'pass', 'Title', 'IO Interactive'),
+      result('crawl.title', 'pass', 'Title', 'Example Studio'),
       result('exposed.secret-files', 'fail', 'Secret files', '/.env served (200)', { fix: 'Block it', blocker: true }),
       result('headers.observatory', 'warn', 'MDN Observatory', 'B (70)', { link: 'https://developer.mozilla.org/en-US/observatory/analyze?host=x' }),
       result('headers.securityheaders-scrape', 'skip', 'securityheaders.com grade', 'Cloudflare challenge blocked the headless browser'),

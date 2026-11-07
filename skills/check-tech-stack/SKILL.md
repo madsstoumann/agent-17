@@ -4,7 +4,7 @@ description: Use when someone asks what a website is built with or runs on — i
 argument-hint: "<url> [<url> …] [--file urls.txt] [--browser] [--pages N] [--out DIR] [--json]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "2.1.0"
+  version: "2.1.1"
 ---
 
 # Tech stack
@@ -109,8 +109,8 @@ in `scripts/test/detect.test.mjs` with the evidence you saw, and bump the minor 
 
 ```
 /check-tech-stack https://www.example.com
-What is https://www.carlsberg.dk built with?
-Is novonordisk.com running Sitecore or AEM?
+What is https://www.example.dk built with?
+Is example.com running Sitecore or AEM?
 Which analytics and consent tools does https://www.example.com use?      (→ --browser)
 What runs the shop and the blog on example.dk?                           (→ --pages 5)
 Has competitor.dk changed anything since last month?                     (→ just run it again)

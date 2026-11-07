@@ -175,24 +175,24 @@ test('pickRenderPages fills up with one page per section that has JSON-LD', () =
   assert.deepEqual(pickRenderPages(pages, 'https://x.dk/', 8), ['https://x.dk/', 'https://x.dk/blog/1', 'https://x.dk/news/1']);
 });
 
-test('news pages without article markup: dated URL or a date written on the page (simcorp.com)', () => {
-  assert.deepEqual(newsUrl('https://www.simcorp.com/about-us/news/2022/SimCorp-and-Diligend-partner'), { dated: true });
+test('news pages without article markup: dated URL or a date written on the page (example.com)', () => {
+  assert.deepEqual(newsUrl('https://www.example.com/about-us/news/2022/Example-signs-new-partner'), { dated: true });
   assert.deepEqual(newsUrl('https://x.dk/insights/how-to-buy'), { dated: false });
   for (const listing of ['https://x.dk/news', 'https://x.dk/news/2022', 'https://x.dk/blog/tag/ai', 'https://x.dk/blog/page/2', 'https://x.dk/about-us']) assert.equal(newsUrl(listing), null, listing);
   assert.equal(visibleDate('<p>Copenhagen, <span>November 24, 2022</span></p>'), 'November 24, 2022');
   assert.equal(visibleDate('<p>24. november 2022</p>'), '24. november 2022');
   assert.equal(visibleDate('<p>Founded in 2022, 400 clients</p>'), null);
-  const html = '<html><head><title>SimCorp and Diligend partner</title></head><body><main><h1>SimCorp and Diligend partner</h1><p>November 24, 2022</p><p>Text.</p></main></body></html>';
+  const html = '<html><head><title>Example signs new partner</title></head><body><main><h1>Example signs new partner</h1><p>November 24, 2022</p><p>Text.</p></main></body></html>';
   const s = sig(html);
   assert.equal(s.articleLike, false);
   assert.equal(s.visibleDate, 'November 24, 2022');
-  const news = page('https://www.simcorp.com/about-us/news/2022/SimCorp-and-Diligend-partner', { visibleDate: 'November 24, 2022' });
-  const insight = page('https://www.simcorp.com/insights/buy-side-trends', { visibleDate: 'March 3, 2024' });
-  const undatedInsight = page('https://www.simcorp.com/insights/what-is-ibor', {});
+  const news = page('https://www.example.com/about-us/news/2022/Example-signs-new-partner', { visibleDate: 'November 24, 2022' });
+  const insight = page('https://www.example.com/insights/buy-side-trends', { visibleDate: 'March 3, 2024' });
+  const undatedInsight = page('https://www.example.com/insights/what-is-ibor', {});
   assert.equal(articleLikeWithoutMarkup(news), true);
   assert.equal(articleLikeWithoutMarkup(insight), true);
   assert.equal(articleLikeWithoutMarkup(undatedInsight), false, 'an insights page with no date anywhere may be evergreen');
-  const rows = freshnessRows({ pages: [news, insight, undatedInsight, page('https://www.simcorp.com/', {})], today: '2026-11-06' });
+  const rows = freshnessRows({ pages: [news, insight, undatedInsight, page('https://www.example.com/', {})], today: '2026-11-06' });
   const f = byId(rows, 'seo.freshness');
   assert.equal(f.status, 'warn');
   assert.match(f.evidence, /0 of 2 article pages carry a machine-readable date; 2 article-like pages \(news URL, date shown as plain text\) without a machine-readable date/);
@@ -205,7 +205,7 @@ test('GEO view counts JSON-LD coverage and sitemap rows; info opportunities coun
   const row = (id, status, area = 'geo', fix = '') => ({ id, area, status, title: id, evidence: '', fix, urls: [] });
   for (const id of ['seo.jsonld-coverage', 'seo.sitemap-noindex', 'seo.sitemap-blocked', 'seo.canonical-target', 'seo.title-duplicate']) assert.equal(isGeoRow(row(id, 'pass', 'x')), true, id);
   assert.equal(isGeoRow(row('seo.og-image', 'fail', 'social')), false);
-  // simcorp.com: 18 rows passing, then no JSON-LD anywhere and 9 noindex URLs in the sitemap
+  // example.com: 18 rows passing, then no JSON-LD anywhere and 9 noindex URLs in the sitemap
   const base = Array.from({ length: 18 }, (_, i) => row(`seo.x${i}`, 'pass'));
   const before = geoScore([...base, row('seo.ai-bot-access', 'warn'), row('seo.answer-structure', 'warn'), row('seo.jsonld-coverage', 'warn', 'schema'), row('seo.sitemap-noindex', 'fail', 'sitemap')]);
   assert.equal(before.counted, 22);

@@ -172,7 +172,7 @@ test('crawlSite follows links, records redirects and samples the sitemap', async
   assert.equal(r.sitemapSampled, 1);
 });
 
-test('crawlSite shares the --pages budget across language sections (wpp.com /es-ES/ footer)', async () => {
+test('crawlSite shares the --pages budget across language sections (example.com /es-ES/ footer)', async () => {
   // The English start page links 60 English pages and the Spanish home; Spanish pages carry broken footer links.
   const en = Array.from({ length: 60 }, (_, i) => `/en/p${i}`);
   const site = { '/': [301, null, { location: '/en' }], '/en': [200, doc({ links: [...en, '/es-ES'] })] };
@@ -232,7 +232,7 @@ test('sampleSpread shares the sitemap sample across language sections', () => {
 });
 
 test('headThenGet: Sitecore\'s image edge answers HEAD 404 and GET 200 image/png; the GET counts', async () => {
-  const img = 'https://edge.sitecorecloud.io/simcorp/og.png?h=1080&iar=0&w=1920';
+  const img = 'https://edge.sitecorecloud.io/example/og.png?h=1080&iar=0&w=1920';
   const calls = [];
   const http = {
     head: async (url) => { calls.push('HEAD'); return { url, status: 404, contentType: 'text/plain', headers: {}, error: null }; },

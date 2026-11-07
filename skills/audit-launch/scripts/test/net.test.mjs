@@ -327,48 +327,48 @@ test('dnssecStatus: the AD flag from Cloudflare, Google as fallback, null when n
 
 // ---------------------------------------------------------------- a resolver that sees only addresses
 
-// What public DNS holds for simcorp.com (2026-11-06), served as DoH answers.
-const SIMCORP = {
-  'simcorp.com A': ['76.76.21.21'],
-  'simcorp.com NS': ['ns2.netnames.net.', 'ns6.netnames.net.'],
-  'simcorp.com MX': ['0 simcorp-com.mail.protection.outlook.com.'],
-  'simcorp.com TXT': ['"v=spf1 include:spf.protection.outlook.com -all"', '"atlassian-sending-domain-verification=x"'],
-  'simcorp.com CAA': ['0 issue "letsencrypt.org"'],
-  '_dmarc.simcorp.com TXT': ['"v=DMARC1; p=quarantine; rua=mailto:postmaster@simcorp.com"'],
-  'selector1._domainkey.simcorp.com TXT': ['"v=DKIM1; k=rsa; p=MIIB"'],
-  'www.simcorp.com A': ['76.76.21.22'],
+// What public DNS holds for example.com (2026-11-06), served as DoH answers.
+const EXAMPLE_ZONE = {
+  'example.com A': ['76.76.21.21'],
+  'example.com NS': ['ns2.netnames.net.', 'ns6.netnames.net.'],
+  'example.com MX': ['0 example-com.mail.protection.outlook.com.'],
+  'example.com TXT': ['"v=spf1 include:spf.protection.outlook.com -all"', '"atlassian-sending-domain-verification=x"'],
+  'example.com CAA': ['0 issue "letsencrypt.org"'],
+  '_dmarc.example.com TXT': ['"v=DMARC1; p=quarantine; rua=mailto:postmaster@example.com"'],
+  'selector1._domainkey.example.com TXT': ['"v=DKIM1; k=rsa; p=MIIB"'],
+  'www.example.com A': ['76.76.21.22'],
 };
-const simcorpDoh = async (name, type, { provider = 'cloudflare' } = {}) => {
-  if (name === 'www.simcorp.com' && type === 'A') return { ok: true, status: 0, ad: false, provider, answers: [{ name, type: 'CNAME', ttl: 1, data: 'cname.vercel-dns.com.' }, { name: 'cname.vercel-dns.com', type: 'A', ttl: 1, data: '76.76.21.22' }] };
-  const data = SIMCORP[`${name} ${type}`] || [];
-  return parseDohAnswer({ Status: 0, AD: name.endsWith('simcorp.com') && name !== 'www.simcorp.com', Answer: data.map((d) => ({ name, type: { A: 1, NS: 2, MX: 15, TXT: 16, CAA: 257 }[type], TTL: 1, data: d })) });
+const exampleDoh = async (name, type, { provider = 'cloudflare' } = {}) => {
+  if (name === 'www.example.com' && type === 'A') return { ok: true, status: 0, ad: false, provider, answers: [{ name, type: 'CNAME', ttl: 1, data: 'cname.vercel-dns.com.' }, { name: 'cname.vercel-dns.com', type: 'A', ttl: 1, data: '76.76.21.22' }] };
+  const data = EXAMPLE_ZONE[`${name} ${type}`] || [];
+  return parseDohAnswer({ Status: 0, AD: name.endsWith('example.com') && name !== 'www.example.com', Answer: data.map((d) => ({ name, type: { A: 1, NS: 2, MX: 15, TXT: 16, CAA: 257 }[type], TTL: 1, data: d })) });
 };
 const downDoh = async (name, type, { provider = 'cloudflare' } = {}) => ({ ok: false, status: null, ad: false, answers: [], provider, error: 'fetch failed' });
 // The Claude cloud container's resolver: addresses yes, everything else ENODATA.
 const addressOnly = fakeResolver({ resolve4: async () => ['76.76.21.22'] });
 
 test('zoneOf: registrable domain, two-label public suffixes kept', () => {
-  assert.equal(zoneOf('www.simcorp.com'), 'simcorp.com');
+  assert.equal(zoneOf('www.example.com'), 'example.com');
   assert.equal(zoneOf('shop.example.co.uk'), 'example.co.uk');
   assert.equal(zoneOf('example.dk.'), 'example.dk');
 });
 
 test('dohResolver: Node-shaped answers over DoH; empty is ENODATA, unreachable is EDOH', async () => {
-  const r = dohResolver({ doh: simcorpDoh });
-  assert.deepEqual(await r.resolveMx('simcorp.com'), [{ priority: 0, exchange: 'simcorp-com.mail.protection.outlook.com.' }]);
-  assert.deepEqual(await r.resolveTxt('_dmarc.simcorp.com'), [['v=DMARC1; p=quarantine; rua=mailto:postmaster@simcorp.com']]);
-  assert.deepEqual(await r.resolveCaa('simcorp.com'), [{ critical: 0, issue: 'letsencrypt.org' }]);
-  await assert.rejects(r.resolveTxt('nothing.simcorp.com'), { code: 'ENODATA' });
-  await assert.rejects(dohResolver({ doh: downDoh }).resolveNs('simcorp.com'), { code: 'EDOH' });
+  const r = dohResolver({ doh: exampleDoh });
+  assert.deepEqual(await r.resolveMx('example.com'), [{ priority: 0, exchange: 'example-com.mail.protection.outlook.com.' }]);
+  assert.deepEqual(await r.resolveTxt('_dmarc.example.com'), [['v=DMARC1; p=quarantine; rua=mailto:postmaster@example.com']]);
+  assert.deepEqual(await r.resolveCaa('example.com'), [{ critical: 0, issue: 'letsencrypt.org' }]);
+  await assert.rejects(r.resolveTxt('nothing.example.com'), { code: 'ENODATA' });
+  await assert.rejects(dohResolver({ doh: downDoh }).resolveNs('example.com'), { code: 'EDOH' });
 });
 
 test('pickResolver: system when it answers NS, DoH when only DoH does, blind when neither can', async () => {
   const healthy = fakeResolver({ resolveNs: async () => ['ns1.example.com'] });
   assert.equal((await pickResolver('example.com', { resolver: healthy, doh: downDoh })).mode, 'system');
-  const viaDoh = await pickResolver('simcorp.com', { resolver: addressOnly, doh: simcorpDoh });
+  const viaDoh = await pickResolver('example.com', { resolver: addressOnly, doh: exampleDoh });
   assert.equal(viaDoh.mode, 'doh');
-  assert.match(viaDoh.note, /no NS for simcorp\.com/);
-  const blind = await pickResolver('simcorp.com', { resolver: addressOnly, doh: downDoh });
+  assert.match(viaDoh.note, /no NS for example\.com/);
+  const blind = await pickResolver('example.com', { resolver: addressOnly, doh: downDoh });
   assert.equal(blind.mode, 'blind');
   assert.equal(blind.resolver, null);
   // SERVFAIL locally is not "blind": dnsRecords retries those over DoH per type.
@@ -376,8 +376,8 @@ test('pickResolver: system when it answers NS, DoH when only DoH does, blind whe
   assert.equal((await pickResolver('example.com', { resolver: servfail, doh: downDoh })).mode, 'system');
 });
 
-test('dnsRows: an address-only resolver no longer reports missing SPF/DMARC/DKIM/CAA/MX (simcorp.com)', async () => {
-  const ctx = { hostname: 'www.simcorp.com', apexHost: 'simcorp.com', emailDomain: 'simcorp.com', net: { resolver: addressOnly, doh: simcorpDoh } };
+test('dnsRows: an address-only resolver no longer reports missing SPF/DMARC/DKIM/CAA/MX (example.com)', async () => {
+  const ctx = { hostname: 'www.example.com', apexHost: 'example.com', emailDomain: 'example.com', net: { resolver: addressOnly, doh: exampleDoh } };
   const rows = Object.fromEntries((await dnsRows(ctx)).map((r) => [r.id, r]));
   assert.match(rows['dns.records'].evidence, /NS ns2\.netnames\.net, ns6\.netnames\.net/);
   assert.match(rows['dns.records'].evidence, /DNS-over-HTTPS/);
@@ -386,12 +386,12 @@ test('dnsRows: an address-only resolver no longer reports missing SPF/DMARC/DKIM
   assert.equal(rows['email.spf'].status, 'pass');
   assert.equal(rows['email.dmarc'].status, 'pass');
   assert.match(rows['email.dkim'].evidence, /selector1/);
-  assert.match(rows['dns.dnssec'].evidence, /simcorp\.com validated/);
+  assert.match(rows['dns.dnssec'].evidence, /example\.com validated/);
   assert.match(rows['dns.dnssec'].evidence, /CNAME to cname\.vercel-dns\.com/, 'www on Vercel is not "not signed"');
 });
 
 test('dnsRows: address-only resolver and no DoH skips the DNS and mail rows instead of failing them', async () => {
-  const ctx = { hostname: 'www.simcorp.com', apexHost: 'simcorp.com', emailDomain: 'simcorp.com', net: { resolver: addressOnly, doh: downDoh } };
+  const ctx = { hostname: 'www.example.com', apexHost: 'example.com', emailDomain: 'example.com', net: { resolver: addressOnly, doh: downDoh } };
   const rows = await dnsRows(ctx);
   assert.deepEqual(rows.map((r) => r.id), ['dns.records', 'dns.caa', 'dns.mx', 'dns.dnssec', 'email.spf', 'email.dmarc', 'email.dkim']);
   assert.ok(rows.every((r) => r.status === 'skip'));
@@ -503,7 +503,7 @@ test('dkimProbe: TXT at <selector>._domainkey.<domain>, absent selectors ignored
   assert.equal(custom.found.length, 1);
 });
 
-test('publicTlsInfo: a chain only the local CA store trusts is TLS interception (cloud egress proxy, 3.dk)', async () => {
+test('publicTlsInfo: a chain only the local CA store trusts is TLS interception (cloud egress proxy, example.dk)', async () => {
   const calls = [];
   const proxyRoot = { subject: { CN: 'Egress Gateway CA', O: 'Proxy Inc' }, issuer: { CN: 'Egress Gateway CA' }, valid_to: 'Jan  1 00:00:00 2030 GMT' };
   proxyRoot.issuerCertificate = proxyRoot;
@@ -513,7 +513,7 @@ test('publicTlsInfo: a chain only the local CA store trusts is TLS interception 
     const pub = Boolean(opts.ca);
     return fakeConnect({ cert, authorized: !pub, authorizationError: pub ? 'SELF_SIGNED_CERT_IN_CHAIN' : undefined }).connect(opts, cb);
   };
-  const r = await publicTlsInfo('3.dk', { connect, roots: ['public-root'] });
+  const r = await publicTlsInfo('example.dk', { connect, roots: ['public-root'] });
   assert.equal(r.intercepted, true);
   assert.equal(r.interceptedBy, 'Egress Gateway CA');
   assert.deepEqual(calls[0].ca, ['public-root']);

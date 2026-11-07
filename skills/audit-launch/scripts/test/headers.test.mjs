@@ -11,11 +11,11 @@ const fixture = (p) => readFileSync(new URL(`./fixtures/${p}`, import.meta.url),
 const json = (p) => JSON.parse(fixture(p));
 
 // Real responses, captured with curl (see fixtures/headers and fixtures/csp).
-const IOI = json('headers/ioi.json');
-const IOI_COOKIES = json('headers/ioi.set-cookie.json');
-const IOI_HOST = 'akqa-dk-ioi-nuxt-dev-yij8m.ondigitalocean.app';
+const Studio = json('headers/studio.json');
+const SITE_COOKIES = json('headers/studio.set-cookie.json');
+const SITE_HOST = 'site-dev-a1b2c.ondigitalocean.app';
 const BS = json('headers/browser-style.json');
-const CSP_IOI = fixture('csp/ioi.txt');
+const CSP_SITE = fixture('csp/studio.txt');
 const CSP_BS = fixture('csp/browser-style.txt');
 const CSP_NONCE = fixture('csp/nonce.txt');
 
@@ -24,8 +24,8 @@ const find = (findings, code) => findings.find((f) => f.code === code);
 
 // ---------------------------------------------------------------- parseCsp
 
-test('parseCsp: the IOI policy is one object with lowercased directives and verbatim sources', () => {
-  const policies = parseCsp(CSP_IOI);
+test('parseCsp: the Studio policy is one object with lowercased directives and verbatim sources', () => {
+  const policies = parseCsp(CSP_SITE);
   assert.equal(policies.length, 1);
   const [p] = policies;
   for (const t of ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'blob:', 'https://www.google.com']) {
@@ -67,8 +67,8 @@ test('lintCsp: empty input is one no-csp warning', () => {
   assert.deepEqual(codes(lintCsp('')), ['no-csp']);
 });
 
-test('lintCsp: IOI warns on unsafe-inline, unsafe-eval and the www.google.com bypass host', () => {
-  const out = lintCsp(parseCsp(CSP_IOI));
+test('lintCsp: Studio warns on unsafe-inline, unsafe-eval and the www.google.com bypass host', () => {
+  const out = lintCsp(parseCsp(CSP_SITE));
   assert.equal(find(out, 'unsafe-inline-script').severity, 'warn');
   assert.equal(find(out, 'unsafe-eval').severity, 'warn');
   const bypass = find(out, 'known-bypass-host');
@@ -152,8 +152,8 @@ test('lintCsp: reporting and report-only', () => {
 
 // ---------------------------------------------------------------- gradeSecurityHeaders
 
-test('gradeSecurityHeaders: IOI is an A (six present, unsafe-inline/eval; frame-ancestors stands in for XFO)', () => {
-  const g = gradeSecurityHeaders(IOI);
+test('gradeSecurityHeaders: Studio is an A (six present, unsafe-inline/eval; frame-ancestors stands in for XFO)', () => {
+  const g = gradeSecurityHeaders(Studio);
   assert.equal(g.grade, 'A');
   assert.equal(g.xfoViaCsp, true);
   assert.equal(g.present.length, 6);
@@ -222,8 +222,8 @@ test('GRADE_TABLE covers 0..6 and GRADE_NOTE says the grade is an estimate', () 
 
 // ---------------------------------------------------------------- cookies
 
-test('parseSetCookie: the two real IOI cookies', () => {
-  const a = parseSetCookie(IOI_COOKIES[0]);
+test('parseSetCookie: the two real Studio cookies', () => {
+  const a = parseSetCookie(SITE_COOKIES[0]);
   assert.equal(a.name, 'i18n_redirected');
   assert.equal(a.value, 'en');
   assert.equal(a.secure, false);
@@ -234,8 +234,8 @@ test('parseSetCookie: the two real IOI cookies', () => {
   assert.match(a.expires, /2027/);
   assert.equal(a.maxAge, null);
   assert.equal(a.session, false);
-  assert.equal(a.raw, IOI_COOKIES[0]);
-  const b = parseSetCookie(IOI_COOKIES[1]);
+  assert.equal(a.raw, SITE_COOKIES[0]);
+  const b = parseSetCookie(SITE_COOKIES[1]);
   assert.equal(b.name, '__cf_bm');
   assert.equal(b.secure, true);
   assert.equal(b.httpOnly, true);
@@ -259,8 +259,8 @@ test('parseSetCookie: Max-Age, session cookies, dotted Domain, odd SameSite, a v
   assert.equal(parseSetCookie('bare').value, 'bare');
 });
 
-test('lintCookies: IOI — i18n_redirected lacks Secure and HttpOnly; __cf_bm is Cloudflare\'s, not the site\'s', () => {
-  const out = lintCookies(IOI_COOKIES.map(parseSetCookie), { https: true, host: IOI_HOST });
+test('lintCookies: Studio — i18n_redirected lacks Secure and HttpOnly; __cf_bm is Cloudflare\'s, not the site\'s', () => {
+  const out = lintCookies(SITE_COOKIES.map(parseSetCookie), { https: true, host: SITE_HOST });
   const i18n = out.filter((f) => f.name === 'i18n_redirected');
   assert.deepEqual(i18n.map((f) => [f.code, f.severity]), [['no-secure', 'warn'], ['no-httponly', 'info']]);
   const cf = out.filter((f) => f.name === '__cf_bm');
@@ -286,8 +286,8 @@ test('lintCookies: sensitive names, SameSite=None without Secure, no SameSite, h
 
 // ---------------------------------------------------------------- info leaks
 
-test('infoLeakHeaders: IOI leaks x-powered-by, cloudflare without a version is not a leak', () => {
-  const out = infoLeakHeaders(IOI);
+test('infoLeakHeaders: Studio leaks x-powered-by, cloudflare without a version is not a leak', () => {
+  const out = infoLeakHeaders(Studio);
   assert.deepEqual(out.map((l) => [l.header, l.value]), [['x-powered-by', 'Nuxt']]);
   assert.ok(out[0].text.length > 10);
   assert.deepEqual(infoLeakHeaders(BS), []);
@@ -307,11 +307,11 @@ test('infoLeakHeaders: server versions and the ASP.NET / generator headers', () 
 // ---------------------------------------------------------------- caching
 
 test('parseCacheControl: the two real values and the common shapes', () => {
-  const ioi = parseCacheControl(IOI['cache-control']);
-  assert.equal(ioi.sMaxAge, 600);
-  assert.equal(ioi.maxAge, null);
-  assert.equal(ioi.staleWhileRevalidate, null, 'present without a value');
-  assert.equal(ioi.directives['stale-while-revalidate'], true);
+  const studio = parseCacheControl(Studio['cache-control']);
+  assert.equal(studio.sMaxAge, 600);
+  assert.equal(studio.maxAge, null);
+  assert.equal(studio.staleWhileRevalidate, null, 'present without a value');
+  assert.equal(studio.directives['stale-while-revalidate'], true);
   assert.equal(parseCacheControl(BS['cache-control']).maxAge, 1800);
   const asset = parseCacheControl('public, max-age=31536000, immutable, stale-while-revalidate=60');
   assert.deepEqual(asset, {
