@@ -58,8 +58,8 @@ test('checkLinks falls back to GET and marks blocked externals', async () => {
   ]);
 });
 
-test('headThenGet: a HEAD 404 that GET answers 200 is not broken (Sitecore image edge, simcorp.com)', async () => {
-  const img = 'https://edge.sitecorecloud.io/simcorp/hero.png?h=1080&iar=0&w=1920';
+test('headThenGet: a HEAD 404 that GET answers 200 is not broken (Sitecore image edge, example.com)', async () => {
+  const img = 'https://edge.sitecorecloud.io/example/hero.png?h=1080&iar=0&w=1920';
   const calls = [];
   const sitecore = {
     head: async (url) => { calls.push('HEAD'); return { url, finalUrl: url, status: 404, headers: {}, contentType: 'text/plain', error: null }; },

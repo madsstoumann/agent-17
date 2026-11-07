@@ -2,10 +2,15 @@
 
 All notable changes to the `audit-a11y` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.1.2] - 2026-11-07
+
+### Changed
+- Example hostnames in the docs, changelog and tests are placeholders now (example.com and similar).
+
 ## [2.1.1] - 2026-11-06
 
 ### Fixed
-- Page sampling treats a locale prefix (`/en/`, `/es-ES/`, `/zh-Hans/`, `/pt_BR/`) as part of the same template, so `/en/news` and `/es-ES/news` are one template, not eight. Other languages of a page already picked only fill the list after every distinct page. Found on wpp.com, where `/news` was audited in 8 languages.
+- Page sampling treats a locale prefix (`/en/`, `/es-ES/`, `/zh-Hans/`, `/pt_BR/`) as part of the same template, so `/en/news` and `/es-ES/news` are one template, not eight. Other languages of a page already picked only fill the list after every distinct page. Found on example.com, where `/news` was audited in 8 languages.
 
 ## [2.1.0] - 2026-11-01
 

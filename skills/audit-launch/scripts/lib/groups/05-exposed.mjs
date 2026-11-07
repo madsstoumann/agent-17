@@ -44,7 +44,7 @@ const LOGIN_WORDS = /\b(log ?in|sign ?in|adgangskode|password|username)\b/i;
  * Decide from a probe's redirect chain whether a CMS login really answers.
  * chain: [{ url, status, location?, body? }] — the first hop is the probe, the last
  * is where the chain ended. Only a 200 that looks like a login form counts: a
- * redirect alone proves nothing (wpp.com sends /umbraco → /en/umbraco, a 404).
+ * redirect alone proves nothing (example.com sends /umbraco → /en/umbraco, a 404).
  * A chain that ends on another host is an external sign-in (SSO), not a login on
  * this site. Returns { reachable, sso, note }.
  */

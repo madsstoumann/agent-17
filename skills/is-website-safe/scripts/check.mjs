@@ -147,7 +147,7 @@ export async function run(args, deps = {}) {
     uh.error && `URLhaus (${uh.error})`,
     extra?.error && `brand lookup (${extra.error})`,
   ].filter(Boolean);
-  return { tool: 'is-website-safe', version: '2.0.0', checkedAt: now.toISOString(), input: args.input, ...result, facts, unavailable, keysMissing: skipped };
+  return { tool: 'is-website-safe', version: '2.0.1', checkedAt: now.toISOString(), input: args.input, ...result, facts, unavailable, keysMissing: skipped };
 }
 
 const MARK = { danger: '✖', warn: '!', good: '✓', info: '·' };

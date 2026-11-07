@@ -327,7 +327,7 @@ export async function loadSitemaps(http, sitemapUrls, { maxChildren = 5, maxUrls
     if (parsed.kind === 'sitemapindex') {
       out.indexes.push(url);
       // Depth first: an index's children are read before the next declared sitemap, so one huge
-      // sitemap listed later in robots.txt (3.dk's help centre) cannot fill the URL cap first.
+      // sitemap listed later in robots.txt (example.dk's help centre) cannot fill the URL cap first.
       const kids = [];
       for (const { loc } of parsed.sitemaps) {
         if (visited.has(loc) || kids.includes(loc)) continue;

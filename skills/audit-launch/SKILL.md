@@ -4,7 +4,7 @@ description: Use when a website is about to go live or has just launched and nee
 argument-hint: "<url> [--env dev|staging|production] [--production-host HOST] [--pages N] [--skip group,...] [--out PATH] [--baseline report.json | --no-baseline] [--insecure] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Read, WebFetch
 metadata:
-  version: "2.4.0"
+  version: "2.4.1"
 ---
 
 # Launch audit
@@ -172,7 +172,7 @@ Offer, do not run by default:
 
 ```
 /audit-launch https://www.example.com
-/audit-launch https://akqa-dk-ioi-nuxt-dev-yij8m.ondigitalocean.app/ --env dev
+/audit-launch https://site-dev-a1b2c.ondigitalocean.app/ --env dev
 Run a launch audit on https://stage.example.com — it's the stage site, production will be https://www.example.com
 We go live with https://www.example.com next week. Test it and give me a report I can send to the client.
 Pre-launch check of https://dev.example.com, save the report in ./docs/audits/
@@ -184,7 +184,7 @@ Run the launch audit on https://www.example.com with PageSpeed field data      (
 ```
 
 Mapping: "it's the dev/stage site" → `--env dev`; "production will be X" → `--production-host X`;
-"save it in …" / "next to IOI.report.md" → `--out`; "compare with last time" → nothing to add (automatic); "from scratch" → `--no-baseline`;
+"save it in …" / "next to site.report.md" → `--out`; "compare with last time" → nothing to add (automatic); "from scratch" → `--no-baseline`;
 "quick" / "skip Lighthouse" → `--skip perf`; "only headers and TLS" → `--only headers,tls`;
 "self-signed" / `localhost` → `--insecure`. Nothing said → defaults, and say where the report went.
 

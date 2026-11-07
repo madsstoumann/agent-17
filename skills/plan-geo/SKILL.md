@@ -4,7 +4,7 @@ description: Use when someone wants to know what structured data and what conten
 argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--no-remote]"
 allowed-tools: Bash(node:*), Read, Write
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # GEO plan
@@ -63,7 +63,7 @@ unless the user asks for another.
 exists, read it first and keep what the user wrote; update only what the pages contradict. Half a
 page: what the organisation is and does (one sentence a buyer would understand), its products and
 services by name, who it sells to (industries, roles, regions), the terms of its field it uses
-(for simcorp.com: IBOR, ABOR, front-to-back, total portfolio, factor risk models), named
+(for an investment software site: IBOR, ABOR, front-to-back, total portfolio, factor risk models), named
 competitors or alternatives the site mentions, and the proof it shows (clients, awards, numbers).
 Only what the pages say; anything you add from general knowledge goes under "Context (not from
 the site)". This file is the industry framing everything else builds on.
@@ -199,7 +199,7 @@ Honesty rules:
 ```
 /skills:plan-geo https://www.example.com
 What markup and content should we add for AI search? <audit-all run folder>
-Phase 2 and 3 of the GEO proposal for https://www.simcorp.com
+Phase 2 and 3 of the GEO proposal for https://www.example.com
 Draft JSON-LD for each page template of https://www.example.dk   (--only markup)
 Which questions in our industry do we not answer yet? https://www.example.com   (--only content)
 Content gaps for https://www.example.com using our Search Console export   (--queries queries.csv)

@@ -42,8 +42,8 @@ test('pages: start page first, one per template, same origin only', () => {
   assert.deepEqual(sitemapLocs('<urlset><url><loc>https://x.dk/a?b=1&amp;c=2</loc></url><url><loc><![CDATA[https://x.dk/b]]></loc></url></urlset>'), ['https://x.dk/a?b=1&c=2', 'https://x.dk/b']);
 });
 
-test('pages: the same page in other languages is one template (wpp.com /news in 8 locales)', () => {
-  const o = 'https://www.wpp.com';
+test('pages: the same page in other languages is one template (example.com /news in 8 locales)', () => {
+  const o = 'https://www.example.com';
   const locales = ['en', 'es-ES', 'de-DE', 'fr-FR', 'it-IT', 'ja-JP', 'pt-BR', 'zh-CN'];
   const picked = pickPages({
     start: `${o}/`,

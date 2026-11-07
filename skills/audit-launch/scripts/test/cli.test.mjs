@@ -53,13 +53,13 @@ test('normaliseEnv maps aliases to the three labels', () => {
 });
 
 test('isStagingHost and detectEnv', () => {
-  assert.equal(isStagingHost('akqa-dk-ioi-nuxt-dev-yij8m.ondigitalocean.app'), true);
+  assert.equal(isStagingHost('site-dev-a1b2c.ondigitalocean.app'), true);
   assert.equal(isStagingHost('stage.example.com'), true);
   assert.equal(isStagingHost('www.example.com'), false);
   assert.equal(isStagingHost('browser.style'), false);
   assert.equal(isStagingHost('devices.example.com'), false, 'dev inside a word is not staging');
   assert.equal(isStagingHost('example-test.vercel.app'), true);
-  assert.deepEqual(detectEnv('akqa-dk-ioi-nuxt-dev-yij8m.ondigitalocean.app'), { env: 'staging', production: false, source: 'auto', reason: 'hostname looks like a non-production host' });
+  assert.deepEqual(detectEnv('site-dev-a1b2c.ondigitalocean.app'), { env: 'staging', production: false, source: 'auto', reason: 'hostname looks like a non-production host' });
   assert.deepEqual(detectEnv('localhost:44380'), { env: 'dev', production: false, source: 'auto', reason: 'private host' });
   assert.deepEqual(detectEnv('browser.style'), { env: 'production', production: true, source: 'auto', reason: 'no staging marker in hostname' });
 });
@@ -76,10 +76,10 @@ test('resolveOut: default run folder in the host target folder, explicit folder,
   assert.equal(d.rawDir, d.dir);
   const f = resolveOut({ out: './docs/audits', host: 'x.com' }, { now, home: '/Users/me', cwd: '/proj' });
   assert.equal(f.dir, '/proj/docs/audits');
-  const m = resolveOut({ out: '~/Downloads/IOI.audit-launch.md', host: 'x.com' }, { now, home: '/Users/me', cwd: '/proj' });
-  assert.equal(m.reportMd, '/Users/me/Downloads/IOI.audit-launch.md');
-  assert.equal(m.reportJson, '/Users/me/Downloads/IOI.audit-launch.json');
-  assert.equal(m.rawDir, '/Users/me/Downloads/IOI.audit-launch-raw');
+  const m = resolveOut({ out: '~/Downloads/Studio.audit-launch.md', host: 'x.com' }, { now, home: '/Users/me', cwd: '/proj' });
+  assert.equal(m.reportMd, '/Users/me/Downloads/Studio.audit-launch.md');
+  assert.equal(m.reportJson, '/Users/me/Downloads/Studio.audit-launch.json');
+  assert.equal(m.rawDir, '/Users/me/Downloads/Studio.audit-launch-raw');
   assert.equal(m.dir, '/Users/me/Downloads');
 });
 

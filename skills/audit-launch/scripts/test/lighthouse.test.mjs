@@ -331,13 +331,13 @@ test('pickPerfPages drops the start URL and query URLs, then samples sections ro
   assert.equal(pickPerfPages(input, { startUrl: 'https://example.com' }).length, 5, 'n defaults to 5');
 });
 
-test('pickPerfPages spreads a sitemap dominated by one deep section (3.dk help guides) and ignores locale prefixes', () => {
-  const help = Array.from({ length: 60 }, (_, i) => `https://www.3.dk/hjalp/vejledninger/${['iphone', 'android', 'router'][i % 3]}/guide-${i}`);
-  const input = [...help, 'https://www.3.dk/mobilabonnementer', 'https://www.3.dk/mobiler/apple/iphone-17', 'https://www.3.dk/bredbaand/5g', 'https://www.3.dk/en/mobiler/x'];
-  const picked = pickPerfPages(input, { startUrl: 'https://www.3.dk/', n: 4 });
+test('pickPerfPages spreads a sitemap dominated by one deep section (example.dk help guides) and ignores locale prefixes', () => {
+  const help = Array.from({ length: 60 }, (_, i) => `https://www.example.dk/hjalp/vejledninger/${['iphone', 'android', 'router'][i % 3]}/guide-${i}`);
+  const input = [...help, 'https://www.example.dk/mobilabonnementer', 'https://www.example.dk/mobiler/apple/iphone-17', 'https://www.example.dk/bredbaand/5g', 'https://www.example.dk/en/mobiler/x'];
+  const picked = pickPerfPages(input, { startUrl: 'https://www.example.dk/', n: 4 });
   assert.equal(picked.filter((u) => u.includes('/hjalp/')).length, 1, 'one help guide, not all of them');
-  assert.ok(picked.includes('https://www.3.dk/mobilabonnementer'));
-  assert.ok(picked.includes('https://www.3.dk/bredbaand/5g'));
+  assert.ok(picked.includes('https://www.example.dk/mobilabonnementer'));
+  assert.ok(picked.includes('https://www.example.dk/bredbaand/5g'));
   assert.equal(picked.filter((u) => /\/mobiler\//.test(u)).length, 1, '/en/mobiler and /mobiler are one section');
 });
 

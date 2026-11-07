@@ -1,5 +1,5 @@
 // The version a script prints (report headers, the combined report's section heads) must be the
-// version in its SKILL.md metadata. A run on 3.dk showed audit-launch 2.1.1 and audit-infra 2.1.0 in
+// version in its SKILL.md metadata. A run on example.dk showed audit-launch 2.1.1 and audit-infra 2.1.0 in
 // the section heads while their SKILL.md said 2.2.0, because the script constants were not bumped.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

@@ -18,10 +18,10 @@
   </url>
   <url>
     <loc>
-      https://example.com/hitman/world-of-assassination/
+      https://example.com/shadow/world-of-shadows/
     </loc>
     <image:image>
-      <image:loc>https://example.com/img/hitman.jpg</image:loc>
+      <image:loc>https://example.com/img/shadow.jpg</image:loc>
     </image:image>
   </url>
   <url><loc>https://example.com/careers/</loc></url>

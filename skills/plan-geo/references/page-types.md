@@ -12,7 +12,7 @@ every other draft points at by `@id`:
 
 | Type | Properties | Notes |
 | --- | --- | --- |
-| Organization (or Corporation, NGO, LocalBusiness, GovernmentOrganization, EducationalOrganization) | `@id` `https://<host>/#organization`, name, url, logo (ImageObject with url), sameAs (social profiles, Wikipedia/Wikidata when the site links them), description | legalName, foundingDate, address, contactPoint, numberOfEmployees only when a page shows them. `parentOrganization` / `subOrganization` for brands the site presents (SimCorp / Axioma). |
+| Organization (or Corporation, NGO, LocalBusiness, GovernmentOrganization, EducationalOrganization) | `@id` `https://<host>/#organization`, name, url, logo (ImageObject with url), sameAs (social profiles, Wikipedia/Wikidata when the site links them), description | legalName, foundingDate, address, contactPoint, numberOfEmployees only when a page shows them. `parentOrganization` / `subOrganization` for brands the site presents (Example / Axioma). |
 | WebSite | `@id` `https://<host>/#website`, url, name, publisher → `#organization`, inLanguage | No SearchAction unless the site has a search page that takes a query parameter. |
 
 ## Per template
@@ -53,5 +53,5 @@ every other draft points at by `@id`:
 - Facts as lists or tables; numbers with their unit, date and source.
 - One idea per paragraph, short enough to quote.
 - Name things the way the field names them (and give the site's own product name next to the
-  generic term: "SimCorp One, an investment book of record (IBOR) platform").
+  generic term: "Example One, an investment book of record (IBOR) platform").
 - Date the page and name the author; update the date when the content changes.

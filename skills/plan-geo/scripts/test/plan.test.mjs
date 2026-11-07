@@ -36,7 +36,7 @@ test('templateKey: sections, locale prefixes, years and one-segment pages', () =
   assert.equal(templateKey('https://x.com/en/'), 'home');
   assert.equal(templateKey('https://x.com/resources/insights/industry-articles/2025/x'), 'resources/insights');
   assert.equal(templateKey('https://x.com/da-DK/resources/insights/y'), 'resources/insights');
-  assert.equal(templateKey('https://x.com/Solutions/SimCorp-One/x'), 'solutions/simcorp-one');
+  assert.equal(templateKey('https://x.com/Solutions/Example-One/x'), 'solutions/example-one');
   assert.equal(templateKey('https://x.com/your-industry/pensions'), 'your-industry');
   assert.equal(templateKey('https://x.com/news/2024/x'), 'news');
   assert.equal(templateKey('https://x.com/contact'), 'contact');
@@ -178,7 +178,7 @@ test('verifyDraft: values from the page pass, invented ones are flagged', () => 
 });
 
 test('norm, onPage and knownUrl', () => {
-  assert.equal(norm('SimCorp’s “One” – platform & data'), "simcorp's one platform and data");
+  assert.equal(norm('Example’s “One” – platform & data'), "example's one platform and data");
   const hay = norm('The quick brown fox jumps over the lazy dog while the cat sleeps on the warm mat today and the birds sing in the old oak tree near the river bank all morning long');
   assert.ok(onPage('quick brown fox', hay));
   assert.ok(!onPage('quick red fox', hay));

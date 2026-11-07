@@ -2,12 +2,17 @@
 
 All notable changes to the `audit-launch` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.4.1] - 2026-11-07
+
+### Changed
+- Example hostnames in the docs, changelog and tests are placeholders now (example.com and similar).
+
 ## [2.4.0] - 2026-11-06
 
 ### Fixed
-- DNS and mail rows from a resolver that answers addresses only. The Claude cloud container's resolver returns ENODATA for TXT, MX, NS, CAA and DS, so simcorp.com was reported without SPF, DMARC, DKIM, CAA, MX and NS. Every registered domain has NS records, so when the local resolver returns none for the domain, audit-launch asks DNS-over-HTTPS (Cloudflare, then Google) and reads every record there; `dns.records` says so. When DoH cannot be reached either, the DNS and mail rows are skipped with "the local resolver returned no records" instead of reported as missing.
-- `dns.dnssec` checks the domain's zone, not the host. www.simcorp.com is a CNAME to Vercel, whose zone is unsigned, so the row said "not signed" for a signed domain; it now says the domain validates and that the host is a CNAME into an unsigned zone.
-- `links.external-broken`, internal links past the crawl and the sitemap sample fall back to GET (body discarded) when HEAD answers any 4xx/5xx, not only 403/405/5xx. Two edge.sitecorecloud.io images on simcorp.com answered HEAD 404 and GET 200.
+- DNS and mail rows from a resolver that answers addresses only. The Claude cloud container's resolver returns ENODATA for TXT, MX, NS, CAA and DS, so example.com was reported without SPF, DMARC, DKIM, CAA, MX and NS. Every registered domain has NS records, so when the local resolver returns none for the domain, audit-launch asks DNS-over-HTTPS (Cloudflare, then Google) and reads every record there; `dns.records` says so. When DoH cannot be reached either, the DNS and mail rows are skipped with "the local resolver returned no records" instead of reported as missing.
+- `dns.dnssec` checks the domain's zone, not the host. www.example.com is a CNAME to Vercel, whose zone is unsigned, so the row said "not signed" for a signed domain; it now says the domain validates and that the host is a CNAME into an unsigned zone.
+- `links.external-broken`, internal links past the crawl and the sitemap sample fall back to GET (body discarded) when HEAD answers any 4xx/5xx, not only 403/405/5xx. Two edge.sitecorecloud.io images on example.com answered HEAD 404 and GET 200.
 - `dns.records` shows the domain's name servers, not those of a www CNAME target.
 
 ## [2.3.1] - 2026-11-06
@@ -19,18 +24,18 @@ All notable changes to the `audit-launch` skill. Format follows [Keep a Changelo
 
 ### Fixed
 - TLS interception: the certificate of a public host is verified against Node's built-in public roots only. When only this machine's own CA store trusts it (a corporate proxy, antivirus or cloud egress gateway re-signing TLS), `tls.interception` says so and the certificate rows are skipped instead of passing on the proxy's certificate. Private hosts keep the local store (mkcert, company CAs).
-- Lighthouse pages are sampled from different site sections (first path segment, locale prefix ignored) instead of (segment, depth) buckets, and noindex pages (meta robots or X-Robots-Tag) are skipped. On 3.dk every sampled page was a noindex help guide, so the page rows read "SEO 69 (page is noindex)". A site that is noindex everywhere still gets its pages measured.
-- Sitemaps are read depth first: a sitemap index's children come before the next sitemap declared in robots.txt, and a child that is also declared is read in its index's place. On 3.dk the help centre's sitemap on another host (8,680 URLs) filled the 5,000-URL cap before www.3.dk/sitemap.xml was read, so only help pages could be sampled.
-- `links.w3c` no longer counts the validator's CSS errors for features its parser does not know (`@container`, `@property`, `@layer`, `@scope`, `container-type`, container and viewport units, and similar). They are listed in a new info row, `links.w3c-modern-css`, and the scoreboard notes them. On 3.dk that was 262 of 433 errors.
+- Lighthouse pages are sampled from different site sections (first path segment, locale prefix ignored) instead of (segment, depth) buckets, and noindex pages (meta robots or X-Robots-Tag) are skipped. On example.dk every sampled page was a noindex help guide, so the page rows read "SEO 69 (page is noindex)". A site that is noindex everywhere still gets its pages measured.
+- Sitemaps are read depth first: a sitemap index's children come before the next sitemap declared in robots.txt, and a child that is also declared is read in its index's place. On example.dk the help centre's sitemap on another host (8,680 URLs) filled the 5,000-URL cap before www.example.dk/sitemap.xml was read, so only help pages could be sampled.
+- `links.w3c` no longer counts the validator's CSS errors for features its parser does not know (`@container`, `@property`, `@layer`, `@scope`, `container-type`, container and viewport units, and similar). They are listed in a new info row, `links.w3c-modern-css`, and the scoreboard notes them. On example.dk that was 262 of 433 errors.
 
 ### Added
-- A test for the 3.dk admin-path case (`/umbraco` and `/sitecore` 301 to a trailing slash, then 404), which 2.2.1 already handles.
+- A test for the example.dk admin-path case (`/umbraco` and `/sitecore` 301 to a trailing slash, then 404), which 2.2.1 already handles.
 
 ## [2.2.1] - 2026-11-06
 
 ### Fixed
 - `--version` printed 2.1.1; it now matches the skill version.
-- `exposed.admin-paths` no longer flags a backoffice because a redirect's `Location` mentions the CMS. Redirects are followed (up to 5 hops) and only a 200 that looks like a login page counts: a password field, or the CMS's own name plus login words. A locale redirect that ends in a 404 (wpp.com: `/umbraco` → 307 `/en/umbraco` → 404) is now a pass. A redirect to another host is reported as "behind an external sign-in" instead of a warning. The row's data lists each probe's redirect chain.
+- `exposed.admin-paths` no longer flags a backoffice because a redirect's `Location` mentions the CMS. Redirects are followed (up to 5 hops) and only a 200 that looks like a login page counts: a password field, or the CMS's own name plus login words. A locale redirect that ends in a 404 (example.com: `/umbraco` → 307 `/en/umbraco` → 404) is now a pass. A redirect to another host is reported as "behind an external sign-in" instead of a warning. The row's data lists each probe's redirect chain.
 
 ## [2.2.0] - 2026-11-04
 

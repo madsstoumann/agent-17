@@ -121,13 +121,13 @@ test('findChrome honours --chrome and CHROME_PATH', () => {
   assert.equal(findChrome({ env: {}, home: '/h', exists: () => false, list: () => [] }), null);
 });
 
-test('sitemap sample spreads across sections and skips noindex pages (3.dk help guides)', async () => {
-  const help = Array.from({ length: 40 }, (_, i) => `https://www.3.dk/hjalp/vejledninger/guide-${i}`);
-  const urls = [...help, 'https://www.3.dk/mobilabonnementer', 'https://www.3.dk/bredbaand/5g', 'https://www.3.dk/en/bredbaand/x'];
-  const candidates = sampleSitemapUrls(urls, { startUrl: 'https://www.3.dk/', n: 12 });
-  assert.deepEqual(candidates.slice(0, 3), ['https://www.3.dk/hjalp/vejledninger/guide-0', 'https://www.3.dk/bredbaand/5g', 'https://www.3.dk/mobilabonnementer']);
+test('sitemap sample spreads across sections and skips noindex pages (example.dk help guides)', async () => {
+  const help = Array.from({ length: 40 }, (_, i) => `https://www.example.dk/hjalp/vejledninger/guide-${i}`);
+  const urls = [...help, 'https://www.example.dk/mobilabonnementer', 'https://www.example.dk/bredbaand/5g', 'https://www.example.dk/en/bredbaand/x'];
+  const candidates = sampleSitemapUrls(urls, { startUrl: 'https://www.example.dk/', n: 12 });
+  assert.deepEqual(candidates.slice(0, 3), ['https://www.example.dk/hjalp/vejledninger/guide-0', 'https://www.example.dk/bredbaand/5g', 'https://www.example.dk/mobilabonnementer']);
   const get = async (u) => ({ status: 200, headers: { 'content-type': 'text/html' }, body: u.includes('/hjalp/') ? '<meta name="robots" content="noindex">' : '' });
   const { picked, skipped } = await pickIndexable(get, candidates, { n: 3 });
-  assert.deepEqual(picked, ['https://www.3.dk/bredbaand/5g', 'https://www.3.dk/mobilabonnementer', 'https://www.3.dk/en/bredbaand/x']);
+  assert.deepEqual(picked, ['https://www.example.dk/bredbaand/5g', 'https://www.example.dk/mobilabonnementer', 'https://www.example.dk/en/bredbaand/x']);
   assert.ok(skipped.every((x) => x.reason === 'noindex'));
 });

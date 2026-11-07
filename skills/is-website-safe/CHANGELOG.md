@@ -2,6 +2,11 @@
 
 All notable changes to the `is-website-safe` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.0.1] - 2026-11-07
+
+### Changed
+- Example hostnames in the docs, changelog and tests are placeholders now (example.com and similar).
+
 ## [2.0.0] - 2026-11-01
 
 Rebuilt to answer "is this the real site, a copy of a famous one, or a fake shop?". The old additive score let a five-day-old PayPal lookalike reach "Moderate risk" and a phishing page on a free host reach "Trusted".
