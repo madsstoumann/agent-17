@@ -16,7 +16,7 @@ test('diffRows sorts changes into fixed, new or worse, and still open', () => {
 
 test('diff.mjs and target-state.mjs match the copies in the other skills', () => {
   const here = path.dirname(new URL(import.meta.url).pathname);
-  for (const [file, skills] of [['diff.mjs', ['audit-seo', 'audit-eco']], ['target-state.mjs', ['audit-seo', 'audit-eco', 'audit-launch', 'audit-security', 'audit-all', 'audit-a11y', 'enable-memory-management', 'plan-geo']]]) {
+  for (const [file, skills] of [['diff.mjs', ['audit-seo', 'audit-eco']], ['target-state.mjs', ['audit-seo', 'audit-eco', 'audit-launch', 'audit-security', 'audit-all', 'audit-a11y', 'plan-geo']]]) {
     const mine = fs.readFileSync(path.join(here, '..', 'lib', file), 'utf8');
     for (const s of skills) {
       const f = path.join(here, '..', '..', '..', s, 'scripts', 'lib', file);

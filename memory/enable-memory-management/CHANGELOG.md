@@ -1,6 +1,11 @@
 # Changelog
 
-All notable changes to the `enable-memory-management` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
+All notable changes to the `enable-memory-management` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md#versioning) for the versioning convention.
+
+## [2.0.0] - 2026-11-07
+
+### Changed
+- Lives in `memory/` and installs as its own plugin, `memory@agent-17`, so it runs as `/memory:enable-memory-management`. The `memory-dream` template, the README and the schedule line use the new command and install line.
 
 ## [1.0.0] - 2026-11-03
 

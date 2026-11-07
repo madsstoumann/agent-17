@@ -1,16 +1,20 @@
 # agent-17
 
-Agent skills, in [`skills/`](skills/). See [skills/README.md](skills/README.md) for how they are versioned.
+Agent skills, in two plugins:
+
+- [`skills/`](skills/): audits, checks and plans for websites and code. See [skills/README.md](skills/README.md) for the list and how they are versioned.
+- [`memory/`](memory/): memory management for a project's AI agents. See [memory/README.md](memory/README.md).
 
 ## Install the skills
 
-The repository is a plugin marketplace. It has one plugin, `skills`, which holds every skill in `skills/`. Install it once and you get new skills and fixes as they land here.
+The repository is a plugin marketplace with two plugins: `skills`, which holds every skill in `skills/`, and `memory`, which holds the memory setup in `memory/`. Install one or both and you get new skills and fixes as they land here.
 
 ### Claude Code
 
 ```text
 /plugin marketplace add madsstoumann/agent-17
 /plugin install skills@agent-17
+/plugin install memory@agent-17
 ```
 
 Or from your shell: `claude plugin install skills --marketplace madsstoumann/agent-17`.
@@ -21,7 +25,7 @@ The skills show up as `/skills:audit-launch`, `/skills:audit-seo` and so on, and
 
 1. Open [Customize > Plugins](https://claude.ai/customize/plugins).
 2. Choose **Add > Add marketplace** and enter `madsstoumann/agent-17`.
-3. Add **skills**. Turn on **Sync automatically** for the marketplace to get updates.
+3. Add **skills** (and **memory** if you want it). Turn on **Sync automatically** for the marketplace to get updates.
 
 A plugin added on claude.ai is saved to your account, so it also loads in Cowork and in Claude Code when you are signed in with the same account. If you already uploaded some of these skills one by one under Customize > Skills, remove those copies so they don't trigger twice.
 
@@ -304,27 +308,10 @@ Three steps with Claude's writing in between; the skill runs them. `plan.mjs ext
 
 Optional keys, each adding one lookup: `GOOGLE_SAFE_BROWSING_KEY` (Google Safe Browsing), `VIRUSTOTAL_API_KEY`, `URLHAUS_AUTH_KEY` (abuse.ch) and `URLSCAN_API_KEY` (works without, lower quota). All have free tiers; see the skill for where to get them.
 
-### enable-memory-management
-
-| Flag | What it does |
-|---|---|
-| `--root DIR` | The project (default: the current folder). |
-| `--memory DIR` | The memory folder. Default: Claude Code's auto memory for the project (`autoMemoryDirectory` if set). Pass it for a team store, `/mnt/memory/<store>` or `/memories`. |
-| `--transcripts DIR` / `none` | Session transcripts to count (default: Claude Code's for the project), or skip them. Also reads exported event pages and Managed Agents session events (`.json`, `.jsonl`). |
-| `--since YYYY-MM-DD` | Only sessions on or after this date. |
-| `--exclude a/,b/**` | Leave vendored or generated markdown out of the docs checks. |
-| `--audit-only` | Measure and summarise; no question, no changes. |
-| `--dream` | The dreaming pass: sessions since the last dream against the memory, numbered proposals with quotes and counts, applied only when accepted. |
-| `--lint` | Errors and warnings for instructions, memory and skills, no files written, exit 1 on an error (for a hook or CI). |
-| `--level`, `--console`, `--out`, `--state`, `--no-baseline` | As above. |
-| `--budget-lines N` / `--index-bytes N` | Change the budgets (200 lines always loaded; 25,000 bytes for `MEMORY.md`). |
-
-`snapshot.mjs` (run by the skill) takes `--memory DIR`, `--diff`, `--list`, `--sha FILE`, `--check FILE --expect SHA` and `--restore STAMP --yes`. `sessions-export.mjs` takes `--agent AGENT_ID --out DIR [--since YYYY-MM-DD] [--max N]` and reads `ANTHROPIC_API_KEY`: it saves a Managed Agents agent's recent sessions for a dream run. Running the skill with Claude Managed Agents (a memory store and a weekly dreamer deployment): [its README](skills/enable-memory-management/README.md#set-it-up-with-managed-agents).
-
 ### check-node-toolchain
 
 No flags.
 
 ## Adding a skill
 
-Put it in its own folder under `skills/` with a `SKILL.md` and a `CHANGELOG.md`. The plugin picks it up with no other change. Refer to bundled scripts as `${CLAUDE_SKILL_DIR}/...`, not a fixed `~/.claude/skills/...` path, because a plugin installs the skill somewhere else. Add a row for it to the contents in [skills/README.md](skills/README.md#contents), and keep that row up to date when the skill changes or goes away.
+Put it in its own folder under `skills/` with a `SKILL.md` and a `CHANGELOG.md`. The plugin picks it up with no other change. Refer to bundled scripts as `${CLAUDE_SKILL_DIR}/...`, not a fixed `~/.claude/skills/...` path, because a plugin installs the skill somewhere else. Add a row for it to the contents in [skills/README.md](skills/README.md#contents), and keep that row up to date when the skill changes or goes away. A skill about agent memory goes under `memory/` instead, with its row and flags in [memory/README.md](memory/README.md).

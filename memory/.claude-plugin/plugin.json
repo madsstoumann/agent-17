@@ -1,0 +1,11 @@
+{
+  "name": "memory",
+  "displayName": "Mads's memory setup",
+  "description": "Memory management for a project's AI agents: enable-memory-management and any memory skill added to memory/ later",
+  "author": {
+    "name": "Mads Stoumann",
+    "url": "https://github.com/madsstoumann"
+  },
+  "repository": "https://github.com/madsstoumann/agent-17",
+  "skills": "./"
+}

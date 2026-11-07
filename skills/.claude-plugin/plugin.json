@@ -1,7 +1,7 @@
 {
   "name": "skills",
   "displayName": "Mads's skills",
-  "description": "Every skill in skills/ as one plugin: audit-all, audit-launch, audit-security, is-website-safe, audit-solution-health, check-node-toolchain, check-tech-stack, plan-geo, enable-memory-management and any skill added there later",
+  "description": "Every skill in skills/ as one plugin: audit-all, audit-launch, audit-security, is-website-safe, audit-solution-health, check-node-toolchain, check-tech-stack, plan-geo and any skill added there later",
   "author": {
     "name": "Mads Stoumann",
     "url": "https://github.com/madsstoumann"

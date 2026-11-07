@@ -23,19 +23,19 @@ Claude Managed Agents.
 
 ```text
 /plugin marketplace add madsstoumann/agent-17
-/plugin install skills@agent-17
+/plugin install memory@agent-17
 ```
 
 | Command, in the project | What happens |
 |---|---|
-| `/skills:enable-memory-management --audit-only` | Measures and summarises. Changes nothing |
-| `/skills:enable-memory-management` | Measures, shows the steps that apply, asks once, then does the ones you pick |
-| `/skills:enable-memory-management --dream` | Reviews the sessions since the last dream; numbered proposals with quotes and counts |
+| `/memory:enable-memory-management --audit-only` | Measures and summarises. Changes nothing |
+| `/memory:enable-memory-management` | Measures, shows the steps that apply, asks once, then does the ones you pick |
+| `/memory:enable-memory-management --dream` | Reviews the sessions since the last dream; numbered proposals with quotes and counts |
 
 Step E8 adds the project's `memory-dream` skill and a weekly schedule (a routine with
 `/schedule`, or a scheduled task in a hosted project). The scheduled run writes the proposal
 report and stops; nothing is applied until a person accepts proposals by number. Every flag:
-[the flags table](../../README.md#enable-memory-management).
+[the flags table](../README.md#flags).
 
 ## Set it up with Managed Agents
 
@@ -85,7 +85,7 @@ Copy the skill in (its test fixtures hold a `SKILL.md` of their own, so leave th
 
 ```sh
 mkdir -p agents/memory-dreamer/skills
-cp -R path/to/agent-17/skills/enable-memory-management agents/memory-dreamer/skills/
+cp -R path/to/agent-17/memory/enable-memory-management agents/memory-dreamer/skills/
 rm -rf agents/memory-dreamer/skills/enable-memory-management/scripts/test
 ```
 
@@ -209,7 +209,7 @@ project's agents, or a key you can rotate.
 
 `ant apply` creates the store empty. If the project already has a memory folder (Claude Code's
 auto memory, or a team folder), tidy it first with
-`/skills:enable-memory-management --audit-only --memory <folder>`, add `STEERING.md` from
+`/memory:enable-memory-management --audit-only --memory <folder>`, add `STEERING.md` from
 [templates/](templates/STEERING.md) and a copy of
 [references/store-format.md](references/store-format.md), then copy each file in:
 

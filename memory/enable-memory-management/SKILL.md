@@ -4,7 +4,7 @@ description: Sets up and maintains memory management for a project's AI agents. 
 argument-hint: "[--root DIR] [--memory DIR] [--transcripts DIR] [--exclude a/,b/] [--audit-only | --dream | --lint] [--level error|warn|info|all] [--console]"
 allowed-tools: Bash(node:*), Bash(git:*), Read, Write, Edit, Grep, Glob, Agent
 metadata:
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
 # Enable memory management
@@ -109,7 +109,7 @@ something a session saw, never something the dream run does.
 ### Schedule
 
 Weekly is enough for most projects. In Claude Code, a routine (`/schedule`) or a cloud trigger
-that runs `/skills:enable-memory-management --dream` in the project; in a hosted project, a
+that runs `/memory:enable-memory-management --dream` in the project; in a hosted project, a
 scheduled task in its own thread; in Claude Managed Agents, a scheduled deployment of a
 memory-dreamer agent with the store mounted read-only ([README.md](README.md#set-it-up-with-managed-agents)
 has the files and commands). The scheduled run only writes the proposal report and says where
