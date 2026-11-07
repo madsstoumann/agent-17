@@ -10,7 +10,12 @@
     {
       "name": "skills",
       "source": "./skills",
-      "description": "Every skill in skills/ as one plugin: audit-all, audit-fix, audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security, is-website-safe, audit-solution-health, check-node-toolchain, check-tech-stack, plan-geo, enable-memory-management and any skill added there later"
+      "description": "Every skill in skills/ as one plugin: audit-all, audit-fix, audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security, is-website-safe, audit-solution-health, check-node-toolchain, check-tech-stack, plan-geo and any skill added there later"
+    },
+    {
+      "name": "memory",
+      "source": "./memory",
+      "description": "Memory management for a project's AI agents, in memory/: enable-memory-management and any memory skill added there later"
     }
   ],
   "renames": {

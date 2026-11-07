@@ -16,10 +16,10 @@ fixes to it reach every project; this file holds what is particular to this one.
 | Leave out of the audit | {{EXCLUDE}} |
 | Reports | `{{REPORTS}}` |
 
-Run `/skills:enable-memory-management --dream --memory {{MEMORY_DIR}}{{EXCLUDE_FLAG}}` and follow
+Run `/memory:enable-memory-management --dream --memory {{MEMORY_DIR}}{{EXCLUDE_FLAG}}` and follow
 its section 5. When that skill is not installed, say so and point to
 https://github.com/madsstoumann/agent-17 (install: `/plugin marketplace add madsstoumann/agent-17`,
-then `/plugin install skills@agent-17`); do not improvise a dream run without it.
+then `/plugin install memory@agent-17`); do not improvise a dream run without it.
 
 A scheduled run writes the proposal report and stops. Nothing is applied until a person accepts
 proposals by number.

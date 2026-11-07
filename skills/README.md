@@ -44,14 +44,6 @@ Plans propose work that does not exist yet. Like checks they give no verdict and
 | --- | --- | --- |
 | [plan-geo](plan-geo/SKILL.md) | The follow-up to a GEO audit: works out what each page template is, drafts JSON-LD from the pages' own text (site graph, Article, NewsArticle, SoftwareApplication, Service, FAQPage, BreadcrumbList…) and checks every value is on the page, then maps the questions people ask AI engines in the site's field to the pages that answer them and writes content briefs for the gaps (FAQ blocks, comparison tables, glossary, "what is" pages). Writes `proposals.md` for the client and a fix plan. | `/skills:plan-geo https://example.com` after audit-seo, or `/skills:plan-geo <audit-all run folder>`; `--only markup` or `--only content` for one part · [flags](../README.md#plan-geo) |
 
-### Agents
-
-Skills about how agents themselves work in a project: what they load, remember and learn.
-
-| Skill | What it does | How to use it |
-| --- | --- | --- |
-| [enable-memory-management](enable-memory-management/SKILL.md) | Measures a project's agent memory (always-loaded CLAUDE.md / AGENTS.md, `.claude/rules`, skills, docs, the memory store and past sessions), then after one approval sets up frontmatter and a lean index, in-band memory rules, snapshots with hash-before-write, a slimmer CLAUDE.md, skills for repeated procedures and a weekly dreaming pass that proposes memory changes for a person to accept. | `/skills:enable-memory-management` in the project, `--audit-only` to just measure, `--dream` for a review pass · [flags](../README.md#enable-memory-management) · [with Managed Agents](enable-memory-management/README.md#set-it-up-with-managed-agents) |
-
 ### Other
 
 | Skill | What it does | How to use it |
