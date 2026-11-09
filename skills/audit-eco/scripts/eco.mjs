@@ -131,8 +131,8 @@ async function main() {
   };
 
   const stateDir = claimTarget(resolveState({ state: opts.state, host: opts.host }), opts.host);
-  // --console alone: the run's files go to a scratch folder that is removed at the end.
-  const scratch = opts.console && !opts.report ? scratchDir('audit-eco') : null;
+  // --console alone (no --report, no --out): the run's files go to a scratch folder that is removed at the end.
+  const scratch = opts.console && !opts.report && !opts.out ? scratchDir('audit-eco') : null;
   const dir = resolveOut({ out: scratch || opts.out, host: opts.host }, { state: stateDir, exists: fsSync.existsSync });
   markRun(dir, { skill: 'audit-eco', target: opts.host });
   report.state = stateDir;
@@ -153,7 +153,7 @@ async function main() {
   await fs.writeFile(paths.findings, `${JSON.stringify(findings(report), null, 2)}\n`);
   await fs.writeFile(path.join(stateDir, 'last-report.json'), JSON.stringify(report));
   const head = opts.console
-    ? `${consoleList({ title: consoleTitle(report), items: consoleItems(report), levels: opts.levels })}${opts.report ? `\nReport: ${paths.md}` : ''}`
+    ? `${consoleList({ title: consoleTitle(report), items: consoleItems(report), levels: opts.levels })}${(opts.report || opts.out) ? `\nReport: ${paths.md}` : ''}`
     : renderStdout(report, paths, { levels: opts.levels });
   removeScratch(scratch);
   process.stdout.write(`${head}\nState: ${stateDir}\nCompared with: ${baselineFile || 'nothing (first run for this host)'}${notes ? '\nNotes: notes.md included in the report' : ''}\n`);

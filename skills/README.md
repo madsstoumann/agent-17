@@ -42,7 +42,7 @@ Plans propose work that does not exist yet. Like checks they give no verdict and
 
 | Skill | What it does | How to use it |
 | --- | --- | --- |
-| [plan-geo](plan-geo/SKILL.md) | The follow-up to a GEO audit: works out what each page template is, drafts JSON-LD from the pages' own text (site graph, Article, NewsArticle, SoftwareApplication, Service, FAQPage, BreadcrumbList…) and checks every value is on the page, then maps the questions people ask AI engines in the site's field to the pages that answer them and writes content briefs for the gaps (FAQ blocks, comparison tables, glossary, "what is" pages). Writes `proposals.md` for the client and a fix plan. | `/skills:plan-geo https://example.com` after audit-seo, or `/skills:plan-geo <audit-all run folder>`; `--only markup` or `--only content` for one part · [flags](../README.md#plan-geo) |
+| [plan-geo](plan-geo/SKILL.md) | The follow-up to a GEO audit: works out what each page template is, drafts JSON-LD from the pages' own text (site graph, Article, NewsArticle, SoftwareApplication, Service, FAQPage, BreadcrumbList…) and checks every value is on the page, then maps the questions people ask AI engines in the site's field to the pages that answer them and writes content briefs for the gaps (FAQ blocks, comparison tables, glossary, "what is" pages). Writes `proposals.md` for the client and a fix plan, and on request sample pages with the proposed JSON-LD for Google's Rich Results Test and validator.schema.org. | `/skills:plan-geo https://example.com` after audit-seo, or `/skills:plan-geo <audit-all run folder>`; `--only markup` or `--only content` for one part; "sample pages for the client" for `samples` · [flags](../README.md#plan-geo) |
 
 ### Other
 
@@ -117,7 +117,7 @@ Every skill that writes a report takes the same two flags:
   ERROR  crawl    meta-robots   Meta robots · noindex, nofollow
   ```
 
-  The run's files go to a scratch folder in the system temp folder; the target folder's `last-report.json` is still saved. `--console --report` writes both.
+  The run's files go to a scratch folder in the system temp folder, or to `--out DIR` when given; the target folder's `last-report.json` is still saved. `--console --report` writes both.
 
 The level filters what people read: the console list, `report.md`, the combined report and PDFs, and audit-all's `fix/TODO.md`. It never filters saved data (`report.json`, `findings.json`, `tasks.json`, `last-report.json`, `state.json`, `triage.json`), so the next run's comparison is unaffected. audit-all passes the level to each sub-audit, applies it to the fix plan, and asks for it on its first screen.
 

@@ -12,7 +12,7 @@ import { openContext, choose } from './lib/visit.mjs';
 import { analyse, SECTIONS } from './lib/analyse.mjs';
 import { countStatuses, prepareRun, finishRun, consoleItems, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, GLYPH, result } from './lib/common.mjs';
 
-export const VERSION = '2.1.0';
+export const VERSION = '2.1.1';
 
 const USAGE = `audit-privacy ${VERSION}: GDPR / ePrivacy check of cookies, trackers and the consent banner
 
@@ -215,9 +215,9 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || !args.url) { process.stdout.write(USAGE); process.exit(args.help ? 0 : 2); }
   const host = new URL(args.url).hostname;
-  // --console alone: the run's files go to a scratch folder outside the reports folder. It is kept
+  // --console alone (no --report, no --out): the run's files go to a scratch folder outside the reports folder. It is kept
   // for the policy text Claude reads; the system's temp cleanup removes it.
-  const scratch = args.console && !args.report ? scratchDir('audit-privacy') : null;
+  const scratch = args.console && !args.report && !args.out ? scratchDir('audit-privacy') : null;
   const { state, dir, baselineFile, notes } = prepareRun({ skill: 'audit-privacy', host, out: scratch || args.out, baseline: args.baseline });
   log(`output: ${dir}`);
   const report = await run(args, { dir });
@@ -237,7 +237,7 @@ async function main() {
   finishRun(state, report);
   const policies = (report.raw.policies || []).filter((p) => p.file).map((p) => `\npolicy:     ${path.join(paths.dir, p.file)} (${p.url})`).join('');
   const head = args.console
-    ? `${consoleList({ title: `audit-privacy ${report.target.host}`, items: consoleItems(report.results), levels: args.levels })}${args.report ? `\nreport:     ${paths.md}` : ''}${policies}`
+    ? `${consoleList({ title: `audit-privacy ${report.target.host}`, items: consoleItems(report.results), levels: args.levels })}${(args.report || args.out) ? `\nreport:     ${paths.md}` : ''}${policies}`
     : renderStdout(report, paths, { levels: args.levels });
   process.stdout.write(`${head}\nstate:      ${state}\ncompared:   ${baselineFile || 'nothing (first run for this host)'}${notes ? '\nnotes:      notes.md included in the report' : ''}\n`);
 }

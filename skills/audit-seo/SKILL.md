@@ -4,7 +4,7 @@ description: Use when someone wants an SEO, content or GEO (AI search) audit of 
 argument-hint: "<url | file.html> [--geo] [--schema-only] [--pages N] [--sitemap-sample N] [--external-links N] [--internal-links N] [--schema-pages N] [--render-pages N] [--bot-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "2.5.1"
+  version: "2.5.2"
 ---
 
 # SEO audit
@@ -64,7 +64,7 @@ first, with the counts on top. The run's files go to a scratch folder in the sys
 so nothing is left in the reports folder except the target folder's `last-report.json`. Use it when
 the user wants "just the list", "in the terminal" or "no report". Show the list as it is, in a code
 block, with a sentence of context; there is no report path to quote. `--console --report` writes
-the report as well.
+the report as well, and so does `--console --out DIR` (the run's files go to that folder).
 
 ### Structured data only
 

@@ -132,7 +132,7 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 | Flag | What it does |
 |---|---|
 | `--level error\|warn\|info\|all` | What the report and the summary show. Takes a comma list, e.g. `error,warn`. Default `all`. **error** = fail, blocker, critical, high, red; **warning** = warn, medium, moderate, low, amber; **info** = info, review items. Saved data (`report.json`, `findings.json`, `tasks.json`, `last-report.json`) always keeps everything. |
-| `--console` | A compact list in the terminal, one line per issue, errors first, instead of `report.md`. Add `--report` to get both. |
+| `--console` | A compact list in the terminal, one line per issue, errors first, instead of `report.md`. Add `--report` to get both, or `--out DIR` to keep the run's files in that folder. |
 | `--out DIR` | Where this run's files go. Default `<reports>/<skill>/<site or repo>/runs/<stamp>/`, where `<reports>` is `$AUDIT_OUT_DIR`, else Downloads, else `~/audit-reports/`. |
 | `--state DIR` | The folder kept between runs (`last-report.json`, `notes.md`). Default `<reports>/<skill>/<site or repo>/`. |
 | `--baseline FILE` / `--no-baseline` | Compare with a specific earlier run, or not at all. Default: the last run of the same site or repo. |
@@ -283,7 +283,7 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 
 ### plan-geo
 
-Three steps with Claude's writing in between; the skill runs them. `plan.mjs extract`, then Claude writes the profile, drafts, questions and briefs, then `plan.mjs check` and `plan.mjs build`.
+Three steps with Claude's writing in between; the skill runs them. `plan.mjs extract`, then Claude writes the profile, drafts, questions and briefs, then `plan.mjs check` and `plan.mjs build`. `plan.mjs samples` (or `build --samples`) writes sample pages with the proposed JSON-LD for the Rich Results Test and validator.schema.org.
 
 | Flag | What it does |
 |---|---|
@@ -294,7 +294,9 @@ Three steps with Claude's writing in between; the skill runs them. `plan.mjs ext
 | `--competitors a.com,b.com` | Alternatives comparison briefs may name. Without it, only alternatives the site already names. |
 | `--repo PATH` | The site's code, so markup and module tasks go to audit-fix as agent tasks. |
 | `--no-render` | Never use Chrome (by default pages whose served HTML is thin are rendered). |
-| `--no-remote` | On `check` and `build`: do not send the drafts to validator.schema.org. |
+| `--no-remote` | On `check`, `samples` and `build`: do not send the drafts or samples to validator.schema.org. |
+| `--samples` | On `build`: write `samples/` first and link it from `proposals.md`. |
+| `--live` | On `samples`: also write `<slug>.live.html`, the live page with its own JSON-LD replaced by the proposed graph and a `<base href>`, so it opens in a browser as the page would look after the work. |
 | `--out DIR` / `--header "Name: value"` / `--insecure` | As above. |
 
 ### is-website-safe

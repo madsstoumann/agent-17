@@ -1,10 +1,10 @@
 ---
 name: plan-geo
-description: Use when someone wants to know what structured data and what content a website should add to be understood and quoted by AI answer engines (ChatGPT, Perplexity, Gemini, Google AI Overviews) — the follow-up to a GEO audit. Reads the site's pages, works out what each page template is, drafts JSON-LD from the pages' own text (Organization, WebSite, Article, Product or SoftwareApplication, Service, Event, FAQPage, BreadcrumbList…) and checks every value is on the page, then maps the questions people ask in the site's field to the pages that answer them and writes content briefs for the gaps (FAQ blocks, comparison tables, glossary, "what is" pages). Also for the "technical GEO implementation" and "AI content framework" phases of a client proposal. Proposes work; it gives no verdict.
-argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--no-remote]"
+description: Use when someone wants to know what structured data and what content a website should add to be understood and quoted by AI answer engines (ChatGPT, Perplexity, Gemini, Google AI Overviews) — the follow-up to a GEO audit. Reads the site's pages, works out what each page template is, drafts JSON-LD from the pages' own text (Organization, WebSite, Article, Product or SoftwareApplication, Service, Event, FAQPage, BreadcrumbList…) and checks every value is on the page, then maps the questions people ask in the site's field to the pages that answer them and writes content briefs for the gaps (FAQ blocks, comparison tables, glossary, "what is" pages). Also for the "technical GEO implementation" and "AI content framework" phases of a client proposal, and for sample pages with the proposed JSON-LD to show a client in Google's Rich Results Test or validator.schema.org. Proposes work; it gives no verdict.
+argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--no-remote] [--samples] [--live]"
 allowed-tools: Bash(node:*), Read, Write
 metadata:
-  version: "1.0.1"
+  version: "1.1.0"
 ---
 
 # GEO plan
@@ -78,7 +78,11 @@ Read `references/page-types.md` for the types, properties and where each belongs
    is: Corporation, LocalBusiness, NGO, GovernmentOrganization…) and WebSite, with `@id`s
    (`https://<host>/#organization`, `#website`) that every other draft references. name, url,
    logo, `sameAs` (the social profiles extract found), description in the site's own words,
-   contactPoint only from what the pages show.
+   contactPoint only from what the pages show. **Nothing else:** the site graph goes on every
+   page, and a SoftwareApplication or Product in it makes Google flag an invalid rich result on
+   every article (no price, no rating). Put the flagship product in its own template's draft with
+   an `@id` (`#<product>`) that other drafts can point at; check says so when the site graph
+   carries such a node.
 3. **`markup/<template slug>.jsonld`** for each template worth marking up, drafted for its
    example page. The template slug is the template key with `/` written as `--`
    (`resources/insights` → `markup/resources--insights.jsonld`), and the draft is checked against
@@ -110,6 +114,27 @@ audit-seo), posts it to validator.schema.org (`--no-remote` skips that) and list
 the page does not show. Fix the drafts until each line is OK or the remaining notes are
 deliberate (say why in the draft's `.md`): a value flagged "not on the page" is removed, or the
 `.md` says the page must show it first.
+
+### Samples (when the drafts are to be shown)
+
+When the user wants to show the client the markup, or asks for sample pages or files to paste
+into Google's Rich Results Test or validator.schema.org, run:
+
+```bash
+node "${CLAUDE_SKILL_DIR}/scripts/plan.mjs" samples <run folder> [--live]
+```
+
+It writes `samples/<slug>.html` for each draft: the site graph and the draft merged into the one
+`@graph` the page would carry (a draft node with a site `@id` is merged into that node), in a small
+page that says which page it is for and how to test it. `site.jsonld` gets `samples/site.html`
+when there is no draft for the start page. `--live` also fetches each draft's page and writes
+`<slug>.live.html`: the live page with its own JSON-LD replaced by the sample's and a `<base href>`,
+so it opens in a browser with the site's styles. `samples/README.md` lists every sample with its
+page, types, validator.schema.org result (`--no-remote` skips it; after a rate limit the rest are
+left for pasting by hand) and what Google's rich-result rules still ask for. Fix any sample with
+values not on the page before it goes to the client; a missing price or rating the page does not
+show stays missing, and the README says the Rich Results Test marks that item invalid.
+`build --samples` writes them as part of the build and links them from `proposals.md`.
 
 ### Content (skip with `--only markup`)
 
@@ -161,9 +186,9 @@ the content gaps with the most questions behind them), and how much work is in t
 node "${CLAUDE_SKILL_DIR}/scripts/plan.mjs" build <run folder>
 ```
 
-It runs the check again, copies the profile into the run folder, writes `proposals.md` (summary,
-profile, a markup table per template with each draft's check result, the question map, the
-briefs, the tasks) and `fix/TODO.md` + `fix/tasks/*.md` from `tasks.json`, and keeps
+It runs the check again (and with `--samples` writes the samples), copies the profile into the run
+folder, writes `proposals.md` (summary, profile, a markup table per template with each draft's
+check result, a link to the samples when there are any, the question map, the briefs, the tasks) and `fix/TODO.md` + `fix/tasks/*.md` from `tasks.json`, and keeps
 `last-plan.json` in the target folder. `NOTE` lines name anything missing or malformed; fix and
 build again.
 
@@ -176,7 +201,7 @@ build again.
    behind them.
 4. Tasks: how many for agents and for people, and that `/skills:audit-fix <run folder>` builds
    the agent ones in the repo.
-5. The paths of `proposals.md` and `fix/TODO.md`.
+5. The paths of `proposals.md` and `fix/TODO.md`, and `samples/README.md` when samples were written.
 
 Honesty rules:
 
@@ -203,16 +228,18 @@ Phase 2 and 3 of the GEO proposal for https://www.example.com
 Draft JSON-LD for each page template of https://www.example.dk   (--only markup)
 Which questions in our industry do we not answer yet? https://www.example.com   (--only content)
 Content gaps for https://www.example.com using our Search Console export   (--queries queries.csv)
+Sample pages with the proposed JSON-LD to show the client in the Rich Results Test <run folder>   (samples --live)
 ```
 
 ## Files
 
-- `scripts/plan.mjs`: `extract`, `check` and `build` (`--help` lists every flag).
+- `scripts/plan.mjs`: `extract`, `check`, `samples` and `build` (`--help` lists every flag).
 - `scripts/lib/templates.mjs`: templates from URL sections, page-type guesses, the sample.
 - `scripts/lib/extract.mjs`: a page as Markdown, question-and-answer pairs, dates, bylines,
   breadcrumbs, organisation details, link and image URLs.
 - `scripts/lib/verify.mjs`: the "is every value on the page" check.
 - `scripts/lib/proposals.mjs`: questions.csv and proposals.md.
+- `scripts/lib/samples.mjs`: the merged graph, the sample page, the live copy and samples/README.md.
 - Copies kept identical by tests: `html.mjs`, `render.mjs`, `rich.mjs`, `schema.mjs` (audit-seo),
   `tasks.mjs`, `levels.mjs` (audit-all), `target-state.mjs` (the audit skills).
 - `references/page-types.md`: page type → schema.org types, properties, modules.

@@ -67,8 +67,8 @@ async function main() {
   if (opts.insecure) process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
   const stateDir = claimTarget(resolveState({ state: opts.state, host: opts.host }), opts.host);
-  // --console alone: the run's files go to a scratch folder that is removed at the end.
-  const scratch = opts.console && !opts.report ? scratchDir('audit-launch') : null;
+  // --console alone (no --report, no --out): the run's files go to a scratch folder that is removed at the end.
+  const scratch = opts.console && !opts.report && !opts.out ? scratchDir('audit-launch') : null;
   const out = resolveOut({ out: scratch || opts.out, host: opts.host }, { state: stateDir, exists: fsSync.existsSync });
   await fs.mkdir(out.dir, { recursive: true });
   if (out.mode === 'dir') markRun(out.dir, { skill: 'audit-launch', target: opts.host });
@@ -284,7 +284,7 @@ async function main() {
   if (opts.json) process.stdout.write(`${JSON.stringify(report, null, 1)}\n`);
   else if (opts.console) {
     const items = report.results.map((r) => ({ level: levelOf(r), source: r.group, id: r.id.startsWith(`${r.group}.`) ? r.id.slice(r.group.length + 1) : r.id, title: r.title, where: [r.subject, r.evidence].filter(Boolean).join(' — ').slice(0, 160) }));
-    process.stdout.write(`${consoleList({ title: `audit-launch ${report.site.host || ''}${report.partial ? ' (partial)' : ''}`, items, levels: opts.levels })}${opts.report ? `\nReport: ${out.reportMd}` : ''}${tail}`);
+    process.stdout.write(`${consoleList({ title: `audit-launch ${report.site.host || ''}${report.partial ? ' (partial)' : ''}`, items, levels: opts.levels })}${(opts.report || opts.out) ? `\nReport: ${out.reportMd}` : ''}${tail}`);
   } else process.stdout.write(`${renderStdout(report, { reportMd: out.reportMd, reportJson: out.reportJson, levels: opts.levels })}${tail}`);
   removeScratch(scratch);
   if (opts.strict && report.counts.fail > 0) process.exit(3);

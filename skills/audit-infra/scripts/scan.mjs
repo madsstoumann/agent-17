@@ -11,7 +11,7 @@ import { SECTIONS, domainChecks, emailChecks, tlsChecks, edgeChecks, ctChecks } 
 import { DKIM_SELECTORS } from './lib/email.mjs';
 import { result, countStatuses, prepareRun, finishRun, consoleItems, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, settle, GLYPH } from './lib/common.mjs';
 
-export const VERSION = '2.4.2';
+export const VERSION = '2.4.3';
 const UA = `Mozilla/5.0 (compatible; audit-infra/${VERSION})`;
 
 const USAGE = `audit-infra ${VERSION}: domain, DNS, email, TLS and subdomain audit
@@ -209,8 +209,8 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help || !args.target) { process.stdout.write(USAGE); process.exit(args.help ? 0 : 2); }
   const { host } = parseTarget(args.target);
-  // --console alone: the run's files go to a scratch folder that is removed at the end.
-  const scratch = args.console && !args.report ? scratchDir('audit-infra') : null;
+  // --console alone (no --report, no --out): the run's files go to a scratch folder that is removed at the end.
+  const scratch = args.console && !args.report && !args.out ? scratchDir('audit-infra') : null;
   const { state, dir, baselineFile, notes } = prepareRun({ skill: 'audit-infra', host, out: scratch || args.out, baseline: args.baseline });
   log(`audit-infra ${VERSION}: ${host} -> ${dir}`);
   const report = await run(args);
@@ -229,7 +229,7 @@ async function main() {
   writeJson(files.json, report);
   finishRun(state, report);
   const head = args.console
-    ? `${consoleList({ title: `audit-infra ${report.target.host}`, items: consoleItems(report.results), levels: args.levels })}${args.report ? `\nreport: ${files.md}` : ''}`
+    ? `${consoleList({ title: `audit-infra ${report.target.host}`, items: consoleItems(report.results), levels: args.levels })}${(args.report || args.out) ? `\nreport: ${files.md}` : ''}`
     : renderStdout(report, files, { levels: args.levels });
   removeScratch(scratch);
   process.stdout.write(`${head}\nstate:      ${state}\ncompared:   ${baselineFile || 'nothing (first run for this host)'}${notes ? '\nnotes:      notes.md included in the report' : ''}\n`);
