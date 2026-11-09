@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { siteUrl, launchArgs, frameAncestors, blocklistRows, diffRows, runSite, renderSiteMarkdown, SITE_GROUPS, LAUNCH_SCRIPT } from '../lib/site.mjs';
+import { siteUrl, envHeaders, launchArgs, frameAncestors, blocklistRows, diffRows, runSite, renderSiteMarkdown, SITE_GROUPS, LAUNCH_SCRIPT } from '../lib/site.mjs';
 import { parseArgs, resolveSiteStateDir, resolveSiteBaseline } from '../scan.mjs';
 import { parseLevel } from '../lib/levels.mjs';
 
@@ -134,4 +134,13 @@ test('sources.mjs and target.mjs are identical to is-website-safe\'s copies', ()
   for (const f of ['sources.mjs', 'target.mjs']) {
     assert.equal(fs.readFileSync(path.join(HERE, '..', 'lib', f), 'utf8'), fs.readFileSync(path.join(SKILLS, 'is-website-safe', 'scripts', 'lib', f), 'utf8'), f);
   }
+});
+
+test('envHeaders: AUDIT_HEADERS reach the clickjacking request too', async () => {
+  assert.deepEqual(envHeaders({ AUDIT_HEADERS: 'x-audit-bypass: abc\nX-Other: 1\nbroken' }), { 'x-audit-bypass': 'abc', 'X-Other': '1' });
+  assert.deepEqual(envHeaders({}), {});
+  let sent;
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'sec-site-'));
+  await runSite({ root: 'https://www.example.com/', only: ['headers'], skip: [], headers: { 'X-Flag': '2' } }, { version: '2.2.1', outDir: out, stateDir: out, deps: { env: { AUDIT_HEADERS: 'x-audit-bypass: abc' }, runLaunch: () => ({ ok: true, report: LAUNCH }), pageHeaders: async (u, o) => { sent = o.headers; return {}; } } });
+  assert.deepEqual(sent, { 'x-audit-bypass': 'abc', 'X-Flag': '2' });
 });

@@ -154,6 +154,16 @@ export function runLaunch(opts, { spawn = spawnSync, script = LAUNCH_SCRIPT, exi
   return { ok: true, report };
 }
 
+/** AUDIT_HEADERS ("Name: value" per line), the WAF bypass headers audit-launch also reads. */
+export function envHeaders(env = process.env) {
+  const out = {};
+  for (const line of String(env.AUDIT_HEADERS || '').split('\n')) {
+    const i = line.indexOf(':');
+    if (i > 0 && line.slice(i + 1).trim()) out[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  }
+  return out;
+}
+
 /** Response headers of the final URL, lower-cased; {} when the site does not answer. */
 export async function pageHeaders(url, { fetch: f = globalThis.fetch, headers = {} } = {}) {
   try {
@@ -186,7 +196,8 @@ export async function runSite(args, { version, outDir, stateDir, log = () => {},
       finalUrl = launch.site?.finalUrl || url;
       for (const r of launch.results || []) if (groups.includes(r.group || r.id.split('.')[0])) results.push({ ...r, group: r.group || r.id.split('.')[0] });
     }
-    if (on('headers')) results.push(frameAncestors(await (deps.pageHeaders || pageHeaders)(finalUrl, { headers: args.headers || {} })));
+    // audit-launch reads AUDIT_HEADERS itself; this one request needs them too, or a WAF answers with its challenge page's headers.
+    if (on('headers')) results.push(frameAncestors(await (deps.pageHeaders || pageHeaders)(finalUrl, { headers: { ...envHeaders(deps.env || process.env), ...(args.headers || {}) } })));
   }
   if (on('blocklists')) {
     if (args.offline) results.push(row('blocklists.offline', 'skip', 'Blocklists', 'not checked: --offline'));
