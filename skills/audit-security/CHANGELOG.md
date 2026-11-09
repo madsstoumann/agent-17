@@ -2,6 +2,10 @@
 
 All notable changes to the `audit-security` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.2.1] - 2026-11-09
+
+### Fixed
+- Site mode sends `AUDIT_HEADERS` (the WAF bypass headers) on its own request for the clickjacking row too, not only through audit-launch. Behind a firewall that challenges scripts, the row could otherwise be judged on the challenge page's headers.
 ## [2.2.0] - 2026-11-09
 
 ### Added

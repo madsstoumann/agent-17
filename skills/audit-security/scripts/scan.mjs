@@ -22,7 +22,7 @@ import { annotate, baselineLines, tag } from './lib/baseline.mjs';
 import { parseLevel, levelOfWord, scratchDir, consoleList } from './lib/levels.mjs';
 import { SITE_GROUPS, siteUrl, runSite, renderSiteMarkdown, diffRows, consoleItems } from './lib/site.mjs';
 
-export const VERSION = '2.2.0';
+export const VERSION = '2.2.1';
 const GROUPS = ['deps', 'secrets', 'xss', 'injection', 'request', 'crypto', 'config', 'ci'];
 const SEV = { high: 3, medium: 2, low: 1 };
 

@@ -45,8 +45,9 @@ Set them in your shell profile (`~/.zshrc` on a Mac, then open a new terminal), 
 | Variable | What it does |
 |---|---|
 | `PSI_API_KEY` | Runs Lighthouse through the PageSpeed Insights API: real-user field data (CrUX), the same numbers as pagespeed.web.dev, and a fallback when a firewall blocks local Lighthouse. Without it Lighthouse runs locally with Chrome (lab data only). |
-| `AUDIT_HEADERS` | Extra headers sent to the audited site by audit-launch, Lighthouse and audit-a11y, one `Name: value` per line. Used for the firewall bypass below. |
+| `AUDIT_HEADERS` | Extra headers sent to the audited site by audit-launch, Lighthouse, audit-a11y and audit-security's site mode, one `Name: value` per line. Used for the firewall bypass below. |
 | `AUDIT_OUT_DIR` | Where reports go. Default: your Downloads folder, else `~/audit-reports/`. |
+| `GOOGLE_SAFE_BROWSING_KEY`, `URLHAUS_AUTH_KEY`, `VIRUSTOTAL_API_KEY` | Optional blocklist lookups for is-website-safe and audit-security's site mode. Without them only the keyless OpenPhish feed is checked, and the other blocklist rows are skipped. |
 
 ```bash
 export PSI_API_KEY=AIza...                              # no quotes needed
