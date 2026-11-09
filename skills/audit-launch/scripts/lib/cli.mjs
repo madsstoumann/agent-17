@@ -26,9 +26,15 @@ export const STAGING_HOST_RE = /(^|[.-])(dev|develop|development|staging|stage|s
 /** Platform hosts that are never a customer's live domain. */
 export const STAGING_SUFFIXES = [
   '.ondigitalocean.app', '.vercel.app', '.netlify.app', '.pages.dev', '.workers.dev', '.azurewebsites.net',
-  '.azurestaticapps.net', '.umbraco.io', '.herokuapp.com', '.fly.dev', '.web.app', '.firebaseapp.com', '.appspot.com',
+  '.azurestaticapps.net', '.herokuapp.com', '.fly.dev', '.web.app', '.firebaseapp.com', '.appspot.com',
   '.ngrok.io', '.ngrok-free.app', '.trycloudflare.com', '.amplifyapp.com', '.cloudfront.net',
 ];
+/**
+ * Platform hosts that also serve the live environment: Umbraco Cloud's live site (and its media,
+ * which headless front ends load from it) is <project>.<region>.umbraco.io, while its development
+ * and staging environments are dev-<project>… and stage-<project>…, which STAGING_HOST_RE catches.
+ */
+export const LIVE_PLATFORM_SUFFIXES = ['.umbraco.io'];
 
 export function normaliseEnv(value) {
   const env = ENV_ALIASES[String(value || '').toLowerCase()];
@@ -38,7 +44,7 @@ export function normaliseEnv(value) {
 /** A hosting platform's own hostname (…ondigitalocean.app, …vercel.app): its DNS, CAA and mail records belong to the platform, not the site. */
 export function isPlatformHost(host) {
   const h = String(host || '').toLowerCase().replace(/:\d+$/, '');
-  return STAGING_SUFFIXES.some((s) => h.endsWith(s));
+  return [...STAGING_SUFFIXES, ...LIVE_PLATFORM_SUFFIXES].some((s) => h.endsWith(s));
 }
 
 export function isStagingHost(host) {

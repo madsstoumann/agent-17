@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-launch` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.4.3] - 2026-11-09
+
+### Fixed
+- `crawl.staging-refs`, `social.og-image` and `social.og-url` no longer treat an Umbraco Cloud live host (`example-live.euwest01.umbraco.io`) as staging. It is the live environment, and headless front ends load their media from it. Umbraco Cloud's development and staging hosts (`dev-…`, `stage-…`) are still flagged. The DNS and mail rows still treat every umbraco.io host as the platform's. An audit of the live host itself now defaults to `--env production`.
+
 ## [2.4.2] - 2026-11-09
 
 ### Fixed

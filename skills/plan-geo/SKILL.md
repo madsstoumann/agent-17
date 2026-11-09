@@ -4,7 +4,7 @@ description: Use when someone wants to know what structured data and what conten
 argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--no-remote] [--samples] [--live]"
 allowed-tools: Bash(node:*), Read, Write
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # GEO plan
@@ -46,7 +46,15 @@ It writes into the run folder:
   such pages usually carry, modules to consider, markup they have now, and the pages read.
 - `pages/<slug>.md`: each page read, as Markdown with its dates, bylines, breadcrumb, logo, social
   profiles and existing JSON-LD on top. `pages/<slug>.json` holds the same plus the full text the
-  check step compares drafts with.
+  check step compares drafts with. On a Next.js site, text that is only in the page's script
+  payload (closed accordions and tabs that mount their content on open) is read too: it is under
+  "Only in the Next.js payload" at the end of the page's `.md`, and counts for questions, dates and
+  the check. Visitors read it after a click, but crawlers that do not run JavaScript never see it,
+  so say so in the plan when FAQ answers or key facts are only there.
+
+Dates are read in English, Danish, Norwegian, Swedish, German, Dutch, French and Spanish
+("1. oktober 2026 – 29. marts 2027" is two dates). A date shown without a year ("torsdag den 5.
+november") is not a full date: check flags a draft that uses it, which is a finding for the site.
 
 Read `inventory.md`, then every `pages/*.md`. Stdout ends with the run folder and the path of the
 site profile.
@@ -87,7 +95,9 @@ Read `references/page-types.md` for the types, properties and where each belongs
    example page. The template slug is the template key with `/` written as `--`
    (`resources/insights` → `markup/resources--insights.jsonld`), and the draft is checked against
    the page in the `Example` column of `inventory.md`. To draft for another page, name the file
-   after that page's slug in `pages/` instead. Reference the
+   after that page's slug in `pages/` instead. A page slug wins when a template has the same
+   name (`markup/visit.jsonld` is checked against /visit, not the example of the template
+   "visit"), and check says so. Reference the
    Organization by `@id` instead of repeating it. Article pages: headline, datePublished (and
    dateModified when shown), author as Person with name and jobTitle when the page names them,
    publisher by `@id`, image. Products: SoftwareApplication or Product by what the site sells;
