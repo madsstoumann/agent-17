@@ -12,7 +12,7 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-export const VERSION = '2.5.2';
+export const VERSION = '2.5.3';
 export const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 export const AUDIT_HEADER = `audit-seo/${VERSION}`;
 

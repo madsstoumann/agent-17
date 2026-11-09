@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runChecks, chainFrom, pickSchemaPages, looksSchemeless } from '../lib/checks.mjs';
-import { pageRecord, wordCount, crawlSite, checkInternal, checkExternal, headThenGet, localeOf, sampleSpread } from '../lib/crawl.mjs';
+import { pageRecord, wordCount, crawlSite, fetchPage, checkInternal, checkExternal, headThenGet, localeOf, sampleSpread } from '../lib/crawl.mjs';
 import { isAllowed } from '../lib/robotsmatch.mjs';
 import { parseRobotsTxt } from '../lib/robots.mjs';
 import { parseSchemaAnswer } from '../lib/schema.mjs';
@@ -170,6 +170,35 @@ test('crawlSite follows links, records redirects and samples the sitemap', async
   assert.ok(r.blocked.has(`${H}/blocked/x`));
   assert.ok(r.external.has('https://other.example.com/'));
   assert.equal(r.sitemapSampled, 1);
+});
+
+test('fetchPage re-fetches a page that once came back without a <title> (example.com /zh-CN/insights)', async () => {
+  const bodies = ['<html><head></head><body><p>cut off</p></body></html>', doc({ title: 'Insights' })];
+  let calls = 0;
+  const http = { get: async () => ({ status: 200, body: bodies[Math.min(calls++, 1)], headers: { 'content-type': 'text/html' }, contentType: 'text/html', ms: 1 }) };
+  const { rec } = await fetchPage(http, `${H}/zh-CN/insights`, { delay: 0 });
+  assert.equal(calls, 2);
+  assert.equal(rec.title, 'Insights');
+  // A page that never has a title is still reported: the first answer stands after the retries.
+  calls = 0;
+  const none = { get: async () => { calls++; return { status: 200, body: '<html><head></head><body>x</body></html>', headers: { 'content-type': 'text/html' }, contentType: 'text/html', ms: 1 }; } };
+  const r2 = await fetchPage(none, `${H}/x`, { delay: 0 });
+  assert.equal(calls, 3);
+  assert.equal(r2.rec.title, null);
+  // A page with a title is fetched once; a 404 is not retried.
+  calls = 0;
+  await fetchPage({ get: async () => { calls++; return { status: 200, body: doc({ title: 'T' }), headers: {}, contentType: 'text/html', ms: 1 }; } }, `${H}/t`);
+  await fetchPage({ get: async () => { calls++; return { status: 404, body: '', headers: {}, contentType: 'text/html', ms: 1 }; } }, `${H}/404`);
+  assert.equal(calls, 2);
+});
+
+test('crawlSite stops retrying titles once several pages have none', async () => {
+  let calls = 0;
+  const bare = (links) => `<html><head></head><body>${links.map((l) => `<a href="${l}">x</a>`).join('')}</body></html>`;
+  const http = { get: async (url) => { calls++; const p = new URL(url).pathname; return { status: 200, body: bare(p === '/' ? ['/a', '/b', '/c', '/d', '/e'] : []), headers: { 'content-type': 'text/html' }, contentType: 'text/html', ms: 1 }; } };
+  const r = await crawlSite(http, { startUrl: `${H}/`, hosts: ['www.example.dk'], retryDelay: 0, concurrency: 1 });
+  assert.equal(r.pages.length, 6);
+  assert.equal(calls, 3 * 3 + 3, 'three pages retried twice, the other three fetched once');
 });
 
 test('crawlSite shares the --pages budget across language sections (example.com /es-ES/ footer)', async () => {

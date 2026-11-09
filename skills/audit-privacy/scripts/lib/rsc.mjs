@@ -10,12 +10,23 @@
  * the blocks that the visible text does not already hold. Approximate on purpose: it reads the
  * tree's text children and a few text-like props, and ignores everything it cannot parse.
  *
+ * Only the page's own components count. The payload also carries what every page has: the root
+ * layout (header, mega menu, footer, promo teasers), the not-found and error boundaries, inline
+ * script bodies. When the payload has its router tree (row 0, `f`), only the rows the page segment
+ * (`__PAGE__`) reaches are read; nav elements, not-found / error props and code are skipped
+ * everywhere.
+ *
  * Zero dependencies. Node >= 22. Pure. Shared by audit-privacy and plan-geo (identical copies).
  */
 
 const CHUNK = /self\.__next_f\.push\(\s*(\[[\s\S]*?\])\s*\)\s*;?\s*<\/script>/g;
 const INLINE = new Set(['a', 'span', 'strong', 'em', 'b', 'i', 'u', 's', 'small', 'sup', 'sub', 'br', 'code', 'mark', 'abbr', 'time', 'q', 'cite', 'kbd', 'wbr', 'bdi', 'bdo', 'data', 'del', 'ins']);
-const SKIP = new Set(['script', 'style', 'svg', 'noscript', 'template', 'head', 'meta', 'link', 'title', 'iframe', 'img', 'picture', 'source', 'video', 'audio', 'path']);
+const SKIP = new Set(['script', 'style', 'svg', 'noscript', 'template', 'head', 'meta', 'link', 'title', 'iframe', 'img', 'picture', 'source', 'video', 'audio', 'path', 'nav', 'header', 'footer']);
+/** Router props that hold the boundaries every page carries, not the page: not-found, error, loading. */
+const BOUNDARY_PROPS = /^(notFound|notFoundStyles|error|errorStyles|errorScripts|forbidden|unauthorized|loading|loadingStyles|loadingScripts|globalError)$/;
+/** Data keys for media: an image's alt text or a video's description is not text the page shows. */
+const MEDIA_PROPS = /^(assets?|images?|media|video|featuredImage|thumbnail|poster|logo|icon)$/i;
+const skipKey = (k) => BOUNDARY_PROPS.test(k) || MEDIA_PROPS.test(k);
 const TEXT_PROPS = /^(title|text|label|heading|headline|question|answer|body|description|content|caption|summary|richtext|html|intro|teaser|subtitle)$/i;
 const HEADING = /^h([1-6])$/;
 
@@ -25,8 +36,10 @@ const norm = (s) => String(s).toLowerCase().replace(/\s+/g, '');
 const stripTags = (s) => squash(String(s).replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ').replace(/<\/(p|div|li|h[1-6]|tr|td|th|dd|dt)\s*>|<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ' ')
   .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'"));
 /** Words people read, not SVG path data, class lists, ids or URLs: mostly letters, no URL or class syntax. */
+/** A script body: Plausible's or OneTrust's inline snippet, not words. */
+const code = (t) => /[;{}()]/.test(t) && /\bfunction\b\s*[\w$]*\s*\(|=>|\b(?:window|document|self)\.[\w$]|\b(?:var|let|const)\s+[\w$]+\s*=|\|\|\s*(?:function|\[\]|\{\})/.test(t);
 const prose = (t) => {
-  if (!t || /^(https?:|\/|#|\$)/.test(t) || /^[\w-]+(?:\s+[\w:/[\]&>.-]+-[\w:/[\]&>.-]+)+$/.test(t)) return false;
+  if (!t || /^(https?:|\/|#|\$)/.test(t) || /^[\w-]+(?:\s+[\w:/[\]&>.-]+-[\w:/[\]&>.-]+)+$/.test(t) || code(t)) return false;
   const letters = (t.match(/\p{L}/gu) || []).length;
   return letters >= 2 && letters / t.replace(/\s/g, '').length > 0.6;
 };
@@ -72,6 +85,56 @@ export function flightRows(payload) {
 /** A payload string: "$$x" is a literal "$x"; any other "$…" is a reference, not text. */
 const literal = (s) => (s.startsWith('$$') ? s.slice(1) : s.startsWith('$') ? null : s);
 const isElement = (n) => Array.isArray(n) && n[0] === '$' && typeof n[1] === 'string' && n.length >= 4;
+/** The row a reference string points at: "$L5", "$@9", "$1f" → "5", "9", "1f". */
+const refId = (s) => /^\$(?:L|@)?([0-9a-f]+)$/i.exec(s)?.[1] ?? null;
+
+/**
+ * The page segment's own content: the cache node of `__PAGE__` in the router tree row (`f`), the
+ * leaf whose child segments are `{}`. Null when the payload has no tree this reads.
+ */
+export function pageNode(rows) {
+  const tree = rows.find((r) => r.json && !Array.isArray(r.json) && Array.isArray(r.json.f))?.json;
+  if (!tree) return null;
+  let found = null;
+  const isEmpty = (v) => v && typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length;
+  const visit = (n, depth = 0) => {
+    if (found || depth > 60 || !n || typeof n !== 'object') return;
+    if (Array.isArray(n)) {
+      // A cache node: [segment?, rsc, { children: node }, loading, partial]; the page's has {}.
+      for (let i = 1; i < n.length; i++) if (isEmpty(n[i]) && isElement(n[i - 1])) { found = n[i - 1]; return; }
+      for (const v of n) visit(v, depth + 1);
+    } else for (const v of Object.values(n)) visit(v, depth + 1);
+  };
+  visit(tree.f);
+  return found;
+}
+
+/**
+ * Ids of the rows the `roots` reach through references, following the rows they reach in turn.
+ * Nothing under a skipped element (nav, header, footer, script …) or a boundary prop counts: a
+ * row only those point at is the site's chrome, not the page.
+ */
+function reachable(roots, byId) {
+  const seen = new Set();
+  const stack = [...roots];
+  while (stack.length) {
+    const n = stack.pop();
+    if (typeof n === 'string') { const id = refId(n); if (id && !seen.has(id) && byId.has(id)) { seen.add(id); stack.push(byId.get(id)); } continue; }
+    if (Array.isArray(n)) { if (isElement(n) && SKIP.has(n[1].toLowerCase())) continue; for (const v of n) stack.push(v); continue; }
+    if (n && typeof n === 'object') for (const [k, v] of Object.entries(n)) if (!skipKey(k)) stack.push(v);
+  }
+  return seen;
+}
+
+/** Ids of the rows some other row points at. */
+function referenced(rows) {
+  const out = new Set();
+  const scan = (n) => {
+    if (typeof n === 'string') { const id = refId(n); if (id) out.add(id); } else if (Array.isArray(n)) n.forEach(scan); else if (n && typeof n === 'object') Object.values(n).forEach(scan);
+  };
+  for (const r of rows) if (r.json) scan(r.json);
+  return out;
+}
 
 /**
  * Text blocks from the payload, in order: [{ text, heading: 1–6 | 0 }]. A block is the inline text
@@ -99,6 +162,7 @@ export function rscBlocks(html) {
   const data = (node) => {
     if (Array.isArray(node)) { if (isElement(node)) flush(element(node)); else for (const v of node) if (v && typeof v === 'object') data(v); return; }
     for (const [k, v] of Object.entries(node)) {
+      if (skipKey(k)) continue;
       if (typeof v === 'string') { if (TEXT_PROPS.test(k)) textProp(v); }
       else if (k === 'children') flush(walk(v));
       else if (v && typeof v === 'object') data(v);
@@ -111,7 +175,7 @@ export function rscBlocks(html) {
     // A client component ($L…) often gets its text as data props: { question, answer: "<p>…</p>" }.
     if (type.startsWith('$')) {
       for (const [k, v] of Object.entries(props)) {
-        if (k === 'children') continue;
+        if (k === 'children' || skipKey(k)) continue;
         if (typeof v === 'string') { if (TEXT_PROPS.test(k)) textProp(v); } else if (v && typeof v === 'object') data(v);
       }
     }
@@ -124,7 +188,17 @@ export function rscBlocks(html) {
     return '';
   };
 
-  for (const row of flightRows(payload)) {
+  const rows = flightRows(payload);
+  // The rows the page segment reaches when the router tree says which it is; otherwise the rows
+  // that no other row points at and what they reach. Either way, not what only the site's chrome
+  // (nav, header, footer) or the not-found and error boundaries point at.
+  const byId = new Map(rows.map((r) => [r.id, r.json ?? r.text]));
+  const page = pageNode(rows);
+  const refs = page ? null : referenced(rows);
+  const roots = page ? [page] : rows.filter((r) => !refs.has(r.id)).map((r) => '$' + r.id);
+  const ids = reachable(roots, byId);
+  if (page) data(page);
+  for (const row of rows.filter((r) => ids.has(r.id))) {
     if (row.text != null) { if (/<[a-z][\s\S]*>/i.test(row.text)) pushHtml(row.text); else if (words(row.text) >= 3) push(row.text); continue; }
     data(row.json);
   }

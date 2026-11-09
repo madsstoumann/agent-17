@@ -19,7 +19,7 @@ function fakeResolver(zone) {
   const query = async (name, type = 'A') => {
     const data = zone[`${name} ${type}`];
     if (data === 'SERVFAIL') return { ok: false, rcode: 'SERVFAIL', nxdomain: false, ad: false, answers: [], error: 'SERVFAIL' };
-    return { ok: true, rcode: names.has(name) ? 'NOERROR' : 'NXDOMAIN', nxdomain: !names.has(name), ad: Boolean(zone.AD), answers: (data || []).map((d) => ({ name, type, ttl: 300, data: d })) };
+    return { ok: true, rcode: names.has(name) ? 'NOERROR' : 'NXDOMAIN', nxdomain: !names.has(name), ad: zone[`${name} AD`] ?? Boolean(zone.AD), answers: (data || []).map((d) => ({ name, type, ttl: 300, data: d })) };
   };
   return { query, records: async (n, t) => (await query(n, t)).answers.map((a) => a.data) };
 }
@@ -168,6 +168,28 @@ test('domainChecks: one name server fails, no CAA warns, DNSSEC passes', async (
   assert.equal(st['dns.caa'], 'warn');
   assert.equal(st['dns.dnssec'], 'pass');
   assert.equal(st['domain.registration'], 'skip');
+});
+
+test('domainChecks: a signed apex whose www is an alias into an unsigned zone is info, not a warning', async () => {
+  const zone = {
+    AD: true,
+    'example.com SOA': ['ns1.example.net. hostmaster.example.com. 1 7200 3600 1209600 300'], 'example.com DS': ['1 13 2 ABC'], 'example.com NS': ['ns1.example.net.', 'ns2.example.net.'],
+    'www.example.com CNAME': ['cname.example-host.net.'], 'www.example.com A': ['192.0.2.10'], 'www.example.com AD': false,
+    'example-host.net NS': ['ns1.example-host.net.'],
+  };
+  const ctx = { resolver: fakeResolver(zone), host: 'www.example.com', apex: 'example.com', fetch: noFetch, now: new Date(), shared: {} };
+  const d = (await domainChecks(ctx)).find((r) => r.id === 'dns.dnssec');
+  assert.equal(d.status, 'info');
+  assert.match(d.evidence, /insecure by delegation/);
+  assert.match(d.evidence, /example-host\.net is not signed/);
+  // The alias target's domain has a DS: then it should validate, and not doing so is a warning.
+  const signed = { ...zone, 'example-host.net DS': ['2 13 2 DEF'] };
+  const w = (await domainChecks({ ...ctx, resolver: fakeResolver(signed) })).find((r) => r.id === 'dns.dnssec');
+  assert.equal(w.status, 'warn');
+  // The apex itself does not validate: still a warning.
+  const broken = { ...zone, 'example.com AD': false };
+  const b = (await domainChecks({ ...ctx, resolver: fakeResolver(broken) })).find((r) => r.id === 'dns.dnssec');
+  assert.equal(b.status, 'warn');
 });
 
 test('domainChecks flags a dangling CNAME on the host', async () => {

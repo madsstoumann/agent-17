@@ -1,7 +1,7 @@
 // The five check groups. Each takes the run context and returns result rows; scan.mjs runs
 // them, turns a crash into one skip row, and writes the report.
 import { result, pLimit, settle } from './common.mjs';
-import { parseMx, parseCaa, parseSoa, undot } from './dns.mjs';
+import { parseMx, parseCaa, parseSoa, undot, apexOf } from './dns.mjs';
 import { handshake, sanCovers, daysLeft, caaAllows, PUBLIC_ROOTS, UNTRUSTED_ROOT } from './tls.mjs';
 import { spfTree, judgeSpf, dmarc, dkim, mtaSts, stsCovers } from './email.mjs';
 import { rdap, crtSh, normSerial } from './services.mjs';
@@ -19,6 +19,22 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const fmtDate = (iso) => (iso ? iso.slice(0, 10) : '?');
 
 // ------------------------------------------------------------------ domain & DNS
+
+/**
+ * When `host` does not validate but the apex does: is `host` a CNAME into a zone outside the apex
+ * whose domain has no DS? Returns { target, zone } then, else null (a real validation failure).
+ */
+export async function insecureAlias(r, host, apex) {
+  const [apexSoa, cname] = await Promise.all([r.query(apex, 'SOA'), r.query(host, 'CNAME')]);
+  if (!apexSoa.ok || !apexSoa.ad) return null;
+  const target = cname.answers.find((x) => x.type === 'CNAME' && x.name === host)?.data;
+  if (!target) return null;
+  const zone = apexOf(undot(target));
+  if (!zone || zone === apex) return null;
+  const ds = await r.query(zone, 'DS');
+  if (!ds.ok || ds.answers.some((x) => x.type === 'DS')) return null;
+  return { target: undot(target), zone };
+}
 
 export async function domainChecks(ctx) {
   const { resolver: r, host, apex } = ctx;
@@ -62,7 +78,15 @@ export async function domainChecks(ctx) {
   const [ds, hostA] = await Promise.all([r.query(apex, 'DS'), r.query(host, 'A')]);
   const hasDs = ds.answers.some((a) => a.type === 'DS');
   if (hasDs && !hostA.ok && hostA.rcode === 'SERVFAIL') out.push(result('dns.dnssec', 'fail', 'DNSSEC', `DS published for ${apex} but validating resolvers answer SERVFAIL`, { fix: 'The signing chain is broken (expired signatures or a stale DS). Fix it at the DNS provider or remove the DS at the registrar; validating resolvers cannot reach the site.', blocker: true }));
-  else if (hasDs) out.push(result('dns.dnssec', hostA.ad ? 'pass' : 'warn', 'DNSSEC', hostA.ad ? `signed and validating (DS at the parent, AD set on ${host})` : `DS published but ${host} does not validate`, { fix: hostA.ad ? '' : 'Check the zone signing at the DNS provider.' }));
+  else if (hasDs && hostA.ad) out.push(result('dns.dnssec', 'pass', 'DNSSEC', `signed and validating (DS at the parent, AD set on ${host})`));
+  else if (hasDs) {
+    // A host that is an alias into another zone validates only as far as that zone is signed. An
+    // unsigned target zone (no DS for its domain) is insecure by delegation, not a broken chain:
+    // the apex still validates, and the alias's answers simply carry no signature.
+    const insecure = host !== apex ? await insecureAlias(r, host, apex) : null;
+    if (insecure) out.push(result('dns.dnssec', 'info', 'DNSSEC', `${apex} is signed and validating (AD set); ${host} is an alias to ${insecure.target}, and ${insecure.zone} is not signed (no DS), so answers for ${host} are insecure by delegation, not broken`, { fix: 'Nothing to fix in your zone. Answers for the alias are only validated when the hosting provider signs its zone.' }));
+    else out.push(result('dns.dnssec', 'warn', 'DNSSEC', `DS published but ${host} does not validate`, { fix: 'Check the zone signing at the DNS provider.' }));
+  }
   else out.push(result('dns.dnssec', 'info', 'DNSSEC', `${apex} is not signed (no DS at the parent)`, { fix: 'Optional. Most managed DNS providers sign with one click; the registrar then needs the DS record.' }));
 
   // The host itself: CNAME chain, addresses, TTL, a dangling alias.

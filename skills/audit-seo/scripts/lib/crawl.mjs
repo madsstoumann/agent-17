@@ -100,7 +100,7 @@ function rawCanonical(html) {
  *        sitemapMissing, sitemapSampled, locales: { <locale or ''>: pages fetched } }
  * `hosts` are the hosts that count as this site (the start host and its www/apex sibling).
  */
-export async function crawlSite(http, { startUrl, hosts, sitemapUrls = [], robots = null, maxPages = 150, sitemapSample = 50, ignoreRobots = false, concurrency = 6, log = () => {} } = {}) {
+export async function crawlSite(http, { startUrl, hosts, sitemapUrls = [], robots = null, maxPages = 150, sitemapSample = 50, ignoreRobots = false, concurrency = 6, retryDelay = 500, log = () => {} } = {}) {
   const own = new Set(hosts && hosts.length ? hosts : [hostOf(startUrl)]);
   const pages = new Map();
   const inlinks = new Map();
@@ -112,6 +112,7 @@ export async function crawlSite(http, { startUrl, hosts, sitemapUrls = [], robot
   let truncated = false;
   let linkBudget = maxPages;
   let followLinks = true;
+  let titleless = 0;
 
   const record = (map, link, from) => {
     if (!map.has(link)) map.set(link, new Set());
@@ -155,10 +156,9 @@ export async function crawlSite(http, { startUrl, hosts, sitemapUrls = [], robot
   };
 
   async function visit(url) {
-    const res = await http.get(url, { redirect: 'manual', maxBytes: 2 * 1024 * 1024 });
-    const isHtml = res.status >= 200 && res.status < 300 && /text\/html|application\/xhtml/i.test(res.contentType || '');
-    const html = isHtml && res.body ? res.body : null;
-    const rec = pageRecord(url, res, html);
+    // Retries stop once a few pages still have no title after them: then it is how the site is built.
+    const { rec, html } = await fetchPage(http, url, { retries: titleless < 3 ? 2 : 0, delay: retryDelay });
+    if (html && !rec.title) titleless++;
     pages.set(url, rec);
     // A redirect's target is part of the chain, whatever the budget.
     if (rec.location) {
@@ -204,6 +204,29 @@ export async function crawlSite(http, { startUrl, hosts, sitemapUrls = [], robot
     await drain();
   }
   return { pages: [...pages.values()], inlinks, external, blocked, truncated, sitemapMissing: missing.length, sitemapSampled: sample.length, locales: Object.fromEntries(perLocale) };
+}
+
+/**
+ * One page, fetched and read. An HTML page that comes back without a <title> is fetched again (up
+ * to `retries` times) before it counts as missing one: a CDN or app server now and then answers
+ * with a cut-off or placeholder body, and one such answer is not the page. The first answer that
+ * has a title wins; when none does, the first answer stands.
+ */
+export async function fetchPage(http, url, { retries = 2, delay = 500 } = {}) {
+  const read = async () => {
+    const res = await http.get(url, { redirect: 'manual', maxBytes: 2 * 1024 * 1024 });
+    const isHtml = res.status >= 200 && res.status < 300 && /text\/html|application\/xhtml/i.test(res.contentType || '');
+    const html = isHtml && res.body ? res.body : null;
+    return { rec: pageRecord(url, res, html), html };
+  };
+  const first = await read();
+  if (!first.html || first.rec.title) return first;
+  for (let i = 0; i < retries; i++) {
+    if (delay) await new Promise((r) => setTimeout(r, delay * (i + 1)));
+    const again = await read().catch(() => null);
+    if (again?.html && again.rec.title) return again;
+  }
+  return first;
 }
 
 /**

@@ -4,7 +4,7 @@ description: Use when someone wants the infrastructure or domain hygiene of a si
 argument-hint: "<url or domain> [--email-domain D] [--dkim-selector S] [--no-ct] [--max-subdomains N] [--only domain,email,tls,edge,ct] [--out DIR] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
-  version: "2.4.3"
+  version: "2.4.4"
 ---
 
 # Infrastructure audit
@@ -62,7 +62,7 @@ the report as well, and so does `--console --out DIR` (the run's files go to tha
 
 | Section | Checks (`id`) |
 |---|---|
-| Domain & DNS | `domain.registration` (expiry < 30 days fail, < 60 warn), `domain.transfer-lock`, `dns.nameservers` (≥ 2), `dns.soa` timers, `dns.dnssec` (DS + validation; SERVFAIL with a DS is a blocker), `dns.addresses` (A/AAAA, TTL), `dns.dangling` (CNAME to nothing: blocker), `dns.caa` |
+| Domain & DNS | `domain.registration` (expiry < 30 days fail, < 60 warn), `domain.transfer-lock`, `dns.nameservers` (≥ 2), `dns.soa` timers, `dns.dnssec` (DS + validation; SERVFAIL with a DS is a blocker; a host that is an alias into an unsigned zone is info, insecure by delegation), `dns.addresses` (A/AAAA, TTL), `dns.dangling` (CNAME to nothing: blocker), `dns.caa` |
 | Email | `email.mx` (resolves, no CNAME, null MX), `email.spf` (whole include tree, > 10 lookups or `+all` fail, void includes), `email.dmarc` (p, sp, pct, rua, external destinations publish the `_report._dmarc` record), `email.dkim` (keys found, < 2048-bit RSA warn), `email.mta-sts` (policy file, mode, covers every MX), `email.tls-rpt`, `email.bimi` |
 | TLS | One handshake per host (site + www/apex sibling) and per IP: `tls.chain` (missing intermediates), `tls.expiry` (soonest endpoint), `tls.consistency`, `tls.san`, `tls.key`, `tls.protocol`, `tls.alpn` (h2), `tls.ocsp-stapling`, `tls.legacy` (TLS 1.0/1.1 accepted), `tls.caa-match` (CAA allows the CA that issued the live certificate, or renewal fails), `tls.ipv6` |
 | Edge | `edge.cdn` (and cache status), `edge.http3` (Alt-Svc or HTTPS record), `hsts.preload-list` (apex on the preload list per hstspreload.org, Chromium list as fallback; pass when listed and the header still qualifies, warn when listed but the header dropped a requirement) |

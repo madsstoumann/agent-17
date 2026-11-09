@@ -12,7 +12,7 @@ import { toMarkdown, questionPairs, visibleDates, leadDate, breadcrumbs, organis
 import { verifyDraft, norm, onPage, knownUrl } from '../lib/verify.mjs';
 import { parseCsv, readQuestions, renderProposals } from '../lib/proposals.mjs';
 import { extractMeta } from '../lib/html.mjs';
-import { topTypes, draftPage, VERSION } from '../plan.mjs';
+import { topTypes, draftPage, checkLine, VERSION } from '../plan.mjs';
 import { nodesOf, mergeGraph, sampleHtml, injectLive, samplesReadme } from '../lib/samples.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -181,6 +181,28 @@ test('extractPage: text only in the Next.js payload counts, and is marked as hid
   assert.equal(extractPage('<html><body><main><p>Plain</p></main></body></html>', 'https://example.dk/').hidden, null);
 });
 
+test('extractPage: site-wide payload text (not-found page, scripts, header teasers, footer nav) is not the page\'s hidden text', () => {
+  const rows = {
+    0: { P: null, b: 'build', c: ['', 'visit'], f: [[
+      ['', { children: ['__PAGE__', {}] }, '$undefined', '$undefined', true],
+      ['', ['$', '$1', 'c', { children: [null, ['$', '$L3', null, { notFound: [['$', 'h2', null, { children: 'This page could not be found.' }]] }]] }], { children: ['__PAGE__', ['$', '$1', 'c', { children: ['$L5'] }], {}, null, false] }, null, false],
+      null, false]] },
+    5: ['$', 'main', null, { children: [
+      ['$', 'header', null, { children: ['$', '$L85', null, { items: [{ teaser: { title: 'Årskort', desc: 'Besøg museet to gange på et år, før årskortet er tjent hjem' } }] }] }],
+      ['$', 'h1', null, { children: 'Besøg' }],
+      ['$', '$L9', null, { id: 'plausible-init', children: 'window.plausible = window.plausible || function() { (plausible.q = plausible.q || []).push(arguments) }' }],
+      ['$', '$L5d', 'q1', { children: [['$', '$L5e', null, { children: 'Hvilke dage er gratis?' }], ['$', '$L5f', null, { children: ['$', 'p', null, { children: 'Museet har gratis adgang den sidste onsdag i hver måned.' }] }]] }],
+      ['$', 'footer', null, { children: ['$', 'nav', null, { children: [['$', '$L2a', null, { href: '/om', children: 'Om museet' }], ['$', '$L2a', null, { href: '/presse', children: 'Presse og medier' }]] }] }],
+    ] }],
+  };
+  const payload = Object.entries(rows).map(([id, v]) => `${id}:${JSON.stringify(v)}\n`).join('');
+  const html = `<html lang="da"><head><title>Besøg</title></head><body><main><h1>Besøg</h1><h3>Hvilke dage er gratis?</h3></main><script>self.__next_f.push(${JSON.stringify([1, payload])})</script></body></html>`;
+  const p = extractPage(html, 'https://example.dk/besog');
+  assert.equal(p.hidden.words, 10, 'only the closed FAQ answer');
+  assert.equal(p.hidden.markdown, '### Hvilke dage er gratis?\n\nMuseet har gratis adgang den sidste onsdag i hver måned.');
+  assert.ok(!/findes|could not be found|plausible|årskortet|Om museet|Presse/.test(p.text), p.text);
+});
+
 test('draftPage: a page slug wins over a template of the same name', () => {
   const run = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-geo-draft-'));
   fs.mkdirSync(path.join(run, 'pages'));
@@ -198,6 +220,14 @@ test('draftPage: a page slug wins over a template of the same name', () => {
   assert.equal(draftPage(run, inv, 'site').page.url, 'https://example.dk/');
   assert.equal(draftPage(run, inv, 'nothing'), null);
   fs.rmSync(run, { recursive: true, force: true });
+});
+
+test('checkLine: a draft named after a page reads as matched to that page, not as misnamed', () => {
+  const line = checkLine({ file: 'markup/besog.jsonld', slug: 'besog', page: 'https://example.dk/besog', types: ['WebPage'], notOnPage: [], required: [], recommended: [], validator: null, alsoTemplate: { key: 'besog', example: 'besog-aarskort' } });
+  assert.match(line, /^OK {3}markup\/besog\.jsonld/);
+  assert.match(line, /checked against the page https:\/\/example\.dk\/besog, which its name matches/);
+  assert.match(line, /would be a separate draft, besog-aarskort\.jsonld/);
+  assert.doesNotMatch(line, /not the example|name the draft/);
 });
 
 test('verifyDraft: event dates the page shows in Danish pass; a date without a year is flagged', () => {
