@@ -12,7 +12,7 @@ import { toMarkdown, questionPairs, visibleDates, leadDate, breadcrumbs, organis
 import { verifyDraft, norm, onPage, knownUrl } from '../lib/verify.mjs';
 import { parseCsv, readQuestions, renderProposals } from '../lib/proposals.mjs';
 import { extractMeta } from '../lib/html.mjs';
-import { topTypes, VERSION } from '../plan.mjs';
+import { topTypes, draftPage, VERSION } from '../plan.mjs';
 import { nodesOf, mergeGraph, sampleHtml, injectLive, samplesReadme } from '../lib/samples.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -22,7 +22,7 @@ const PLAN = path.join(HERE, '..', 'plan.mjs');
 // ---------------------------------------------------------------- shared copies
 
 test('shared libs are identical to the skills they come from', () => {
-  const pairs = [['html.mjs', 'audit-seo'], ['render.mjs', 'audit-seo'], ['rich.mjs', 'audit-seo'], ['schema.mjs', 'audit-seo'], ['tasks.mjs', 'audit-all'], ['levels.mjs', 'audit-all'], ['target-state.mjs', 'audit-security']];
+  const pairs = [['html.mjs', 'audit-seo'], ['render.mjs', 'audit-seo'], ['rich.mjs', 'audit-seo'], ['schema.mjs', 'audit-seo'], ['tasks.mjs', 'audit-all'], ['levels.mjs', 'audit-all'], ['target-state.mjs', 'audit-security'], ['rsc.mjs', 'audit-privacy']];
   for (const [file, owner] of pairs) {
     const theirs = path.join(SKILLS, owner, 'scripts', 'lib', file);
     if (!fs.existsSync(theirs)) continue;
@@ -146,6 +146,66 @@ test('extractPage: main content, breadcrumb, organisation details, no cookie ban
   const meta = extractMeta(HTML, 'https://acme.com/');
   assert.equal(organisation(HTML, 'https://acme.com/', meta).icon, 'https://acme.com/icon.png');
   assert.deepEqual(breadcrumbs('<p>none</p>', 'https://acme.com/'), []);
+});
+
+test('visibleDates: Danish and other day-month-year dates, ranges, and no date without a year', () => {
+  assert.deepEqual(visibleDates('Udstillingen vises 1. oktober 2026 - 29. marts 2027'), ['2026-10-01', '2027-03-29']);
+  assert.deepEqual(visibleDates('Periode: 1. oktober – 29. marts 2027'), ['2026-10-01', '2027-03-29'], 'the first date takes the year from the second');
+  assert.deepEqual(visibleDates('Opdateret d. 9. november 2026'), ['2026-11-09']);
+  assert.deepEqual(visibleDates('3.–5. juni 2026'), ['2026-06-03', '2026-06-05']);
+  assert.deepEqual(visibleDates('15. august 2026 til 3. januar 2027'), ['2026-08-15', '2027-01-03']);
+  assert.deepEqual(visibleDates('12. März 2025 · 1er octobre 2026 · 1 de octubre de 2026 · 4 mei 2024 · 7 augusti 2023'), ['2023-08-07', '2024-05-04', '2025-03-12', '2026-10-01']);
+  assert.deepEqual(visibleDates('Torsdag den 5. november kl. 17-22'), [], 'no year, no date');
+  assert.deepEqual(visibleDates('des 3 2024 and 4 dese 2024'), [], '"des" is a French word, not a month');
+});
+
+test('extractPage: text only in the Next.js payload counts, and is marked as hidden', () => {
+  const tree = ['$', 'main', null, { children: [
+    ['$', 'h1', null, { children: 'Årskort' }],
+    ['$', 'p', null, { children: 'Med et årskort kommer du gratis ind på museet hele året, så ofte du vil.' }],
+    ['$', '$L5d', 'q1', { children: [
+      ['$', '$L5e', null, { children: ['$', 'h3', null, { children: 'Kan man dele et årskort?' }] }],
+      ['$', '$L5f', null, { children: ['$', 'p', null, { children: 'Et årskort er personligt og kan ikke deles. Prisen gælder fra 1. oktober 2026.' }] }],
+    ] }],
+  ] }];
+  const push = `<script>self.__next_f.push(${JSON.stringify([1, `4:${JSON.stringify(tree)}\n`])})</script>`;
+  const html = `<html lang="da"><head><title>Årskort</title></head><body><main><h1>Årskort</h1><p>Med et årskort kommer du gratis ind på museet hele året, så ofte du vil.</p><h3>Kan man dele et årskort?</h3></main>${push}</body></html>`;
+  const p = extractPage(html, 'https://example.dk/besog/aarskort');
+  assert.equal(p.hidden.source, 'Next.js payload');
+  assert.equal(p.hidden.words, 14);
+  assert.match(p.hidden.markdown, /^### Kan man dele et årskort\?\n\nEt årskort er personligt/);
+  assert.deepEqual(p.questions.map((q) => [q.question, q.answer.slice(0, 25), q.hidden || false]), [['Kan man dele et årskort?', 'Et årskort er personligt ', true]], 'the payload answer fills the empty one');
+  assert.ok(p.text.includes('kan ikke deles'));
+  assert.deepEqual(p.dates, ['2026-10-01']);
+  assert.deepEqual(verifyDraft({ '@type': 'FAQPage', mainEntity: [{ '@type': 'Question', name: 'Kan man dele et årskort?', acceptedAnswer: { '@type': 'Answer', text: 'Et årskort er personligt og kan ikke deles.' } }] }, p), []);
+  assert.equal(extractPage('<html><body><main><p>Plain</p></main></body></html>', 'https://example.dk/').hidden, null);
+});
+
+test('draftPage: a page slug wins over a template of the same name', () => {
+  const run = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-geo-draft-'));
+  fs.mkdirSync(path.join(run, 'pages'));
+  for (const [slug, url] of [['home', 'https://example.dk/'], ['besog', 'https://example.dk/besog'], ['besog-aarskort', 'https://example.dk/besog/aarskort'], ['det-sker-kalender-x', 'https://example.dk/det-sker/kalender/x']]) {
+    fs.writeFileSync(path.join(run, 'pages', `${slug}.json`), JSON.stringify({ url }));
+  }
+  const inv = { templates: [{ key: 'home', slug: 'home', example: 'home' }, { key: 'besog', slug: 'besog', example: 'besog-aarskort' }, { key: 'det-sker/kalender', slug: 'det-sker--kalender', example: 'det-sker-kalender-x' }] };
+  const visit = draftPage(run, inv, 'besog');
+  assert.equal(visit.page.url, 'https://example.dk/besog');
+  assert.deepEqual(visit.template, { key: 'besog', example: 'besog-aarskort' });
+  assert.equal(draftPage(run, inv, 'besog-aarskort').page.url, 'https://example.dk/besog/aarskort');
+  const tpl = draftPage(run, inv, 'det-sker--kalender');
+  assert.equal(tpl.page.url, 'https://example.dk/det-sker/kalender/x');
+  assert.equal(tpl.template, null);
+  assert.equal(draftPage(run, inv, 'site').page.url, 'https://example.dk/');
+  assert.equal(draftPage(run, inv, 'nothing'), null);
+  fs.rmSync(run, { recursive: true, force: true });
+});
+
+test('verifyDraft: event dates the page shows in Danish pass; a date without a year is flagged', () => {
+  const html = '<html lang="da"><body><main><h1>Magt og mode</h1><p>1. oktober 2026 - 29. marts 2027</p><p>Torsdag den 5. november kl. 17-22</p></main></body></html>';
+  const p = extractPage(html, 'https://example.dk/udstillinger/magt-mode');
+  assert.deepEqual(verifyDraft({ '@type': 'ExhibitionEvent', name: 'Magt og mode', startDate: '2026-10-01', endDate: '2027-03-29' }, p), []);
+  const flags = verifyDraft({ '@type': 'Event', name: 'Magt og mode', startDate: '2026-11-05T17:00:00+01:00' }, p);
+  assert.deepEqual(flags.map((f) => [f.path, f.reason]), [['startDate', 'date not shown on the page']]);
 });
 
 // ---------------------------------------------------------------- verify

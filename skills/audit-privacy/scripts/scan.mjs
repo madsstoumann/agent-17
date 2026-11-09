@@ -10,9 +10,10 @@ import { parseLevel, shows, levelNote, consoleList, scratchDir, removeScratch } 
 import { launch } from './lib/cdp.mjs';
 import { openContext, choose } from './lib/visit.mjs';
 import { analyse, SECTIONS } from './lib/analyse.mjs';
+import { hiddenBlocks, blocksMarkdown } from './lib/rsc.mjs';
 import { countStatuses, prepareRun, finishRun, consoleItems, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, GLYPH, result } from './lib/common.mjs';
 
-export const VERSION = '2.1.1';
+export const VERSION = '2.2.0';
 
 const USAGE = `audit-privacy ${VERSION}: GDPR / ePrivacy check of cookies, trackers and the consent banner
 
@@ -86,6 +87,20 @@ export function pickPages(links, startUrl, n) {
 }
 
 /**
+ * A policy page's text, including what sits behind closed accordions and tabs: <details> are
+ * opened first (no side effects), and on a Next.js page the text that is only in the React
+ * Server Components payload (content a closed accordion has not mounted yet) is added under a
+ * marker line. Nothing on the page is clicked.
+ */
+export async function policyText(p) {
+  await p.openDetails().catch(() => 0);
+  const text = (await p.text()).trim();
+  const hidden = hiddenBlocks(await p.html().catch(() => ''), text);
+  return hidden.length ? `${text}\n\n${HIDDEN_MARKER}\n\n${blocksMarkdown(hidden)}` : text;
+}
+export const HIDDEN_MARKER = '[Text from the page\'s Next.js payload: behind accordions or tabs that were closed when the page was read]';
+
+/**
  * The privacy policy first, then a cookie policy, by link text and URL. Links on the site's own
  * domain win: a consent banner also links to Google's and other vendors' policies.
  */
@@ -127,7 +142,7 @@ export async function run(args, { dir, browser: given } = {}) {
           p.mark(`policy:${i}`);
           try {
             await p.goto(l.href, { extraWait: 2500 });
-            const text = (await p.text()).trim();
+            const text = await policyText(p);
             const file = `policy-${i + 1}.txt`;
             if (dir) fs.writeFileSync(path.join(dir, file), `${l.href}\n\n${text}\n`);
             data.policies.push({ url: l.href, ok: text.length > 200, text, words: text.split(/\s+/).length, file: dir ? file : null });

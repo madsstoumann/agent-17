@@ -100,6 +100,7 @@ export async function openContext(b, { headers = {}, siteHosts = [], log = () =>
   const facts = async () => evalIn(sessionId, call(pageFacts, POLICY_PATTERN, PATTERNS.container), 15000);
   const text = async () => evalIn(sessionId, '(document.body && document.body.innerText || "").replace(/[ \\t]+/g, " ")', 15000);
   const cookies = async () => (await b.send('Storage.getCookies', { browserContextId })).cookies;
+  const openDetails = async () => evalIn(sessionId, '[...document.querySelectorAll("details:not([open])")].map((d) => { d.open = true; return 1; }).length', 5000);
   const html = async () => evalIn(sessionId, 'document.documentElement.outerHTML.slice(0, 2000000)');
   async function screenshot() {
     const r = await b.send('Page.captureScreenshot', { format: 'png' }, sessionId, 20000);
@@ -121,7 +122,7 @@ export async function openContext(b, { headers = {}, siteHosts = [], log = () =>
     for (const off of offs) off();
     await b.send('Target.disposeBrowserContext', { browserContextId }).catch(() => {});
   }
-  return { goto, settle, banner, click, api, facts, text, cookies, html, screenshot, reload, mark, close, requests, log };
+  return { goto, settle, banner, click, api, facts, text, openDetails, cookies, html, screenshot, reload, mark, close, requests, log };
 }
 
 /**

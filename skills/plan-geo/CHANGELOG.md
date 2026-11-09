@@ -2,6 +2,13 @@
 
 All notable changes to the `plan-geo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.2.0] - 2026-11-09
+
+### Fixed
+- `check` matches `markup/<name>.jsonld` to a page slug before a template slug. When a page and a template share a name (the page /visit and the template "visit", whose example is /visit/annual-pass), the draft was checked against the template's example instead of the page it was written for. The check line now says when a template of the same name exists and how to name the draft for its example.
+- Dates written in Danish, Norwegian, Swedish, German, Dutch, French and Spanish count as shown on the page ("1. oktober 2026", "d. 9. november 2026", "1er octobre 2026", "1 de octubre de 2026"), as do ranges whose first part has no year ("1. oktober – 29. marts 2027", "3.–5. juni 2026"). Only English month names were read, so the ISO dates in a draft for a Danish page were reported as "date not shown on the page". A date without a year is still not a full date.
+- Text behind closed accordions and tabs on Next.js sites is read. When the content only mounts on open, it is in the React Server Components payload (`self.__next_f.push(…)` scripts) and nowhere in the served or rendered HTML, so FAQ answers came out empty and drafts that quoted them failed the check. The payload text is now in the page record (`hidden`, with `questions` marked `hidden: true`), at the end of `pages/<slug>.md` under "Only in the Next.js payload", in `inventory.md`'s "Read as" column, and counts for the check. New `lib/rsc.mjs`, shared with audit-privacy.
+
 ## [1.1.0] - 2026-11-09
 
 ### Added

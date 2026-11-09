@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { parseCli, detectEnv, normaliseEnv, isStagingHost, resolveOut, resolveState, reportsRoot, usage, DEFAULTS } from '../lib/cli.mjs';
+import { parseCli, detectEnv, normaliseEnv, isStagingHost, isPlatformHost, resolveOut, resolveState, reportsRoot, usage, DEFAULTS } from '../lib/cli.mjs';
 
 test('parseCli applies defaults and normalises the URL', () => {
   const r = parseCli(['example.com/a'], {});
@@ -59,6 +59,10 @@ test('isStagingHost and detectEnv', () => {
   assert.equal(isStagingHost('browser.style'), false);
   assert.equal(isStagingHost('devices.example.com'), false, 'dev inside a word is not staging');
   assert.equal(isStagingHost('example-test.vercel.app'), true);
+  assert.equal(isStagingHost('example-live.euwest01.umbraco.io'), false, 'Umbraco Cloud live environment (and its media origin)');
+  assert.equal(isStagingHost('dev-example-live.euwest01.umbraco.io'), true);
+  assert.equal(isStagingHost('stage-example-live.euwest01.umbraco.io'), true);
+  assert.equal(isPlatformHost('example-live.euwest01.umbraco.io'), true, 'still a platform host for DNS and mail rows');
   assert.deepEqual(detectEnv('site-dev-a1b2c.ondigitalocean.app'), { env: 'staging', production: false, source: 'auto', reason: 'hostname looks like a non-production host' });
   assert.deepEqual(detectEnv('localhost:44380'), { env: 'dev', production: false, source: 'auto', reason: 'private host' });
   assert.deepEqual(detectEnv('browser.style'), { env: 'production', production: true, source: 'auto', reason: 'no staging marker in hostname' });

@@ -10,9 +10,28 @@
  * Zero dependencies. Node >= 22. Pure.
  */
 import { decodeEntities, extractMeta, tokenize } from './html.mjs';
+import { hiddenBlocks, blocksMarkdown, blockWords } from './rsc.mjs';
 
-const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
-const MON = MONTHS.map((m) => m.slice(0, 3));
+/**
+ * Month names by number, in the languages sites are most often written in here: English, Danish,
+ * Norwegian, Swedish, German, Dutch, French and Spanish, with their usual abbreviations.
+ */
+const MONTH_NAMES = [
+  'january jan januar januari janvier enero jänner',
+  'february feb februar februari février fevrier febrero',
+  'march mar marts mars märz maerz maart marzo mrt',
+  'april apr avril abril',
+  'may maj mai mei mayo',
+  'june jun juni juin junio',
+  'july jul juli juillet julio',
+  'august aug augusti augustus août aout agosto',
+  'september sep sept septembre septiembre setiembre',
+  'october oct okt oktober octobre octubre',
+  'november nov novembre noviembre',
+  'december dec desember dezember dez décembre decembre diciembre',
+];
+const MONTH = new Map(MONTH_NAMES.flatMap((names, i) => names.split(' ').map((n) => [n, i + 1])));
+const MONTH_RE = [...MONTH.keys()].sort((a, b) => b.length - a.length).join('|');
 const SOCIAL = /^(?:[\w-]+\.)?(linkedin\.com|x\.com|twitter\.com|facebook\.com|instagram\.com|youtube\.com|github\.com|tiktok\.com|vimeo\.com|xing\.com|glassdoor\.[a-z.]+|crunchbase\.com|wikipedia\.org|wikidata\.org)$/i;
 
 const clean = (s) => decodeEntities(String(s || '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
@@ -89,13 +108,33 @@ export function questionPairs(markdown, { maxWords = 120 } = {}) {
 const pad = (n) => String(n).padStart(2, '0');
 const iso = (y, m, d) => (m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 1990 && y <= 2100 ? `${y}-${pad(m)}-${pad(d)}` : null);
 
-/** Dates written on the page, as YYYY-MM-DD: "12 March 2025", "March 12, 2025", "2025-03-12", "12.03.2025", "12/03/2025" (day first). */
+/**
+ * Dates written on the page, as YYYY-MM-DD: "12 March 2025", "March 12, 2025", "2025-03-12",
+ * "12.03.2025", "12/03/2025" (day first), and day-month-year in the languages MONTH_NAMES covers:
+ * "1. oktober 2026", "d. 9. november 2026", "1er octobre 2026", "1 de octubre de 2026". In a range
+ * ("1. oktober – 29. marts 2027", "3.–5. juni 2026") the first date takes the year from the second.
+ * A date without a year ("torsdag den 5. november") is not a date the page shows in full.
+ */
 export function visibleDates(text) {
   const out = new Set();
   const t = String(text || '');
-  const month = (w) => { const i = MONTHS.indexOf(w.toLowerCase()); return i >= 0 ? i + 1 : MON.indexOf(w.toLowerCase().slice(0, 3)) + 1; };
-  for (const m of t.matchAll(/\b(\d{1,2})(?:st|nd|rd|th)?\.? (January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?,? (\d{4})\b/gi)) out.add(iso(+m[3], month(m[2]), +m[1]));
-  for (const m of t.matchAll(/\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.? (\d{1,2})(?:st|nd|rd|th)?,? (\d{4})\b/gi)) out.add(iso(+m[3], month(m[1]), +m[2]));
+  const month = (w) => MONTH.get(w.toLowerCase().replace(/\.$/, '')) || 0;
+  const L = '(?<![\\p{L}\\d])';
+  const R = '(?![\\p{L}])';
+  const day = '(\\d{1,2})(?:st|nd|rd|th|er|e)?\\.?';
+  const mon = `(${MONTH_RE})\\.?`;
+  const dmy = new RegExp(`${L}${day}\\s+(?:de\\s+)?${mon}${R},?\\s+(?:de\\s+)?(\\d{4})(?!\\d)`, 'giu');
+  const mdy = new RegExp(`${L}${mon}${R}\\s+${day},?\\s+(\\d{4})(?!\\d)`, 'giu');
+  // Ranges whose first part has no year: "1. oktober – 29. marts 2027", "3.–5. juni 2026".
+  const rangeMonths = new RegExp(`${L}${day}\\s+${mon}${R}\\s*[-–—]\\s*(?:til\\s+|to\\s+|bis\\s+|au\\s+)?${day}\\s+${mon}${R},?\\s+(\\d{4})(?!\\d)`, 'giu');
+  const rangeDays = new RegExp(`${L}(\\d{1,2})\\.?\\s*[-–—]\\s*${day}\\s+${mon}${R},?\\s+(\\d{4})(?!\\d)`, 'giu');
+  for (const m of t.matchAll(dmy)) out.add(iso(+m[3], month(m[2]), +m[1]));
+  for (const m of t.matchAll(mdy)) out.add(iso(+m[3], month(m[1]), +m[2]));
+  for (const m of t.matchAll(rangeMonths)) {
+    const [m1, m2, y] = [month(m[2]), month(m[4]), +m[5]];
+    out.add(iso(m1 > m2 ? y - 1 : y, m1, +m[1]));
+  }
+  for (const m of t.matchAll(rangeDays)) out.add(iso(+m[4], month(m[3]), +m[1]));
   for (const m of t.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) out.add(iso(+m[1], +m[2], +m[3]));
   for (const m of t.matchAll(/\b(\d{1,2})[./](\d{1,2})[./](\d{4})\b/g)) out.add(iso(+m[3], +m[2], +m[1]));
   out.delete(null);
@@ -180,12 +219,20 @@ export function pageUrls(html, base) {
  * { url, title, description, lang, canonical, h1, words, markdown, outline, questions, dates,
  *   bylines, breadcrumbs, org, og, urls, jsonLd: [data], text }
  * `text` is the whole visible text (main content plus header and footer), for the check step.
+ * `hidden` is text the page carries only in its Next.js payload (closed accordions and tabs that
+ * mount their content on open): { source, words, markdown }, or null. A visitor reads it after a
+ * click, so it counts for `text`, `dates` and `questions` (marked `hidden: true`), but it is not in
+ * the served HTML, and crawlers that do not run JavaScript never see it.
  */
 export function extractPage(html, url) {
   const meta = extractMeta(html, url);
   const body = dropConsent(bodyHtml(html));
   const mainMd = toMarkdown(mainHtml(body));
-  const fullText = clean(body);
+  const shownText = clean(body);
+  const hidden = hiddenBlocks(html, shownText);
+  const hiddenMd = blocksMarkdown(hidden);
+  const hiddenText = hidden.filter((b) => !b.shown).map((b) => b.text).join(' ');
+  const fullText = hiddenText ? `${shownText} ${hiddenText}` : shownText;
   return {
     url,
     title: meta.title,
@@ -196,7 +243,7 @@ export function extractPage(html, url) {
     words: countWords(mainMd.replace(/[#|*-]/g, ' ')),
     markdown: mainMd,
     outline: outline(mainMd),
-    questions: questionPairs(mainMd),
+    questions: mergeQuestions(questionPairs(mainMd), hidden.length ? questionPairs(hiddenMd) : []),
     tables: mainMd.split('\n').filter((l) => l.startsWith('| ')).length,
     dates: visibleDates(fullText),
     leadDate: leadDate(mainMd),
@@ -206,8 +253,21 @@ export function extractPage(html, url) {
     og: meta.og,
     urls: pageUrls(html, url),
     jsonLd: meta.jsonLd.filter((j) => !j.error).map((j) => j.data),
+    hidden: hiddenText ? { source: 'Next.js payload', words: blockWords(hidden), markdown: hiddenMd } : null,
     text: fullText,
   };
+}
+
+/** The page's question headings plus the payload's questions: an answer from the payload fills an empty one. */
+function mergeQuestions(shown, fromPayload) {
+  const out = shown.map((q) => ({ ...q }));
+  for (const q of fromPayload) {
+    if (!q.answer) continue;
+    const same = out.find((x) => x.question === q.question);
+    if (same && !same.answer) Object.assign(same, { answer: q.answer, words: q.words, hidden: true });
+    else if (!same) out.push({ ...q, hidden: true });
+  }
+  return out;
 }
 
 /** A readable digest of a page record for Claude: metadata, then the content as Markdown (capped). */
@@ -215,7 +275,7 @@ export function pageDigest(p, { maxChars = 14000 } = {}) {
   const lines = [`# ${p.title || p.url}`, '', `URL: ${p.url}`];
   if (p.description) lines.push(`Meta description: ${p.description}`);
   if (p.lang) lines.push(`Language: ${p.lang}`);
-  lines.push(`Words in main content: ${p.words} · question headings: ${p.questions.length} · table rows: ${p.tables}`);
+  lines.push(`Words in main content: ${p.words} · question headings: ${p.questions.length} · table rows: ${p.tables}${p.hidden ? ` · words only in the Next.js payload: ${p.hidden.words}` : ''}`);
   lines.push(`Page date: ${p.leadDate || 'none shown near the top'}${p.dates.length ? ` · other dates in the text: ${p.dates.filter((d) => d !== p.leadDate).join(', ') || 'none'}` : ''}`);
   if (p.bylines.length) lines.push(`Bylines: ${p.bylines.join(', ')}`);
   if (p.breadcrumbs.length) lines.push(`Breadcrumb: ${p.breadcrumbs.map((b) => b.name).join(' › ')}`);
@@ -227,5 +287,10 @@ export function pageDigest(p, { maxChars = 14000 } = {}) {
   lines.push(`Existing JSON-LD: ${p.jsonLd.length ? JSON.stringify(p.jsonLd).slice(0, 1500) : 'none'}`, '', '## Content', '');
   const md = p.markdown.length > maxChars ? `${p.markdown.slice(0, maxChars)}\n\n[… cut at ${maxChars} characters; the full text is in the .json file]` : p.markdown;
   lines.push(md, '');
+  if (p.hidden) {
+    const cap = Math.max(2000, maxChars - md.length);
+    lines.push('## Only in the Next.js payload', '', `${p.hidden.words} words the page carries only in its script payload: behind accordions or tabs that mount their content when opened. Visitors read it after a click; it is not in the served HTML, so crawlers that do not run JavaScript miss it, and Google sees it only if it renders the page with the accordion open.`, '');
+    lines.push(p.hidden.markdown.length > cap ? `${p.hidden.markdown.slice(0, cap)}\n\n[… cut at ${cap} characters; the full text is in the .json file under hidden.markdown]` : p.hidden.markdown, '');
+  }
   return lines.join('\n');
 }

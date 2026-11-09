@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-privacy` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.2.0] - 2026-11-09
+
+### Fixed
+- The policy text includes what sits behind closed accordions and tabs. On a Next.js site whose accordions mount their content only when opened, that text is not in the page's HTML or DOM, only in the React Server Components payload (`self.__next_f.push(…)` scripts), so `policy-*.txt` held the section headings without their text and the policy review saw a policy with most of it missing. `<details>` elements are opened before the text is read, and text that is only in the payload is added after a marker line. Nothing on the page is clicked. New `lib/rsc.mjs`, shared with plan-geo.
+
 ## [2.1.1] - 2026-11-09
 
 ### Fixed

@@ -33,7 +33,7 @@ import { targetDir, claimTarget, newRun, markRun, RUN_MARKER } from './lib/targe
 import { writeFixPlan, validateTasks } from './lib/tasks.mjs';
 import { mergeGraph, sampleHtml, injectLive, samplesReadme } from './lib/samples.mjs';
 
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const log = (...a) => process.stderr.write(`${a.join(' ')}\n`);
@@ -218,6 +218,7 @@ async function extract(opts) {
       } catch (e) { log(`Chrome: ${e.message}`); }
     }
     if (!rec) { log(`skip ${s.url}: ${res.error || `HTTP ${res.status}`}`); continue; }
+    if (rec.hidden) how += ` + ${rec.hidden.words} words only in the Next.js payload`;
     const slug = pageSlug(s.url);
     writeJson(path.join(pagesDir, `${slug}.json`), { ...rec, template: s.template, why: s.why, how });
     fs.writeFileSync(path.join(pagesDir, `${slug}.md`), pageDigest(rec));
@@ -273,12 +274,20 @@ function inventoryMarkdown(inv) {
 
 // ---------------------------------------------------------------- check
 
-/** The page a draft is checked against: markup/site.jsonld → the start page; <template slug> → its example; <page slug> → that page. */
-function draftPage(run, inv, slug) {
+/**
+ * The page a draft is checked against: markup/site.jsonld → the start page; <page slug> → that
+ * page; else <template slug> → the template's example. A page slug wins because it is the more
+ * specific name: /visit (slug "visit") and the template "visit" (example /visit/annual-pass) share
+ * a name, and a draft named after a page is for that page. `template` says when a template of the
+ * same name exists with another example, so check can say which one it used.
+ */
+export function draftPage(run, inv, slug) {
   const pages = path.join(run, 'pages');
   const t = slug === 'site' ? inv.templates.find((x) => x.key === 'home') : inv.templates.find((x) => x.slug === slug);
-  const pageSlugName = t?.example || (fs.existsSync(path.join(pages, `${slug}.json`)) ? slug : null);
-  return pageSlugName ? { slug: pageSlugName, page: readJson(path.join(pages, `${pageSlugName}.json`)) } : null;
+  const own = slug !== 'site' && fs.existsSync(path.join(pages, `${slug}.json`)) ? slug : null;
+  const pageSlugName = own || t?.example || null;
+  if (!pageSlugName) return null;
+  return { slug: pageSlugName, page: readJson(path.join(pages, `${pageSlugName}.json`)), template: own && t?.example && t.example !== own ? { key: t.key, example: t.example } : null };
 }
 
 async function check(run, opts, { quiet = false } = {}) {
@@ -296,6 +305,7 @@ async function check(run, opts, { quiet = false } = {}) {
     d.allTypes = [...typesIn(data)];
     const target = draftPage(run, inv, slug);
     if (target?.page) { d.page = target.page.url; d.notOnPage = verifyDraft(data, target.page); } else d.noPage = true;
+    if (target?.template) d.alsoTemplate = target.template;
     for (const r of richIssues([data])) { for (const p of r.required) d.required.push(`${r.type}.${p}`); for (const p of r.recommended) d.recommended.push(`${r.type}.${p}`); }
     if (opts.remote) {
       const html = `<!doctype html><html><head><title>draft</title><script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script></head><body></body></html>`;
@@ -317,7 +327,8 @@ async function check(run, opts, { quiet = false } = {}) {
 function checkLine(d) {
   if (d.parseError) return `FAIL ${d.file}: does not parse (${d.parseError})`;
   const bits = [];
-  if (d.noPage) bits.push('no page to check against (name it after a template slug, a page slug or "site")');
+  if (d.noPage) bits.push('no page to check against (name it after a page slug, a template slug or "site")');
+  if (d.alsoTemplate) bits.push(`checked against the page ${d.page}, not the example of template "${d.alsoTemplate.key}" (name the draft ${d.alsoTemplate.example}.jsonld for that)`);
   if (d.notOnPage.length) bits.push(`${d.notOnPage.length} value(s) not on the page: ${d.notOnPage.slice(0, 4).map((f) => `${f.path} "${String(f.value).slice(0, 40)}"`).join('; ')}`);
   if (d.required.length) bits.push(`for Google's rich result also needs ${d.required.join(', ')} (leave out when the page does not show it)${d.slug === 'site' ? '; the site graph is on every page, so move that node to the draft for its own template' : ''}`);
   if (d.validator?.errors) bits.push(`validator.schema.org: ${d.validator.errors} error(s): ${d.validator.messages.slice(0, 3).join('; ')}`);
