@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-a11y` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.1.3] - 2026-11-09
+
+### Fixed
+- `--console --out DIR` writes the run's files to `DIR`. `--console` without `--report` always used a scratch folder in the system temp folder and ignored `--out`, and the scratch folder was removed at the end, so nothing was left where the user asked for it. The console list now ends with the report path when `--out` is given.
+
 ## [2.1.2] - 2026-11-07
 
 ### Changed

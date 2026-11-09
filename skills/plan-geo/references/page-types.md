@@ -8,7 +8,10 @@ what the page shows.
 ## The site graph (every site)
 
 One `@graph` in `markup/site.jsonld`, rendered on every page (or at least the start page), that
-every other draft points at by `@id`:
+every other draft points at by `@id`. Only the two types below: a product, service or event in the
+site graph would be on every page, and Google flags a SoftwareApplication or Product without a
+price or rating as an invalid rich result wherever it appears. Give the flagship product an `@id`
+(`https://<host>/#<product>`) in its own template's draft instead, and point at it from elsewhere.
 
 | Type | Properties | Notes |
 | --- | --- | --- |

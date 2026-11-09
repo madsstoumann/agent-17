@@ -4,7 +4,7 @@ description: Use when someone wants the infrastructure or domain hygiene of a si
 argument-hint: "<url or domain> [--email-domain D] [--dkim-selector S] [--no-ct] [--max-subdomains N] [--only domain,email,tls,edge,ct] [--out DIR] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
-  version: "2.4.2"
+  version: "2.4.3"
 ---
 
 # Infrastructure audit
@@ -56,7 +56,7 @@ first, with the counts on top. The run's files go to a scratch folder in the sys
 so nothing is left in the reports folder except the target folder's `last-report.json`. Use it when
 the user wants "just the list", "in the terminal" or "no report". Show the list as it is, in a code
 block, with a sentence of context; there is no report path to quote. `--console --report` writes
-the report as well.
+the report as well, and so does `--console --out DIR` (the run's files go to that folder).
 
 ## What it checks
 

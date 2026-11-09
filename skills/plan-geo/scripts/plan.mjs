@@ -10,6 +10,8 @@
  *    tasks.json and summary.md, as SKILL.md says.)
  *   plan.mjs check <run folder>    checks every markup draft: parses, Google's required and
  *       recommended properties, validator.schema.org, and that every value is on the page.
+ *   plan.mjs samples <run folder>  writes samples/: each draft merged with the site graph into one
+ *       @graph, as a page to paste into the Rich Results Test or validator.schema.org (optional).
  *   plan.mjs build <run folder>    runs check, then writes proposals.md and fix/TODO.md + fix/tasks/.
  *
  * Zero dependencies. Node >= 22.
@@ -24,13 +26,14 @@ import { extractPage, pageDigest } from './lib/extract.mjs';
 import { groupTemplates, pickSample, pageSlug, indexable } from './lib/templates.mjs';
 import { verifyDraft, typesIn } from './lib/verify.mjs';
 import { readQuestions, renderProposals, QUESTION_COLUMNS } from './lib/proposals.mjs';
-import { richIssues } from './lib/rich.mjs';
+import { richIssues, prop } from './lib/rich.mjs';
 import { schemaValidate } from './lib/schema.mjs';
 import { launch, render, findChrome } from './lib/render.mjs';
 import { targetDir, claimTarget, newRun, markRun, RUN_MARKER } from './lib/target-state.mjs';
 import { writeFixPlan, validateTasks } from './lib/tasks.mjs';
+import { mergeGraph, sampleHtml, injectLive, samplesReadme } from './lib/samples.mjs';
 
-export const VERSION = '1.0.1';
+export const VERSION = '1.1.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const log = (...a) => process.stderr.write(`${a.join(' ')}\n`);
@@ -41,7 +44,8 @@ Usage:
   plan.mjs extract <input> [--pages N] [--out DIR] [--header "Name: value"] [--no-render] [--insecure]
                    [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content]
   plan.mjs check <run folder> [--no-remote]
-  plan.mjs build <run folder> [--no-remote]
+  plan.mjs samples <run folder> [--live] [--header "Name: value"] [--no-remote]
+  plan.mjs build <run folder> [--no-remote] [--samples [--live]]
 
 <input> is an audit-seo run folder, an audit-all run folder, an audit-seo report.json, or a URL
 (then the host's last audit-seo run is used, and audit-seo is run first when there is none).
@@ -57,13 +61,16 @@ Usage:
   --only           markup or content: plan one part only.
   --no-render      Never use Chrome (pages whose served HTML is thin are then read as served).
   --insecure       Accept self-signed certificates (local and staging sites).
-  --no-remote      Do not send drafts to validator.schema.org.
+  --no-remote      Do not send drafts or samples to validator.schema.org.
+  --samples        build: write samples/ first (as "plan.mjs samples") and link it from proposals.md.
+  --live           samples: also fetch each draft's page and write <slug>.live.html, the live page with
+                   its own JSON-LD replaced by the sample's (and a <base href> so it still loads).
 `;
 
 // ---------------------------------------------------------------- small helpers
 
 function parseArgs(argv) {
-  const o = { _: [], pages: 24, headers: {}, render: true, remote: true, insecure: false, out: null, queries: null, competitors: [], repo: null, only: null };
+  const o = { _: [], pages: 24, headers: {}, render: true, remote: true, insecure: false, out: null, queries: null, competitors: [], repo: null, only: null, samples: false, live: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => { if (i + 1 >= argv.length) throw new Error(`${a} needs a value`); return argv[++i]; };
@@ -77,6 +84,8 @@ function parseArgs(argv) {
     else if (a === '--no-render') o.render = false;
     else if (a === '--no-remote') o.remote = false;
     else if (a === '--insecure') o.insecure = true;
+    else if (a === '--samples') o.samples = true;
+    else if (a === '--live') o.live = true;
     else if (a === '-h' || a === '--help') o.help = true;
     else if (a.startsWith('--')) throw new Error(`unknown flag ${a}`);
     else o._.push(a);
@@ -310,7 +319,7 @@ function checkLine(d) {
   const bits = [];
   if (d.noPage) bits.push('no page to check against (name it after a template slug, a page slug or "site")');
   if (d.notOnPage.length) bits.push(`${d.notOnPage.length} value(s) not on the page: ${d.notOnPage.slice(0, 4).map((f) => `${f.path} "${String(f.value).slice(0, 40)}"`).join('; ')}`);
-  if (d.required.length) bits.push(`for Google's rich result also needs ${d.required.join(', ')} (leave out when the page does not show it)`);
+  if (d.required.length) bits.push(`for Google's rich result also needs ${d.required.join(', ')} (leave out when the page does not show it)${d.slug === 'site' ? '; the site graph is on every page, so move that node to the draft for its own template' : ''}`);
   if (d.validator?.errors) bits.push(`validator.schema.org: ${d.validator.errors} error(s): ${d.validator.messages.slice(0, 3).join('; ')}`);
   if (d.validator?.error) bits.push(`validator.schema.org not reached (${d.validator.error})`);
   if (d.validator && !d.validator.error && !d.validator.objects) bits.push('validator.schema.org found no objects');
@@ -328,6 +337,84 @@ export function topTypes(data) {
   return [...out];
 }
 
+// ---------------------------------------------------------------- samples
+
+const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
+
+/** validator.schema.org rate-limits a burst of posts (HTTP 429): wait and try again, twice. */
+async function validateWithRetry(html, waits = [5000, 15000]) {
+  let v = await schemaValidate(http, { html });
+  for (const ms of waits) {
+    if (v.ok || !/429|rate/i.test(String(v.error || ''))) break;
+    log(`validator.schema.org rate limit: waiting ${ms / 1000} s`);
+    await sleep(ms);
+    v = await schemaValidate(http, { html });
+  }
+  return v;
+}
+
+/** samples/<slug>.html for each draft: the site graph and the draft as one @graph; with --live also <slug>.live.html. */
+async function samples(run, opts, { quiet = false } = {}) {
+  const inv = readJson(path.join(run, 'inventory.json'));
+  if (!inv) throw new Error(`no inventory.json in ${run}: run "plan.mjs extract" first`);
+  const dir = path.join(run, 'markup');
+  const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.jsonld')).sort() : [];
+  if (!files.length) throw new Error(`no drafts in ${dir}: write markup/*.jsonld first`);
+  const parse = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch (e) { log(`skip markup/${f}: does not parse (${e.message})`); return undefined; } };
+  const site = files.includes('site.jsonld') ? parse('site.jsonld') ?? null : null;
+  // The start page's draft already carries the site graph; site.jsonld gets a sample of its own only without one.
+  const homeSlug = inv.templates.find((t) => t.key === 'home')?.slug;
+  const slugs = files.map((f) => f.replace(/\.jsonld$/, '')).filter((s) => s !== 'site' || !files.includes(`${homeSlug}.jsonld`));
+  const outDir = path.join(run, 'samples');
+  fs.mkdirSync(outDir, { recursive: true });
+  const rows = [];
+  let limited = null; // after a 429 that outlasts the retries, the remaining samples are not posted
+  for (const slug of slugs) {
+    const draft = slug === 'site' ? null : parse(`${slug}.jsonld`);
+    if (draft === undefined) continue;
+    const graph = mergeGraph(site, draft);
+    const target = draftPage(run, inv, slug === homeSlug ? 'site' : slug) || draftPage(run, inv, slug);
+    const page = target?.page || null;
+    // The draft is checked against its page, the site graph against the start page (as check does).
+    const notOnPage = page ? verifyDraft(slug === 'site' ? site : draft, page).length : null;
+    const required = [...new Set(richIssues([graph]).flatMap((r) => r.required.map((p) => `${r.type}.${prop(p)}`)))];
+    const notes = [
+      page ? `Every value is meant to be copied from ${page.url}.` : 'No page was read for this draft, so its values are not checked against one.',
+      ...(required.length ? [`Google's rich-result rules ask for ${required.join(', ')}. Left out because the page does not show it; the Rich Results Test marks that item invalid, validator.schema.org does not.`] : []),
+    ];
+    const html = sampleHtml({ graph, url: page?.url, title: page?.title, draft: slug === 'site' ? 'markup/site.jsonld' : `markup/${slug}.jsonld`, notes, lang: inv.lang || page?.lang || 'en' });
+    const file = `${slug}.html`;
+    fs.writeFileSync(path.join(outDir, file), html);
+    let validator = null;
+    if (opts.remote && limited) validator = { error: limited };
+    else if (opts.remote) {
+      const v = await validateWithRetry(html);
+      validator = v.ok ? { errors: v.errors, warnings: v.warnings } : { error: v.error };
+      if (!v.ok && /429|rate/i.test(String(v.error || ''))) limited = `${v.error}; paste the file into validator.schema.org by hand`;
+    }
+    let live = null; let removed = 0;
+    if (opts.live && page?.url) {
+      const res = await get(page.url, { headers: opts.headers });
+      if (res.ok && res.body) {
+        const injected = injectLive(res.body, { graph, url: res.finalUrl || page.url });
+        live = `${slug}.live.html`; removed = injected.removed;
+        fs.writeFileSync(path.join(outDir, live), injected.html);
+      } else log(`live copy of ${page.url} skipped: ${res.error || `HTTP ${res.status}`}`);
+    }
+    rows.push({ file, live, url: page?.url || null, types: topTypes(graph), validator, required, notOnPage, removed });
+  }
+  fs.writeFileSync(path.join(outDir, 'README.md'), samplesReadme({ host: inv.host, rows, live: opts.live }));
+  if (!quiet) {
+    console.log(`plan-geo ${VERSION} — ${rows.length} sample${rows.length === 1 ? '' : 's'}`);
+    for (const r of rows) {
+      const bits = [r.validator == null ? null : r.validator.error ? `validator.schema.org not reached (${r.validator.error})` : `validator.schema.org: ${r.validator.errors} errors, ${r.validator.warnings} warnings`, r.required.length ? `rich result needs ${r.required.join(', ')}` : null, r.notOnPage ? `${r.notOnPage} value(s) not on the page` : null, r.live ? `live copy: ${r.live}${r.removed ? ` (${r.removed} JSON-LD block(s) of the page replaced)` : ''}` : null].filter(Boolean);
+      console.log(`${(r.validator?.errors || r.notOnPage) ? 'WARN' : 'OK  '} samples/${r.file} [${r.types.join(', ')}]${bits.length ? `: ${bits.join(' · ')}` : ''}`);
+    }
+    console.log(`\nsamples        ${path.join(outDir, 'README.md')}`);
+  }
+  return rows;
+}
+
 // ---------------------------------------------------------------- build
 
 async function build(run, opts) {
@@ -335,6 +422,8 @@ async function build(run, opts) {
   if (!inv) throw new Error(`no inventory.json in ${run}: run "plan.mjs extract" first`);
   const problems = [];
   const checked = await check(run, opts, { quiet: true });
+  if (opts.samples) await samples(run, opts, { quiet: true });
+  const hasSamples = fs.existsSync(path.join(run, 'samples', 'README.md'));
 
   const qFile = path.join(run, 'content', 'questions.csv');
   let questions = [];
@@ -361,7 +450,7 @@ async function build(run, opts) {
   else problems.push('no tasks.json: no fix plan written');
   for (const w of fix.warnings || []) log(`tasks.json: ${w}`);
 
-  const md = renderProposals({ inventory: inv, check: checked, questions, briefs, summary, profile, plan, version: VERSION });
+  const md = renderProposals({ inventory: inv, check: checked, questions, briefs, summary, profile, plan, samples: hasSamples, version: VERSION });
   fs.writeFileSync(path.join(run, 'proposals.md'), md);
   writeJson(path.join(inv.target, 'last-plan.json'), { date: new Date().toISOString(), run, templates: inv.templates.length, drafts: checked.drafts.map((d) => ({ file: d.file, types: d.types })), questions: questions.map((q) => ({ question: q.question, status: q.status })) });
 
@@ -374,6 +463,7 @@ async function build(run, opts) {
   console.log('');
   console.log(`proposals.md   ${path.join(run, 'proposals.md')}`);
   if (plan) console.log(`fix/TODO.md    ${fix.todo}`);
+  if (hasSamples) console.log(`samples        ${path.join(run, 'samples', 'README.md')}`);
   console.log(`Run folder     ${run}`);
 }
 
@@ -387,8 +477,9 @@ export async function main(argv = process.argv.slice(2)) {
   const run = opts._[1] && path.resolve(opts._[1]);
   if (!run || !fs.existsSync(run)) throw new Error(`${cmd} needs the run folder that "extract" printed`);
   if (cmd === 'check') return check(run, opts);
+  if (cmd === 'samples') return samples(run, opts);
   if (cmd === 'build') return build(run, opts);
-  throw new Error(`unknown command "${cmd}" (extract, check or build)`);
+  throw new Error(`unknown command "${cmd}" (extract, check, samples or build)`);
 }
 
 export { validateTasks };

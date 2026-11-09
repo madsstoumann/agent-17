@@ -23,7 +23,7 @@ import { buildMarkdown, buildSummary, consoleItems } from './lib/report.mjs';
 import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
 import { parseLevel, consoleList, scratchDir, removeScratch } from './lib/levels.mjs';
 
-export const VERSION = '2.1.2';
+export const VERSION = '2.1.3';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UA_SUFFIX = `audit-a11y/${VERSION}`;
 const DESKTOP = { width: 1280, height: 900 };
@@ -215,8 +215,8 @@ async function auditPage(page, url, ctx, { keyboard }) {
 
 export async function run(opts, { log = (m) => process.stderr.write(`${m}\n`), now = new Date() } = {}) {
   const state = claimTarget(stateDir(opts), new URL(opts.url).host);
-  // --console alone: the run's files go to a scratch folder that is removed at the end.
-  const scratch = opts.console && !opts.report ? scratchDir('audit-a11y') : null;
+  // --console alone (no --report, no --out): the run's files go to a scratch folder that is removed at the end.
+  const scratch = opts.console && !opts.report && !opts.out ? scratchDir('audit-a11y') : null;
   const dir = outDir(scratch ? { ...opts, out: scratch } : opts, state, now);
   const chrome = findChrome({ chromePath: opts.chrome });
   if (!chrome) throw new Error('no Chrome, Chromium or Edge found (install one or set CHROME_PATH)');
@@ -298,7 +298,7 @@ export async function run(opts, { log = (m) => process.stderr.write(`${m}\n`), n
   fs.writeFileSync(path.join(dir, 'tasks.json'), `${JSON.stringify(tasks, null, 2)}\n`);
   fs.writeFileSync(path.join(state, 'last-report.json'), `${JSON.stringify(json)}\n`);
   const summary = opts.console
-    ? `${consoleList({ title: `audit-a11y ${host} (WCAG 2.2 ${opts.level}, ${pages.length} pages)`, items: consoleItems(agg), levels: opts.levels })}${opts.report ? `\nreport.md: ${dir}/report.md` : ''}\nState: ${state}`
+    ? `${consoleList({ title: `audit-a11y ${host} (WCAG 2.2 ${opts.level}, ${pages.length} pages)`, items: consoleItems(agg), levels: opts.levels })}${(opts.report || opts.out) ? `\nreport.md: ${dir}/report.md` : ''}\nState: ${state}`
     : buildSummary({ site: opts.url, agg, dir, level: opts.level, state, diff, notes, levels: opts.levels });
   removeScratch(scratch);
   return { dir, state, agg, diff, summary };

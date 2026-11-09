@@ -13,6 +13,7 @@ import { verifyDraft, norm, onPage, knownUrl } from '../lib/verify.mjs';
 import { parseCsv, readQuestions, renderProposals } from '../lib/proposals.mjs';
 import { extractMeta } from '../lib/html.mjs';
 import { topTypes, VERSION } from '../plan.mjs';
+import { nodesOf, mergeGraph, sampleHtml, injectLive, samplesReadme } from '../lib/samples.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILLS = path.join(HERE, '..', '..', '..');
@@ -255,6 +256,63 @@ function run(args, env = {}) {
   });
 }
 
+// ---------------------------------------------------------------- samples
+
+const SITE = { '@context': 'https://schema.org', '@graph': [
+  { '@type': 'Organization', '@id': 'https://x.com/#organization', name: 'Acme', url: 'https://x.com/' },
+  { '@type': 'WebSite', '@id': 'https://x.com/#website', url: 'https://x.com/', publisher: { '@id': 'https://x.com/#organization' } },
+] };
+
+test('nodesOf and mergeGraph: one @graph, site first, same @id merged', () => {
+  assert.deepEqual(nodesOf(null), []);
+  assert.deepEqual(nodesOf({ '@context': 'https://schema.org', '@type': 'Article', headline: 'H' }), [{ '@type': 'Article', headline: 'H' }]);
+  assert.equal(nodesOf([{ '@type': 'A' }, { '@graph': [{ '@type': 'B' }, { '@type': 'C' }] }]).length, 3);
+  const g = mergeGraph(SITE, { '@context': 'https://schema.org', '@type': 'AboutPage', about: { '@id': 'https://x.com/#organization' } });
+  assert.equal(g['@context'], 'https://schema.org');
+  assert.deepEqual(topTypes(g), ['Organization', 'WebSite', 'AboutPage']);
+  const m = mergeGraph(SITE, { '@graph': [{ '@type': 'Organization', '@id': 'https://x.com/#organization', foundingDate: '1971' }] });
+  assert.equal(m['@graph'].length, 2, 'a node with a site @id is merged, not added');
+  assert.deepEqual(m['@graph'][0], { '@type': 'Organization', '@id': 'https://x.com/#organization', name: 'Acme', url: 'https://x.com/', foundingDate: '1971' });
+  assert.equal(mergeGraph(null, { '@type': 'Article' })['@graph'].length, 1);
+  assert.equal(SITE['@graph'][0].foundingDate, undefined, 'inputs are not changed');
+});
+
+test('sampleHtml: the graph in one script, "<" escaped, and how to test it', () => {
+  const html = sampleHtml({ graph: mergeGraph(SITE, { '@type': 'FAQPage', mainEntity: [{ '@type': 'Question', name: 'Q?', acceptedAnswer: { '@type': 'Answer', text: '<p>A</script></p>' } }] }), url: 'https://x.com/faq', title: 'FAQ & more', draft: 'markup/faq.jsonld', notes: ['Note <1>'] });
+  assert.equal(html.match(/application\/ld\+json/g).length, 1);
+  assert.ok(!html.includes('</script></p>'), 'CMS text cannot close the script tag');
+  const json = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1];
+  assert.equal(JSON.parse(json)['@graph'][2].mainEntity[0].acceptedAnswer.text, '<p>A</script></p>');
+  assert.match(html, /<title>Sample: FAQ &amp; more<\/title>/);
+  assert.match(html, /Rich Results Test/);
+  assert.match(html, /<li>Note &lt;1&gt;<\/li>/);
+  assert.match(html, /<meta name="robots" content="noindex">/);
+});
+
+test('injectLive: own JSON-LD replaced, graph and <base> in <head>', () => {
+  const page = '<!doctype html><html><head><title>P</title><script type="application/ld+json">{"@type":"Thing"}</script><script type=\'application/ld+json\'>{}</script><link rel="stylesheet" href="/a.css"></head><body><img src="x.png"></body></html>';
+  const { html, removed } = injectLive(page, { graph: mergeGraph(SITE, null), url: 'https://x.com/p' });
+  assert.equal(removed, 2);
+  assert.equal(html.match(/application\/ld\+json/g).length, 1);
+  assert.match(html, /<head>\n<base href="https:\/\/x\.com\/p">/);
+  assert.ok(html.indexOf('application/ld+json') < html.indexOf('</head>'));
+  assert.match(html, /<body><img src="x\.png"><\/body>/);
+  assert.equal(injectLive('<html><head><base href="/b/"></head></html>', { graph: SITE, url: 'https://x.com/' }).html.match(/<base /g).length, 1, 'an existing <base> is kept');
+  assert.match(injectLive('<p>no head</p>', { graph: SITE, url: 'https://x.com/' }).html, /^<head>\n<base href="https:\/\/x\.com\/">\n<script/);
+});
+
+test('samplesReadme: a row per sample, validator and rich-result columns', () => {
+  const md = samplesReadme({ host: 'x.com', live: true, date: new Date('2026-01-02'), rows: [
+    { file: 'insights.html', live: 'insights.live.html', url: 'https://x.com/i', types: ['Organization', 'Article'], validator: { errors: 0, warnings: 1 }, required: [], notOnPage: 0 },
+    { file: 'product.html', live: null, url: 'https://x.com/p', types: ['SoftwareApplication'], validator: null, required: ['SoftwareApplication.offers.price'], notOnPage: 2 },
+  ] });
+  assert.match(md, /^# JSON-LD samples: x\.com/);
+  assert.match(md, /\| \[insights\.html\]\(insights\.html\) · \[live\]\(insights\.live\.html\) \| https:\/\/x\.com\/i \| Organization, Article \| 0 errors, 1 warnings \| nothing missing \| 0 \|/);
+  assert.match(md, /not checked \(--no-remote\) \| needs SoftwareApplication\.offers\.price for the rich result \| 2 \|/);
+  assert.match(md, /`\.live\.html` files/);
+  assert.ok(!/\n\n\n/.test(md));
+});
+
 test('extract → check → build on a local site', async () => {
   const home = '<html lang="en"><head><title>Acme</title><meta name="description" content="Acme makes investment software."></head><body><main><h1>Acme</h1><p>Acme makes investment software for pension funds and insurers around the world.</p></main><footer><a href="https://www.linkedin.com/company/acme">in</a></footer></body></html>';
   const server = await serve({ '/': home, '/insights/what-is-an-ibor': HTML });
@@ -284,6 +342,23 @@ test('extract → check → build on a local site', async () => {
     assert.match(ck.out, /WARN markup\/insights\.jsonld \[Article\]: 1 value\(s\) not on the page: award "Invented award"/);
     assert.match(ck.out, /FAIL markup\/broken\.jsonld: does not parse/);
 
+    fs.writeFileSync(path.join(out, 'markup', 'site.jsonld'), JSON.stringify({ '@context': 'https://schema.org', '@graph': [{ '@type': 'Organization', '@id': `${base}/#organization`, name: 'Acme', url: `${base}/` }, { '@type': 'SoftwareApplication', name: 'Acme One' }] }));
+    const ck2 = await run(['check', out, '--no-remote']);
+    assert.match(ck2.out, /markup\/site\.jsonld .*the site graph is on every page, so move that node/);
+    const sm = await run(['samples', out, '--no-remote', '--live']);
+    assert.equal(sm.code, 0, sm.err);
+    assert.match(sm.err, /skip markup\/broken\.jsonld: does not parse/);
+    assert.match(sm.out, /samples\/insights\.html \[Organization, SoftwareApplication, Article\]/);
+    assert.match(sm.out, /live copy: insights\.live\.html/);
+    const sample = fs.readFileSync(path.join(out, 'samples', 'insights.html'), 'utf8');
+    assert.match(sample, /"headline": "What is an IBOR\?"/);
+    assert.match(sample, /"name": "Acme"/);
+    const live = fs.readFileSync(path.join(out, 'samples', 'insights.live.html'), 'utf8');
+    assert.match(live, new RegExp(`<base href="${base}/insights/what-is-an-ibor">`));
+    assert.match(live, /What is an IBOR/);
+    assert.ok(fs.existsSync(path.join(out, 'samples', 'site.html')), 'the site graph gets its own sample without a home draft');
+    assert.match(fs.readFileSync(path.join(out, 'samples', 'README.md'), 'utf8'), /\| \[insights\.html\]\(insights\.html\) · \[live\]\(insights\.live\.html\) \|/);
+
     fs.mkdirSync(path.join(out, 'content', 'briefs'), { recursive: true });
     fs.writeFileSync(path.join(out, 'content', 'questions.csv'), `question,intent,status,page,brief\nWhat is an IBOR?,definition,answered,${base}/insights/what-is-an-ibor,\nIBOR vs ABOR?,comparison,missing,,01-ibor-abor.md\n`);
     fs.writeFileSync(path.join(out, 'content', 'briefs', '01-ibor-abor.md'), '# IBOR vs ABOR\n');
@@ -295,6 +370,8 @@ test('extract → check → build on a local site', async () => {
     assert.match(b.out, /Questions: 2 \(1 answered, 0 partly, 1 missing\); 1 brief/);
     const md = fs.readFileSync(path.join(out, 'proposals.md'), 'utf8');
     assert.match(md, /Acme makes investment software\./);
+    assert.match(md, /\[samples\/README\.md\]\(samples\/README\.md\)/);
+    assert.match(b.out, /samples +.*samples\/README\.md/);
     assert.match(md, /Invented award/);
     assert.ok(fs.existsSync(path.join(out, 'fix', 'TODO.md')));
     assert.ok(fs.existsSync(path.join(out, 'site-profile.md')));

@@ -268,8 +268,8 @@ async function writeOut(opts, report, inlinks) {
   // A --schema-only run keeps its own baseline, so it never replaces the full audit's.
   const lastName = report.mode === 'schema' ? 'last-schema-report.json' : 'last-report.json';
   const stateDir = claimTarget(resolveState({ state: opts.state, host: opts.host }), opts.host);
-  // --console alone: the run's files go to a scratch folder that is removed at the end.
-  const scratch = opts.console && !opts.report ? scratchDir('audit-seo') : null;
+  // --console alone (no --report, no --out): the run's files go to a scratch folder that is removed at the end.
+  const scratch = opts.console && !opts.report && !opts.out ? scratchDir('audit-seo') : null;
   const dir = resolveOut({ out: scratch || opts.out, host: opts.host }, { state: stateDir, exists: fsSync.existsSync });
   markRun(dir, { skill: 'audit-seo', target: opts.host });
   report.state = stateDir;
@@ -291,7 +291,7 @@ async function writeOut(opts, report, inlinks) {
   await fs.writeFile(paths.csv, pagesCsv(report.pages, inlinks));
   await fs.writeFile(path.join(stateDir, lastName), JSON.stringify(report));
   const head = opts.console
-    ? `${consoleList({ title: `audit-seo ${report.site.host}`, items: consoleItems(report, { geo: opts.geo && report.mode !== 'schema' }), levels: opts.levels })}${opts.report ? `\nReport: ${paths.md}` : ''}`
+    ? `${consoleList({ title: `audit-seo ${report.site.host}`, items: consoleItems(report, { geo: opts.geo && report.mode !== 'schema' }), levels: opts.levels })}${(opts.report || opts.out) ? `\nReport: ${paths.md}` : ''}`
     : renderStdout(report, paths, { levels: opts.levels, geo: opts.geo && report.mode !== 'schema' });
   removeScratch(scratch);
   process.stdout.write(`${head}\nState: ${stateDir}\nCompared with: ${baselineFile || 'nothing (first run for this host)'}${notes ? '\nNotes: notes.md included in the report' : ''}\n`);

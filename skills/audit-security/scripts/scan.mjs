@@ -20,7 +20,7 @@ import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from 
 import { annotate, baselineLines, tag } from './lib/baseline.mjs';
 import { parseLevel, levelOfWord, scratchDir } from './lib/levels.mjs';
 
-export const VERSION = '2.1.0';
+export const VERSION = '2.1.1';
 const GROUPS = ['deps', 'secrets', 'xss', 'injection', 'request', 'crypto', 'config', 'ci'];
 const SEV = { high: 3, medium: 2, low: 1 };
 
@@ -313,8 +313,8 @@ async function main() {
   if (args.help) { process.stdout.write(USAGE); return; }
   const report = await run(args);
   const stateDir = claimTarget(resolveStateDir(args.state, report.root), report.root);
-  // --console alone: findings.json goes to a scratch folder in the temp folder (kept for triage).
-  const scratch = args.console && !args.report ? scratchDir('audit-security') : null;
+  // --console alone (no --report, no --out): findings.json goes to a scratch folder in the temp folder (kept for triage).
+  const scratch = args.console && !args.report && !args.out ? scratchDir('audit-security') : null;
   const outDir = scratch || resolveOutDir(args.out) || newRun(stateDir, { info: { skill: 'audit-security', target: report.root } });
   markRun(outDir, { skill: 'audit-security', target: report.root });
   const baseFile = resolveBaseline(args, report.root, stateDir, { exclude: outDir });

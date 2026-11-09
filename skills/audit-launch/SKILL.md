@@ -4,7 +4,7 @@ description: Use when a website is about to go live or has just launched and nee
 argument-hint: "<url> [--env dev|staging|production] [--production-host HOST] [--pages N] [--skip group,...] [--out PATH] [--baseline report.json | --no-baseline] [--insecure] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Read, WebFetch
 metadata:
-  version: "2.4.1"
+  version: "2.4.2"
 ---
 
 # Launch audit
@@ -76,7 +76,7 @@ first, with the counts on top. The run's files go to a scratch folder in the sys
 so nothing is left in the reports folder except the target folder's `last-report.json`. Use it when
 the user wants "just the list", "in the terminal" or "no report". Show the list as it is, in a code
 block, with a sentence of context; there is no report path to quote. `--console --report` writes
-the report as well.
+the report as well, and so does `--console --out DIR` (the run's files go to that folder).
 
 ## Present the results
 

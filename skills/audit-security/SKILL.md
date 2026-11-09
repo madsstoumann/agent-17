@@ -4,7 +4,7 @@ description: Use when someone wants a security review, code security audit, vuln
 argument-hint: "[path] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline] [--visibility public|private|internal] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(git log:*), Bash(git show:*), Bash(gh repo view:*), Read, Grep, Glob, WebFetch
 metadata:
-  version: "2.1.0"
+  version: "2.1.1"
 ---
 
 # Security audit (code mode)
@@ -176,7 +176,7 @@ only", "only warnings" and the like, and still triage every hit the scanner list
 shows and how many confirmed findings it leaves out.
 
 **Console.** With `--console` (the user wants "just the list", "no report"), the scanner puts
-`findings.json` in a scratch folder in the system temp folder and you write no `report.md`. Triage
+`findings.json` in a scratch folder in the system temp folder (in `--out DIR` when given) and you write no `report.md`. Triage
 as usual, update `triage.json`, then reply with the confirmed findings at the chosen level as one
 code block, one line each, errors first, counts on top, the same format as the other audit skills:
 

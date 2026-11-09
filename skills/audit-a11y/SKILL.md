@@ -4,7 +4,7 @@ description: Use when someone wants an accessibility audit, WCAG 2.2 or 2.1 AA c
 argument-hint: "<url> [--pages N] [--from audit-launch/report.json] [--urls FILE] [--keyboard N] [--wcag A|AA|AAA] [--repo NAME[=PATH]] [--out DIR] [--state DIR] [--baseline FILE] [--no-baseline] [--header NAME:VALUE] [--insecure] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
-  version: "2.1.2"
+  version: "2.1.3"
 ---
 
 # Accessibility audit
@@ -64,7 +64,7 @@ first, with the counts on top. The run's files go to a scratch folder in the sys
 so nothing is left in the reports folder except the target folder's `last-report.json`. Use it when
 the user wants "just the list", "in the terminal" or "no report". Show the list as it is, in a code
 block, with a sentence of context; there is no report path to quote. `--console --report` writes
-the report as well.
+the report as well, and so does `--console --out DIR` (the run's files go to that folder).
 
 The WCAG target level is `--wcag A|AA|AAA` now; `--level A`, `AA` or `AAA` still means the WCAG level,
 so older commands keep working. With a level, report.md leaves out the criteria table, the manual

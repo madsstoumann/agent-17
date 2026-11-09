@@ -64,7 +64,7 @@ const markupNow = (m) => Object.entries(m || {}).sort((a, b) => b[1] - a[1]).map
  * renderProposals({ inventory, check, questions, briefs, summary, profile, plan, version, date }) -> markdown
  * `briefs` are file names under content/briefs/; `plan` the validated tasks plan (or null).
  */
-export function renderProposals({ inventory, check = null, questions = [], briefs = [], summary = '', profile = '', plan = null, version, date = new Date() }) {
+export function renderProposals({ inventory, check = null, questions = [], briefs = [], summary = '', profile = '', plan = null, samples = false, version, date = new Date() }) {
   const out = [];
   const host = inventory.host;
   out.push(`# GEO plan: ${host}`, '');
@@ -90,6 +90,7 @@ export function renderProposals({ inventory, check = null, questions = [], brief
     out.push(`| ${cell(t.key)} | ${t.pages} | ${cell(t.type)} | ${cell(markupNow(t.markup))} | ${cell(proposed)} | ${ds.map((d) => `[${d.file.replace(/^markup\//, '')}](${d.file})`).join(', ')} | ${ds.map(status).join('; ')} |`);
   }
   out.push('');
+  if (samples) out.push('Each draft merged with the site graph, as a page to paste into Google\'s Rich Results Test or validator.schema.org: [samples/README.md](samples/README.md).', '');
   const flagged = (check?.drafts || []).filter((d) => d.notOnPage.length);
   if (flagged.length) {
     out.push('Values a draft uses that the page does not show. Fix the page or drop the value before the markup ships:', '');

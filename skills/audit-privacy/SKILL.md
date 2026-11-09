@@ -4,7 +4,7 @@ description: Use when someone wants a GDPR, ePrivacy or cookie compliance check 
 argument-hint: "<url> [--pages N] [--only first,reject,accept] [--lang L] [--header NAME:VALUE] [--out DIR] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, Write, Edit, WebFetch
 metadata:
-  version: "2.1.0"
+  version: "2.1.1"
 ---
 
 # Privacy audit
@@ -65,7 +65,7 @@ first, with the counts on top. The run's files go to a scratch folder in the sys
 so nothing is left in the reports folder except the target folder's `last-report.json`. Use it when
 the user wants "just the list", "in the terminal" or "no report". Show the list as it is, in a code
 block, with a sentence of context; there is no report path to quote. `--console --report` writes
-the report as well.
+the report as well, and so does `--console --out DIR` (the run's files go to that folder).
 
 With `--console` alone, the scratch folder is kept (its path is printed with the policy files):
 read the policy text from there as usual, and give the policy review in a few lines after the list
