@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { flightPayload, flightRows, rscBlocks, hiddenBlocks, blocksMarkdown, blockWords } from '../lib/rsc.mjs';
+import { flightPayload, flightRows, rscBlocks, hiddenBlocks, blocksMarkdown, blockWords, pageNode } from '../lib/rsc.mjs';
 import { policyText, HIDDEN_MARKER } from '../scan.mjs';
 
 /** A Next.js page: the served HTML shows the accordion toggles, the answers are only in the payload. */
@@ -63,6 +63,77 @@ test('hiddenBlocks keeps what the page does not show, with the question it answe
   assert.match(blocksMarkdown(hidden), /^### How long do you keep my data\?\n\nWe keep order data/);
   assert.equal(blockWords(hidden), 39, 'the questions the page shows do not count');
   assert.deepEqual(hiddenBlocks('<p>plain page</p>', 'plain page'), []);
+});
+
+/**
+ * An App Router page as Next.js 15 streams it (anonymised from a museum and an agency site): the
+ * router tree in row 0 with the root layout's not-found boundary inline, a root layout with an
+ * inline analytics script and a not-found page, and a page that renders the site header (mega
+ * menu with promo teasers), its own FAQ accordion and the footer (nav labels, an app store link).
+ */
+function appRouterPage() {
+  const rows = {
+    0: { P: null, b: 'build', c: ['', 'visit'], i: false, f: [[
+      ['', { children: [['slug', 'visit', 'oc'], { children: ['__PAGE__', {}] }] }, '$undefined', '$undefined', true],
+      ['', ['$', '$1', 'c', { children: [null, '$L2'] }], { children: [['slug', 'visit', 'oc'], ['$', '$1', 'c', { children: [null, ['$', '$L3', null, { parallelRouterKey: 'children', error: '$undefined', notFound: [['$', 'title', null, { children: '404: This page could not be found.' }], ['$', 'div', null, { children: ['$', 'h2', null, { children: 'This page could not be found.' }] }]], forbidden: '$undefined' }]] }], { children: ['__PAGE__', ['$', '$1', 'c', { children: ['$L5', null] }], {}, null, false] }, null, false] }, null, false],
+      ['$', '$1', 'h', { children: [null, ['$', 'meta', null, { name: 'next-size-adjust', content: '' }]] }], false]] },
+    2: ['$', 'html', null, { lang: 'da', children: ['$', 'body', null, { children: [
+      ['$', '$L9', null, { id: 'plausible-init', strategy: 'afterInteractive', dangerouslySetInnerHTML: { __html: 'window.plausible = window.plausible || function() { (plausible.q = plausible.q || []).push(arguments) }' } }],
+      ['$', '$L3', null, { parallelRouterKey: 'children', notFound: '$L24' }],
+    ] }] }],
+    24: ['$L25', []],
+    25: ['$L26', ['$', 'main', null, { children: ['$', 'section', null, { children: [['$', '$L27', null, { as: 'h1', children: 'Siden findes ikke' }], ['$', 'p', null, { children: 'Siden du leder efter, er flyttet eller findes ikke længere.' }]] }] }]],
+    5: ['$L3c', ['$', 'main', null, { id: 'main-content', children: [
+      '$L30',
+      ['$', 'section', null, { children: [
+        ['$', 'h1', null, { children: 'Plan your visit' }],
+        ['$', '$L9', null, { id: 'consent', children: 'function OptanonWrapper() {}' }],
+        ['$', '$L61', null, { featuredImage: { items: [{ content: { properties: { altText: 'torso of a Roman emperor in the exhibition hall' } } }] }, children: ['$', 'p', null, { children: 'Tickets can be bought online or at the desk.' }] }],
+        '$L70',
+      ] }],
+      '$L40',
+    ] }]],
+    30: ['$', 'header', null, { className: 'sticky', children: ['$L82'] }],
+    82: ['$', 'div', null, { children: ['$', '$L85', null, { landmark: 'Main menu', items: [{ title: 'Annual pass', teaser: { title: 'Annual pass', desc: 'Visit the museum twice a year and the pass has paid for itself' } }, { title: 'Exhibitions', teaser: { title: 'The future museum', desc: 'The museum is being renovated for the future' } }] }] }],
+    40: ['$', 'footer', null, { children: [['$', 'nav', null, { children: [['$', '$L2a', null, { href: '/about', children: 'About the museum' }], ['$', '$L2a', null, { href: '/press', children: 'Press and media' }]] }], ['$', 'a', null, { href: 'https://apps.example.com/app', title: 'Example Museum on App Store', children: ['$', 'img', null, { src: '/app.svg' }] }]] }],
+    70: ['$', 'div', null, { children: [['$', 'h2', null, { children: 'Frequently asked questions' }], ['$', '$L73', null, { children: [
+      ['$', '$L74', 'q1', { children: [['$', '$L75', null, { children: 'Which days are free?' }], ['$', '$L76', null, { children: ['$', 'p', null, { children: 'Entry is free on the last Wednesday of every month.' }] }]] }],
+      ['$', '$L74', 'q2', { children: [['$', '$L75', null, { children: 'Can I bring a pram?' }], ['$', '$L76', null, { children: ['$', 'p', null, { children: 'You can borrow a pushchair in the cloakroom.' }] }]] }],
+    ] }]] }],
+  };
+  const payload = Object.entries(rows).map(([id, v]) => `${id}:${JSON.stringify(v)}\n`).join('');
+  const served = '<header><a href="/">Example Museum</a><button>Menu</button></header><main><h1>Plan your visit</h1><p>Tickets can be bought online or at the desk.</p><h2>Frequently asked questions</h2><button>Which days are free?</button><button>Can I bring a pram?</button></main><footer></footer>';
+  const html = `<html><body>${served}<script>self.__next_f.push(${JSON.stringify([1, payload])})</script></body></html>`;
+  return { html, visible: 'Example Museum Menu Plan your visit Tickets can be bought online or at the desk. Frequently asked questions Which days are free? Can I bring a pram?' };
+}
+
+const CHROME = /could not be found|Siden findes ikke|findes ikke længere|plausible|OptanonWrapper|Annual pass|paid for itself|renovated|About the museum|Press and media|App Store|Roman emperor/;
+
+test('hiddenBlocks reads only the page\'s own components: no not-found or error text, scripts, nav, header, footer or media alt text', () => {
+  const { html, visible } = appRouterPage();
+  assert.ok(pageNode(flightRows(flightPayload(html))), 'the __PAGE__ segment is found in the router tree');
+  const all = rscBlocks(html).map((b) => b.text);
+  assert.ok(!all.some((t) => CHROME.test(t)), all.join(' | '));
+  const hidden = hiddenBlocks(html, visible);
+  assert.deepEqual(hidden.map((b) => [b.text, b.shown]), [
+    ['Which days are free?', true],
+    ['Entry is free on the last Wednesday of every month.', false],
+    ['Can I bring a pram?', true],
+    ['You can borrow a pushchair in the cloakroom.', false],
+  ], 'closed accordion answers are still read');
+  assert.equal(blockWords(hidden), 18);
+});
+
+test('without a router tree: rows only the header or a not-found prop point at are skipped, and so is script code', () => {
+  const rows = [
+    ['0', ['$', 'html', null, { children: [['$', 'header', null, { children: '$L82' }], ['$', '$L3', null, { notFound: '$L25' }], ['$', 'main', null, { children: '$L5' }]] }]],
+    ['82', ['$', '$L85', null, { items: [{ title: 'Annual pass', desc: 'Visit the museum twice a year and the pass has paid for itself' }] }]],
+    ['25', ['$', 'h1', null, { children: 'This page could not be found.' }]],
+    ['5', ['$', 'section', null, { children: [['$', 'p', null, { children: 'Our opening hours change in the winter season.' }], ['$', '$L9', null, { id: 'x', children: 'window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);}' }]] }]],
+  ];
+  const payload = rows.map(([id, v]) => `${id}:${JSON.stringify(v)}\n`).join('');
+  const html = `<html><body><script>self.__next_f.push(${JSON.stringify([1, payload])})</script></body></html>`;
+  assert.deepEqual(rscBlocks(html).map((b) => b.text), ['Our opening hours change in the winter season.']);
 });
 
 test('policyText opens <details> and adds the payload text under a marker', async () => {

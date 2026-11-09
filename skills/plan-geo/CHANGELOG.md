@@ -2,6 +2,12 @@
 
 All notable changes to the `plan-geo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.2.1] - 2026-11-09
+
+### Fixed
+- Text from a Next.js page's script payload (`lib/rsc.mjs`, shared with audit-privacy) is read from the page's own components only. The not-found and error pages, inline script bodies, nav and footer labels, an app store link and the header's promo teasers were on every page and were counted as each page's hidden text, added to `pages/<slug>.md` and appended to the last FAQ answer on the page. Closed accordion answers are still read and question counts are unchanged.
+- `check` no longer words a draft named after a page as a naming mistake. For `markup/visit.jsonld` when a template "visit" also exists, it said "not the example of template "visit" (name the draft visit-annual-pass.jsonld for that)"; it now says the draft is checked against the page its name matches, and that markup for every page of the template would be a separate draft.
+
 ## [1.2.0] - 2026-11-09
 
 ### Fixed

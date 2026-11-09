@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-infra` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.4.4] - 2026-11-09
+
+### Fixed
+- `dns.dnssec` no longer warns "DS published but www.example.com does not validate" when the apex validates and the host is a CNAME into a zone that is not signed (a hosting platform's own zone with no DS). That is insecure by delegation, not a broken chain, and is now an info row that names the alias target. A host that does not validate while its alias target's zone is signed, or while the apex does not validate, still warns.
+
 ## [2.4.3] - 2026-11-09
 
 ### Fixed

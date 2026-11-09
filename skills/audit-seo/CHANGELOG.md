@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-seo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.5.3] - 2026-11-09
+
+### Fixed
+- `seo.title-missing` no longer fails on a one-off answer. A page that comes back as HTML without a `<title>` is fetched again (twice, half a second and a second later) before it counts, and the first answer with a title is used. The retries stop once three pages still have no title after them, so a site whose pages really have none is not fetched three times over.
+
 ## [2.5.2] - 2026-11-09
 
 ### Fixed

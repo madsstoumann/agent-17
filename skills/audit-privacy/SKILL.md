@@ -4,7 +4,7 @@ description: Use when someone wants a GDPR, ePrivacy or cookie compliance check 
 argument-hint: "<url> [--pages N] [--only first,reject,accept] [--lang L] [--header NAME:VALUE] [--out DIR] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, Write, Edit, WebFetch
 metadata:
-  version: "2.2.0"
+  version: "2.2.1"
 ---
 
 # Privacy audit
@@ -99,7 +99,9 @@ site) before calling them harmless.
    what the policy names. A policy page built with Next.js often keeps sections in closed
    accordions whose text is only in the page's script payload; the script adds that text after the
    line `[Text from the page's Next.js payload: …]`. It is part of the policy (a visitor reads it
-   after one click), so review it like the rest.
+   after one click), so review it like the rest. Only the page's own components are read there:
+   the header, menus, footer, not-found and error pages and inline scripts every page carries are
+   left out.
 3. **Append a `## Policy review` section** to `report.md`: one table row per Art. 13 item (✅ / ⚠️ / ❌
    with a short quote or "not found"), then the vendors the site uses but the policy does not name.
    Mark it as your reading, not legal advice.

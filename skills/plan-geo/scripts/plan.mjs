@@ -33,7 +33,7 @@ import { targetDir, claimTarget, newRun, markRun, RUN_MARKER } from './lib/targe
 import { writeFixPlan, validateTasks } from './lib/tasks.mjs';
 import { mergeGraph, sampleHtml, injectLive, samplesReadme } from './lib/samples.mjs';
 
-export const VERSION = '1.2.0';
+export const VERSION = '1.2.1';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const log = (...a) => process.stderr.write(`${a.join(' ')}\n`);
@@ -324,11 +324,13 @@ async function check(run, opts, { quiet = false } = {}) {
   return result;
 }
 
-function checkLine(d) {
+export function checkLine(d) {
   if (d.parseError) return `FAIL ${d.file}: does not parse (${d.parseError})`;
   const bits = [];
   if (d.noPage) bits.push('no page to check against (name it after a page slug, a template slug or "site")');
-  if (d.alsoTemplate) bits.push(`checked against the page ${d.page}, not the example of template "${d.alsoTemplate.key}" (name the draft ${d.alsoTemplate.example}.jsonld for that)`);
+  // A draft named after a page is meant for that page: say what it matched, and only mention the
+  // template of the same name as the other draft one could write, not as a naming mistake.
+  if (d.alsoTemplate) bits.push(`checked against the page ${d.page}, which its name matches (markup for every "${d.alsoTemplate.key}" page would be a separate draft, ${d.alsoTemplate.example}.jsonld, checked against that template's example)`);
   if (d.notOnPage.length) bits.push(`${d.notOnPage.length} value(s) not on the page: ${d.notOnPage.slice(0, 4).map((f) => `${f.path} "${String(f.value).slice(0, 40)}"`).join('; ')}`);
   if (d.required.length) bits.push(`for Google's rich result also needs ${d.required.join(', ')} (leave out when the page does not show it)${d.slug === 'site' ? '; the site graph is on every page, so move that node to the draft for its own template' : ''}`);
   if (d.validator?.errors) bits.push(`validator.schema.org: ${d.validator.errors} error(s): ${d.validator.messages.slice(0, 3).join('; ')}`);

@@ -4,7 +4,7 @@ description: Use when someone wants to know what structured data and what conten
 argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--no-remote] [--samples] [--live]"
 allowed-tools: Bash(node:*), Read, Write
 metadata:
-  version: "1.2.0"
+  version: "1.2.1"
 ---
 
 # GEO plan
@@ -49,7 +49,8 @@ It writes into the run folder:
   check step compares drafts with. On a Next.js site, text that is only in the page's script
   payload (closed accordions and tabs that mount their content on open) is read too: it is under
   "Only in the Next.js payload" at the end of the page's `.md`, and counts for questions, dates and
-  the check. Visitors read it after a click, but crawlers that do not run JavaScript never see it,
+  the check. Only the page's own components count: the header, menus and teasers, footer,
+  not-found and error pages and inline scripts that every page carries are left out. Visitors read it after a click, but crawlers that do not run JavaScript never see it,
   so say so in the plan when FAQ answers or key facts are only there.
 
 Dates are read in English, Danish, Norwegian, Swedish, German, Dutch, French and Spanish

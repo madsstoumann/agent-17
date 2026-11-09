@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-privacy` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.2.1] - 2026-11-09
+
+### Fixed
+- Text from a Next.js page's script payload (`lib/rsc.mjs`) is read from the page's own components only. The payload also carries what every page has, and that was counted as the policy's hidden text and appended to `policy-*.txt`: the not-found and error pages ("This page could not be found."), inline script bodies (analytics and consent snippets), nav and footer labels, an app store link and the promo teasers in the header's mega menu. That was about 40 to 110 extra words per page on the sites it was tried on. When the payload has its router tree, only the rows the page segment reaches are read; nav, header and footer elements, not-found and error boundaries, image and video descriptions and script code are skipped everywhere. Text in closed accordions is still read.
+
 ## [2.2.0] - 2026-11-09
 
 ### Fixed
