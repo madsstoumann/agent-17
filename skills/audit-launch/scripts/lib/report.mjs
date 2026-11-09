@@ -66,6 +66,17 @@ function cwvLine(cwv) {
   return parts.length ? parts.join(' · ') : null;
 }
 
+/**
+ * Why the CrUX row is empty. The perf group writes scoreboard.lighthouse, so without it perf was left
+ * out (--only / --skip); PSI_API_KEY is named only when the run had none (input.flags.psiKey).
+ */
+export function noFieldData(sb = {}, input = {}) {
+  if (!sb.lighthouse) return 'not run (perf skipped)';
+  if (sb.lighthouse.runner === 'psi') return 'no field data yet (not enough Chrome traffic on this URL)';
+  if (input.flags?.psiKey) return `n/a (${sb.lighthouse.runner === 'local' ? 'Lighthouse ran locally' : 'Lighthouse did not run'}, so the PageSpeed Insights API was not asked)`;
+  return 'n/a (no PSI_API_KEY — field data needs the PageSpeed Insights API)';
+}
+
 /** The scoreboard as rows: [{ label, value, link? }]. */
 export function scoreboardRows(report) {
   const sb = report.scoreboard || {};
@@ -76,7 +87,7 @@ export function scoreboardRows(report) {
   rows.push({ label: 'Lighthouse (mobile)', value: lhLine(lh.mobile, { annotateSeo: dev }) || `not run${runnerNote}`, note: runnerNote });
   rows.push({ label: 'Lighthouse (desktop)', value: lhLine(lh.desktop, { annotateSeo: dev }) || 'not run' });
   rows.push({ label: 'Core Web Vitals (lab, mobile)', value: cwvLine(sb.cwvLab) || 'n/a' });
-  rows.push({ label: 'Core Web Vitals (field, CrUX)', value: sb.cwvField ? `${cwvLine(sb.cwvField.metrics) || ''}${sb.cwvField.overall ? ` — overall ${sb.cwvField.overall}` : ''}` : 'n/a (no PSI_API_KEY — field data needs the PageSpeed Insights API)' });
+  rows.push({ label: 'Core Web Vitals (field, CrUX)', value: sb.cwvField ? `${cwvLine(sb.cwvField.metrics) || ''}${sb.cwvField.overall ? ` — overall ${sb.cwvField.overall}` : ''}` : noFieldData(sb, report.input) });
   if (sb.headersScraped?.grade) rows.push({ label: 'Security headers (securityheaders.com)', value: sb.headersScraped.grade, link: sb.headersGrade?.link });
   if (sb.headersGrade) rows.push({ label: `Security headers (securityheaders.com-style${sb.headersGrade.estimated ? ', estimated' : ''})`, value: `${sb.headersGrade.grade}${sb.headersGrade.estimated ? ' — confirm on securityheaders.com' : ''}`, link: sb.headersGrade.link });
   if (sb.observatory) rows.push({ label: 'MDN HTTP Observatory', value: sb.observatory.grade ? `${sb.observatory.grade} (${sb.observatory.score}) — ${sb.observatory.passed}/${sb.observatory.total} tests passed` : (sb.observatory.error || 'n/a'), link: sb.observatory.link });

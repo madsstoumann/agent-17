@@ -4,7 +4,7 @@ description: Use when someone wants a GDPR, ePrivacy or cookie compliance check 
 argument-hint: "<url> [--pages N] [--only first,reject,accept] [--lang L] [--header NAME:VALUE] [--out DIR] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, Write, Edit, WebFetch
 metadata:
-  version: "2.2.1"
+  version: "2.2.2"
 ---
 
 # Privacy audit

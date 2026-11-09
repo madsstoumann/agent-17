@@ -33,12 +33,13 @@ Use this as the starting point for path filters in CI. Adjust it to the project.
 | Layouts and `<head>`, routes, `robots.txt`, sitemap, redirects, JSON-LD | audit-seo | Yes, or `--schema-only` on a local HTML file |
 | Images, video, fonts, bundler config, a large new dependency | audit-eco | Yes (preview) |
 | Cookie banner, analytics or GTM snippet, privacy page, a new third-party script | audit-privacy | Yes, ideally production |
-| Header config (`vercel.json`, `netlify.toml`, `web.config`, `staticwebapp.config.json`, middleware), DNS or CDN settings | audit-launch, audit-infra | Yes |
+| Header config (`vercel.json`, `netlify.toml`, `web.config`, `staticwebapp.config.json`, middleware), DNS or CDN settings | audit-launch (or audit-security's site mode for headers alone), audit-infra | Yes |
 | A release to production | audit-launch, plus the site audits with `--level error` | Production |
 | Only Markdown or docs | Nothing | |
 
 **Code audits** (audit-security, audit-solution-health) only need the checked-out code, so they can run
-the moment a pull request opens.
+the moment a pull request opens. audit-security also has a site mode (`scan.mjs <url>`) for the live
+site's headers, exposed files, admin paths, security.txt and blocklists; it is a site audit.
 
 **Site audits** (audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra) need a
 deployed site. Run them when a preview deploy finishes, against the preview's URL. If the preview is
@@ -64,7 +65,7 @@ cd agent-17 && git checkout <commit>   # pin it
 
 | Audit | Command |
 | --- | --- |
-| audit-security | `node skills/audit-security/scripts/scan.mjs <repo path>` |
+| audit-security | `node skills/audit-security/scripts/scan.mjs <repo path>`, or `<url>` for site mode |
 | audit-solution-health | `node skills/audit-solution-health/scripts/check.mjs --root <solution path>`, then `finalize.mjs` (see below) |
 | audit-launch | `node skills/audit-launch/scripts/audit.mjs <url>` |
 | audit-a11y | `node skills/audit-a11y/scripts/a11y.mjs <url>` |

@@ -181,6 +181,25 @@ test('extractPage: text only in the Next.js payload counts, and is marked as hid
   assert.equal(extractPage('<html><body><main><p>Plain</p></main></body></html>', 'https://example.dk/').hidden, null);
 });
 
+test('extractPage: payload text that the head already carries (meta description, og:, title) is not hidden', () => {
+  const desc = 'How brands build long-term performance with creative, data and media working together.';
+  const tree = ['$', 'main', null, { children: [
+    ['$', 'h1', null, { children: 'Long-term growth' }],
+    ['$', 'p', null, { children: desc }],
+    ['$', 'p', null, { children: ['$', 'span', null, { children: 'Share the full story with your team today' }] }],
+    ['$', '$L5d', 'q1', { children: [['$', '$L5e', null, { children: 'What is long-term performance?' }], ['$', '$L5f', null, { children: ['$', 'p', null, { children: 'Growth that lasts beyond a single campaign.' }] }]] }],
+  ] }];
+  const push = `<script>self.__next_f.push(${JSON.stringify([1, `4:${JSON.stringify(tree)}\n`])})</script>`;
+  const head = `<title>Long-term growth</title><meta name="description" content="${desc}"><meta property="og:description" content="Share the full story with your team today">`;
+  const html = `<html lang="en"><head>${head}</head><body><main><h1>Long-term growth</h1><h3>What is long-term performance?</h3></main>${push}</body></html>`;
+  const p = extractPage(html, 'https://example.com/en/insights/long-term-growth');
+  assert.doesNotMatch(p.hidden.markdown, /creative, data and media/, 'the meta description is in the served HTML');
+  assert.doesNotMatch(p.hidden.markdown, /Share the full story/, 'og:description too');
+  assert.match(p.hidden.markdown, /Growth that lasts beyond a single campaign/, 'the closed accordion answer still counts');
+  assert.equal(p.hidden.words, 7);
+  assert.equal(p.description, desc);
+});
+
 test('extractPage: site-wide payload text (not-found page, scripts, header teasers, footer nav) is not the page\'s hidden text', () => {
   const rows = {
     0: { P: null, b: 'build', c: ['', 'visit'], f: [[

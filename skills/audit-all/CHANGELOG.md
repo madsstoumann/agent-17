@@ -2,6 +2,10 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.17.0] - 2026-11-09
+
+### Added
+- Security runs on the site too, with audit-security's new site mode (`audit-security-<host>/`), so a site with no repo gets a security section. `combine.mjs` gives a site-mode report its own title ("Security audit (site)"), standfirst, at-a-glance row and cover tile, and counts it from its Result line; the code scan keeps "Security audit" and its repository standfirst. When audit-launch runs too, it skips `headers,exposed` and the site scan skips `redirects`, so each finding appears once. A site scan of another domain than the subject is flagged like the other site audits.
 
 ## [1.16.1] - 2026-11-07
 

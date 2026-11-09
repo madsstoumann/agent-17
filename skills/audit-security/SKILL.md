@@ -1,13 +1,19 @@
 ---
 name: audit-security
-description: Use when someone wants a security review, code security audit, vulnerability scan or "is this repo safe to ship" check of a whole codebase or folder — committed secrets and API keys (also in git history), known-vulnerable dependencies from any lockfile (npm, yarn, pnpm, NuGet, Composer, PyPI, RubyGems, Go via OSV), XSS sinks, SQL/command/template injection, SSRF, open redirects, path traversal, weak crypto, disabled TLS verification, JWT and CORS mistakes, unsafe deserialisation, debug config, and GitHub Actions risks such as pull_request_target and script injection. Report only. Not for a single diff (use /security-review), live HTTP headers or TLS of a URL (use audit-launch), or routine package upkeep (use audit-solution-health).
-argument-hint: "[path] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline] [--visibility public|private|internal] [--level error|warn|error,warn|all] [--console]"
+description: Use when someone wants a security review, code security audit, vulnerability scan or "is this repo safe to ship" check of a whole codebase or folder — committed secrets and API keys (also in git history), known-vulnerable dependencies from any lockfile (npm, yarn, pnpm, NuGet, Composer, PyPI, RubyGems, Go via OSV), XSS sinks, SQL/command/template injection, SSRF, open redirects, path traversal, weak crypto, disabled TLS verification, JWT and CORS mistakes, unsafe deserialisation, debug config, and GitHub Actions risks such as pull_request_target and script injection. Also a site mode for a live URL with no repo: security headers (CSP, frame-ancestors, Permissions-Policy, HSTS, Referrer-Policy), cookie flags, CORS, HTTPS redirects, exposed files and admin paths, security.txt and phishing/malware blocklists, passive only. Report only. Not for a single diff (use /security-review), a full pre-launch check of a URL (use audit-launch), TLS, DNS and mail (use audit-infra), or routine package upkeep (use audit-solution-health).
+argument-hint: "[path | url] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline] [--visibility public|private|internal] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(git log:*), Bash(git show:*), Bash(gh repo view:*), Read, Grep, Glob, WebFetch
 metadata:
-  version: "2.1.1"
+  version: "2.2.0"
 ---
 
-# Security audit (code mode)
+# Security audit
+
+Two modes. **Code mode** (a path, the default) scans a repository and you triage every hit; most
+of this file is about it. **Site mode** (an `http(s)://` URL) checks the live site from outside and
+writes its own report: see [Site mode](#site-mode) at the end.
+
+## Code mode
 
 A scanner collects candidates; you decide which are real. `scripts/scan.mjs` greps the repo
 with about 45 rules, reads every lockfile and asks OSV for known vulnerabilities, and
@@ -157,7 +163,7 @@ checked, with the evidence, or as not checked. Never leave one out silently.
 - Rate limiting or lockout on login, password reset and other OTP or code endpoints.
 - CSRF protection on cookie-authenticated POST/PUT/DELETE forms.
 - Security headers set in code (helmet, `NWebsec`, `next.config` `headers()`): note them. The
-  live result is audit-launch's job.
+  live result is site mode's job (below).
 - Input validation at the API boundary (zod, joi, data annotations, FluentValidation).
 
 When `semgrep` is on PATH (`command -v semgrep`), always run
@@ -201,13 +207,50 @@ BASELINE section: fixed, new and still open, by verdict. Then reply in chat with
    questions you did not get to. A skip is never "fine".
 6. The report path, and the follow-ups you can offer.
 
+## Site mode
+
+For a live URL, when there is no repo to scan or the user asks about the site itself ("is the site
+secure", "check the headers and exposed files", "security scan of https://…"):
+
+```bash
+node "${CLAUDE_SKILL_DIR}/scripts/scan.mjs" https://www.example.com [--only headers,redirects,exposed,blocklists] [--header "Name: value"] [--out DIR]
+```
+
+Run it with `timeout: 600000`; it takes one to two minutes. It is **passive**: one request per
+well-known path, no fuzzing, login attempts, load or exploitation, and never a probe the site's
+owner has not asked for. Only scan sites the user owns or is engaged on.
+
+| Group | What it checks |
+|---|---|
+| `headers` | The six graded headers (HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy), CSP lint, clickjacking (CSP `frame-ancestors` against X-Frame-Options), version disclosure, cookie flags (Secure, HttpOnly, SameSite) on the first response, CORS, COOP/COEP/CORP, MDN Observatory and the securityheaders.com grade |
+| `redirects` | HTTP to HTTPS, www/apex, redirect chains and status codes, HSTS on the https hops |
+| `exposed` | Secret files (`.git`, `.env`, `appsettings.json`, `web.config`, …), dependency manifests, CMS backoffice and admin paths, `security.txt` (RFC 9116) |
+| `blocklists` | OpenPhish (no key), plus Google Safe Browsing, URLhaus and VirusTotal when `GOOGLE_SAFE_BROWSING_KEY`, `URLHAUS_AUTH_KEY` or `VIRUSTOTAL_API_KEY` is set; a missing key is a skipped row, never a pass |
+
+`headers`, `redirects` and `exposed` are audit-launch's own checks, run from the audit-launch skill
+installed next to this one (`--only headers,redirects,exposed`, with its state kept apart in this
+skill's target folder), so the two never disagree. Without audit-launch those rows are one skipped
+row that says so. The blocklist lookups use is-website-safe's sources, copied here.
+
+The scanner writes `report.md` and `report.json` itself (no triage step) into
+`<reports>/audit-security/<host>/runs/<stamp>/`, or `--out DIR`, and compares with the last site scan
+of the host ("Since last run": new, worse, fixed). `--level`, `--console`, `--json`, `--state`,
+`--baseline`, `--no-baseline`, `--insecure` and `--offline` (no blocklist lookups) work as in code
+mode; `--header` sends a WAF bypass header, as for audit-launch. Then:
+
+1. Read `report.md` and add one `**Verdict:**` line under the title: ready, or what to fix first.
+2. Reply in chat with the verdict, the failures and warnings under "Fix first" in order, and what
+   was skipped (blocklists without a key, a WAF challenge).
+3. Offer code mode on the repo when there is one: headers set in code, secrets and dependencies
+   are only visible there.
+
 ## After the audit
 
 Offer these follow-ups; do not run them by default:
 
 - **Fix pass**: fix the confirmed findings on a branch, one commit per finding.
 - **History scan** if it was not run, and a rotation checklist for every confirmed secret.
-- **Live site checks**: audit-launch for headers, TLS, cookies and exposed files on the deployed URL.
+- **Live site checks**: site mode on the deployed URL (`scan.mjs https://…`), or audit-launch for the full launch check.
 - **Diff reviews** going forward: `/security-review` on each PR.
 
 ## Red flags
@@ -230,6 +273,7 @@ Are there any secrets or API keys committed in ./apps/web?
 Check our dependencies for known vulnerabilities — we have npm and NuGet
 Security review of the whole codebase before the pen test next week
 Only check the GitHub Actions workflows for security problems
+Security scan of https://www.example.com: headers, exposed files, blocklists
 ```
 
 Mapping: "compare with last time" → nothing to add (automatic); "from scratch" → `--no-baseline`; "including history" / "leaked keys" → `--history`; "only dependencies" → `--only deps`;
@@ -238,6 +282,8 @@ Mapping: "compare with last time" → nothing to add (automatic); "from scratch"
 ## Files
 
 - `scripts/scan.mjs`: the scanner (`--help` lists every flag). Zero dependencies, Node 18 or later, uses `git` when present.
+- `scripts/lib/site.mjs`: site mode (runs audit-launch's header, redirect and exposed groups, adds clickjacking and blocklists, writes the report).
+- `scripts/lib/sources.mjs`, `scripts/lib/target.mjs`: identical copies of is-website-safe's blocklist lookups and URL parsing (a test checks).
 - `scripts/lib/patterns.mjs`: every rule, with its regex, `review` and `fix` text, plus
   `PLATFORM_FILES` (platform credential files such as `umbraco-cloud.json`). A line
   containing `audit-security: ignore` is skipped, which teams can use for accepted findings.

@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-launch` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.4.4] - 2026-11-09
+
+### Fixed
+- `privacy.consent-tool` and `privacy.trackers` named Cookiebot on sites that use Cookie Information. Cookie Information's own snippet is `<script id="CookieConsent" src="https://policy.app.cookieinformation.com/uc.js">`, and the Cookiebot pattern matched the bare word `CookieConsent`. Consent tools are now found by the new `lib/cmp.mjs`, shared with audit-privacy (identical copy, tested): the vendor host the page requests or loads a script from wins, then vendor markup; `CookieConsent` alone names nobody. Tested against Cookiebot, Cookie Information (also inside a Next.js payload) and OneTrust markup.
+- The scoreboard's "Core Web Vitals (field, CrUX)" row said "no PSI_API_KEY" whenever there was no field data, also when the key was set and `--only` or `--skip` left perf out (`--only headers,exposed`). It now says "not run (perf skipped)" when perf did not run, and names PSI_API_KEY only when the run had none. `report.json` records whether a key was set (`input.flags.psiKey`, a yes/no, never the key). The `perf.cwv-field` row no longer asks for the key when it is set and Lighthouse ran locally.
+
 ## [2.4.3] - 2026-11-09
 
 ### Fixed

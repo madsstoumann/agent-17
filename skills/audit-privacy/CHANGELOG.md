@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-privacy` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.2.2] - 2026-11-09
+
+### Changed
+- The consent tool is found by `lib/cmp.mjs`, shared with audit-launch (identical copy, tested), so both skills name the same tool. The vendor host a page requests wins over markup, and a consent tool found only by its window global is now named by vendor ("Usercentrics", not "UC_UI").
+
 ## [2.2.1] - 2026-11-09
 
 ### Fixed

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderMarkdown, renderStdout, escapeCell, buildManualLinks, scoreboardRows, STATUS_GLYPH } from '../lib/report.mjs';
+import { renderMarkdown, renderStdout, escapeCell, buildManualLinks, scoreboardRows, noFieldData, STATUS_GLYPH } from '../lib/report.mjs';
 import { result } from '../lib/registry.mjs';
 
 function sample({ production }) {
@@ -105,6 +105,27 @@ test('scoreboardRows and manual links', () => {
   assert.ok(links.every((l) => l.title && l.url && l.why));
   assert.ok(links.find((l) => l.url.includes('securityheaders.com/?q=https%3A%2F%2Fa.b%2Fc%3Fd%3D1')));
   assert.equal(Object.keys(STATUS_GLYPH).length, 5);
+});
+
+test('CrUX row: "not run" when perf was skipped, PSI_API_KEY named only when it is missing', () => {
+  const crux = (report) => scoreboardRows(report).find((r) => r.label.startsWith('Core Web Vitals (field')).value;
+  // --only headers,exposed with the key set: the perf group never ran, so there is no scoreboard.lighthouse.
+  const skipped = sample({ production: true });
+  delete skipped.scoreboard.lighthouse;
+  skipped.input.flags = { only: ['headers', 'exposed'], skip: [], psiKey: true };
+  assert.equal(crux(skipped), 'not run (perf skipped)');
+  skipped.input.flags.psiKey = false;
+  assert.equal(crux(skipped), 'not run (perf skipped)');
+  // Perf ran locally without a key: the key is the reason.
+  const local = sample({ production: true });
+  local.input.flags = { psiKey: false };
+  assert.match(crux(local), /no PSI_API_KEY/);
+  // Perf ran locally with a key (--lighthouse local, or PSI fell back): no claim that the key is missing.
+  local.input.flags.psiKey = true;
+  assert.doesNotMatch(crux(local), /PSI_API_KEY/);
+  assert.equal(noFieldData({ lighthouse: { runner: 'psi' } }, { flags: { psiKey: true } }), 'no field data yet (not enough Chrome traffic on this URL)');
+  // Reports written before input.flags.psiKey existed keep the old wording.
+  assert.match(noFieldData({ lighthouse: { runner: 'local' } }, {}), /no PSI_API_KEY/);
 });
 
 test('--level filters report.md and the summary rows, never the counts', async () => {

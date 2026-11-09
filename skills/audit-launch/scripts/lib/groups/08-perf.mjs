@@ -56,7 +56,7 @@ export default {
       out.push(result('perf.cwv-field', f.overall === 'FAST' ? 'pass' : f.overall === 'AVERAGE' ? 'warn' : f.overall ? 'fail' : 'info', 'Core Web Vitals (field, CrUX)', Object.entries(fm).map(([k, v]) => `${k} ${v.display} (${RATING[v.rating]})`).join(' · ') + (f.overall ? ` — overall ${f.overall}` : ''), { fix: '' }));
     } else {
       ctx.scoreboard.cwvField = null;
-      out.push(result('perf.cwv-field', 'info', 'Core Web Vitals (field, CrUX)', lh.runner === 'psi' ? 'no field data yet (not enough Chrome traffic on this URL — normal before launch)' : 'not available from a local run; set PSI_API_KEY to get CrUX field data'));
+      out.push(result('perf.cwv-field', 'info', 'Core Web Vitals (field, CrUX)', lh.runner === 'psi' ? 'no field data yet (not enough Chrome traffic on this URL — normal before launch)' : ctx.opts.psiKey ? 'not available from a local run; the PageSpeed Insights API was not asked (--lighthouse local, or it fell back)' : 'not available from a local run; set PSI_API_KEY to get CrUX field data'));
     }
     if (m.opportunities?.length) {
       out.push(result('perf.opportunities', 'info', 'Top opportunities (mobile)', m.opportunities.slice(0, 8).map((o) => `${o.title}${o.displayValue ? ` — ${o.displayValue}` : o.savingsMs ? ` — ~${Math.round(o.savingsMs)} ms` : ''}`).join(' · '), { data: { opportunities: m.opportunities } }));

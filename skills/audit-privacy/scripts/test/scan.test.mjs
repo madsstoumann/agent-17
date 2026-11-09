@@ -45,9 +45,13 @@ test('googleConsentState reads gcs from the query and Floodlight paths', () => {
 });
 
 test('detectCmp and siteApex', () => {
-  assert.equal(detectCmp('<script src="https://consent.cookiebot.com/uc.js">'), 'Cookiebot');
-  assert.equal(detectCmp('https://policy.app.cookieinformation.com/uc.js'), 'Cookie Information');
-  assert.equal(detectCmp('nothing'), null);
+  assert.equal(detectCmp({ html: '<script id="Cookiebot" src="https://consent.cookiebot.com/uc.js"></script>' }), 'Cookiebot');
+  assert.equal(detectCmp({ urls: ['https://policy.app.cookieinformation.com/uc.js'] }), 'Cookie Information');
+  // Cookie Information's own snippet carries id="CookieConsent", the name Cookiebot also uses.
+  assert.equal(detectCmp({ html: '<script id="CookieConsent" src="https://policy.app.cookieinformation.com/uc.js"></script>' }), 'Cookie Information');
+  assert.equal(detectCmp({ html: '<script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js"></script><p>Cookiebot</p>' }), 'OneTrust');
+  assert.equal(detectCmp({ globals: ['UC_UI'] }), 'Usercentrics');
+  assert.equal(detectCmp({ html: 'nothing' }), null);
   assert.equal(siteApex('www.shop.co.uk'), 'shop.co.uk');
 });
 

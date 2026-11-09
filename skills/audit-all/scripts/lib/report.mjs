@@ -47,9 +47,18 @@ const GEO_KIND = {
   title: 'GEO audit',
   standfirst: 'The site seen the way AI search and answer engines see it: which AI crawlers robots.txt and the edge let in, what text and structured data a crawler gets without JavaScript, llms.txt, entity and article markup, dates and authors, and how quotable the pages are.',
 };
-/** The section title and standfirst for a report: KINDS, or the GEO ones for audit-seo --geo. */
+// audit-security run on a URL (site mode) writes its own report: the live site, not a repository.
+const SECURITY_SITE_KIND = {
+  title: 'Security audit (site)',
+  standfirst: 'The live site checked from outside, passively: security headers including CSP, frame-ancestors, Permissions-Policy, HSTS and Referrer-Policy, cookie flags and CORS, HTTPS redirects, exposed files and admin paths, security.txt, and phishing and malware blocklists.',
+};
+/** Is this audit-security's site-mode report (a URL was scanned, not a repository)? */
+export const isSecuritySite = (r) => r.kind === 'audit-security' && /^#\s+Security audit \(site\)/m.test(r.md || '');
+/** The section title and standfirst for a report: KINDS, the GEO ones for audit-seo --geo, the site ones for audit-security on a URL. */
 export function kindOf(r) {
-  return r.kind === 'audit-seo' && /^#\s+GEO audit\b/m.test(r.md || '') ? GEO_KIND : KINDS[r.kind];
+  if (r.kind === 'audit-seo' && /^#\s+GEO audit\b/m.test(r.md || '')) return GEO_KIND;
+  if (isSecuritySite(r)) return SECURITY_SITE_KIND;
+  return KINDS[r.kind];
 }
 
 /** Sub-folders named `<kind>` or `<kind>-<target>` that hold a report.md, in kind order then name order. */
@@ -98,13 +107,14 @@ export function headline(report) {
   const titleTarget = title && plain(title).split(/\s+[—–:-]\s+|:\s+/).slice(1).join(' ').trim();
   const h = { kind, target: report.target || titleTarget || null };
 
-  if (kind === 'audit-launch' || kind === 'audit-privacy' || kind === 'audit-infra') {
+  if (kind === 'audit-launch' || kind === 'audit-privacy' || kind === 'audit-infra' || isSecuritySite(report)) {
     const line = md.match(/\*\*Result:\*\*\s*(.+)/);
     h.counts = line ? countsIn(line[1], ['pass', 'warn', 'fail', 'info', 'skipped']) : {};
     h.figures = [[h.counts.fail, 'fail'], [h.counts.warn, 'warn']];
     h.result = line ? plain(line[1]) : null;
     const site = md.match(/\*\*Site:\*\*\s*(\S+)/);
-    h.what = h.counts.pass !== undefined ? `${h.counts.pass} checks passed${site ? ` on ${plain(site[1])}` : ''}.` : null;
+    const verdict = isSecuritySite(report) && md.match(/\*\*Verdict:\*\*\s*(.+)/);
+    h.what = verdict ? plain(verdict[1]) : h.counts.pass !== undefined ? `${h.counts.pass} checks passed${site ? ` on ${plain(site[1])}` : ''}.` : null;
   } else if (kind === 'audit-a11y') {
     const line = md.match(/\*\*Result:\*\*\s*(.+)/);
     const text = line ? line[1] : '';
@@ -164,7 +174,7 @@ export function siteMismatches(reports, heads, subject) {
   const want = hostOf(subject);
   if (!want) return [];
   return reports.map((r, i) => ({ r, host: hostOf(heads[i].target) }))
-    .filter(({ r, host }) => SITE_KINDS.has(r.kind) && host && baseDomain(host) !== baseDomain(want))
+    .filter(({ r, host }) => (SITE_KINDS.has(r.kind) || isSecuritySite(r)) && host && baseDomain(host) !== baseDomain(want))
     .map(({ r, host }) => ({ kind: r.kind, title: kindOf(r).title, target: host, subject: want }));
 }
 const mismatchNote = (m) => `${m.title} checked ${m.target}, not ${m.subject}: its findings may belong to another site or a hosting platform. Run it again on ${m.subject}.`;

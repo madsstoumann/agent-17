@@ -1,10 +1,10 @@
 ---
 name: audit-all
-description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, accessibility, SEO and AI search (GEO), sustainability (carbon footprint), privacy and consent, domain and mail infrastructure, code security and dependency health. Runs audit-launch, audit-a11y (WCAG 2.2 / EN 301 549), audit-seo, audit-eco, audit-privacy and audit-infra on the live URL, audit-security and audit-solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security or audit-solution-health reports into one.
+description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, accessibility, SEO and AI search (GEO), sustainability (carbon footprint), privacy and consent, domain and mail infrastructure, code security and dependency health. Runs audit-launch, audit-a11y (WCAG 2.2 / EN 301 549), audit-seo, audit-eco, audit-privacy, audit-infra and audit-security's site mode on the live URL, audit-security and audit-solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security or audit-solution-health reports into one.
 argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--geo] [--yes] [--style serif|sans|editorial|modern] [--level error|warn|error,warn|all] [--console] [--out DIR]"
 allowed-tools: AskUserQuestion, Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.16.1"
+  version: "1.17.0"
 ---
 
 # Audit all
@@ -31,7 +31,9 @@ other way, invoke them by name instead (`skills:audit-launch` in the plugin, `au
   audit-launch works out the environment.
 - **Repos** for audit-security and audit-solution-health. Default: the current directory when it is a
   repo root (has `.git`). The user can name several ("audit-all ~/code/shop-web ~/code/shop-api
-  https://shop.example.dk"); each gets its own run of both.
+  https://shop.example.dk"); each gets its own run of both. Security also runs on the site when there
+  is one (audit-security's site mode: headers, exposed files, admin paths, security.txt, blocklists),
+  so a site with no repo still gets a security section.
 - **Audits.** Eight, by the names the user sees (flag name in brackets): Accessibility (`a11y`),
   Infrastructure (`infra`), Launch (`launch`), Privacy (`privacy`), Security (`security`),
   SEO / GEO (`seo`), Solution health (`health`), Sustainability (`eco`). `accessibility`,
@@ -116,7 +118,7 @@ The **live URL rides in the first question's text**, so it needs no screen of it
 Read "Other" on the Look question as a style wish and map it to the nearest of the two. Use the
 second picker's "Other" for anything else the user types ("also ~/code/shop-api", "sans
 style") and read it as part of the request. Leave out an option that cannot run (the site
-audits with no site, Security and Solution health with no repo); if that leaves a question with
+audits with no site, Solution health with no repo, Security with neither); if that leaves a question with
 fewer than two options, fold the rest into the other question, and "All" means all that can run.
 When a re-run finds a previous run (a `<reports>/audit-all/<name>/runs/` folder; `--new` in step
 2 prints the same one), say in the first question which audits ran last time ("Last time:
@@ -177,13 +179,14 @@ folder name.
 
 | Audit | How | Writes |
 |---|---|---|
-| audit-launch | Follow audit-launch's SKILL.md with `--out "<run>/audit-launch"` (one folder per URL: `audit-launch-<host>`). Add `--skip privacy` when audit-privacy runs and `--skip tls` when audit-infra runs: those two own the cookie/tracker and TLS/DNS/email checks, so each finding appears once | `report.md`, `report.json` |
+| audit-launch | Follow audit-launch's SKILL.md with `--out "<run>/audit-launch"` (one folder per URL: `audit-launch-<host>`). Add `--skip privacy` when audit-privacy runs, `--skip tls` when audit-infra runs and `--skip headers,exposed` when Security runs on the site: those own the cookie/tracker, TLS/DNS/email and header/exposed-file checks, so each finding appears once | `report.md`, `report.json` |
 | audit-a11y | Follow audit-a11y's SKILL.md with `--out "<run>/audit-a11y"` (one folder per URL: `audit-a11y-<host>`). Run it after audit-launch and pass `--from "<run>/audit-launch/report.json"` so it samples the pages the crawl found; pass `--repo <name>` when one of the repos renders the site | `report.md`, `report.json`, `tasks.json` |
 | audit-seo | Follow audit-seo's SKILL.md with `--out "<run>/audit-seo"` (pass `--production-host` and `--header` as for audit-launch; add `--geo` for a GEO audit) | `report.md`, `findings.json`, `pages.csv` |
 | audit-eco | Follow audit-eco's SKILL.md with `--out "<run>/audit-eco"`. Add `--grid` and `--views` only when the user gives a country or traffic | `report.md`, `findings.json` |
 | audit-privacy | Follow audit-privacy's SKILL.md with `--out "<run>/audit-privacy"`, including the policy review it asks you to add to `report.md` | `report.md`, `report.json`, `banner.png`, `policy-*.txt` |
 | audit-infra | Follow audit-infra's SKILL.md with `--out "<run>/audit-infra"` | `report.md`, `report.json` |
-| audit-security | Follow audit-security's SKILL.md with `--out "<run>/audit-security-<repo>"`, including the triage and `report.md` it asks you to write. Semgrep runs automatically when installed | `findings.json`, `report.md` |
+| audit-security (code) | For each repo: follow audit-security's SKILL.md with `--out "<run>/audit-security-<repo>"`, including the triage and `report.md` it asks you to write. Semgrep runs automatically when installed | `findings.json`, `report.md` |
+| audit-security (site) | When there is a site: follow audit-security's SKILL.md in site mode, `scan.mjs <url> --out "<run>/audit-security-<host>"` (pass `--header` as for audit-launch). The scanner writes `report.md` itself; add a `**Verdict:**` line under its title. When audit-launch runs too, pass `--skip redirects` here and `--skip headers,exposed` to audit-launch, so each finding appears once. `combine.mjs` gives it its own title, standfirst and cover tile ("Security audit (site)") | `report.md`, `report.json` |
 | check-tech-stack | Whenever a site audit runs: `node "${CLAUDE_SKILL_DIR}/../check-tech-stack/scripts/check-tech-stack.mjs" <url> --out "<run>/check-tech-stack" --quiet`. It is not an audit and has no findings: `combine.mjs` puts a "Built with" line on the cover. If the skill is not installed next to this one, leave it out | `report.md`, `results.json` |
 | audit-solution-health | Follow audit-solution-health's SKILL.md in the repo, **without** `--dir` or `--out`: it keeps its manifest, state and report in its own folder (`<reports>/audit-solution-health/<repo>/`, or `.audit-solution-health/` with `--in-repo`), never in the run folder. Pass the repo to `combine.mjs --repo` and it copies the report in | `report.md` in its state folder |
 
