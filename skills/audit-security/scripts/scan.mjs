@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * audit-security — code mode scanner.
+ * audit-security — code mode scanner, and site mode for a live URL.
  *
  *   node scan.mjs [path] [--only deps,secrets,...] [--history [N]] [--offline] [--out DIR] [--json]
+ *   node scan.mjs <https://url> [--only headers,redirects,exposed,blocklists] [--out DIR] [--header "Name: value"]
  *
  * Collects candidates; it does not decide. Claude triages every hit in context and writes the
  * report (see SKILL.md). Read-only: never edits, installs or runs project code.
@@ -18,14 +19,16 @@ import { listFiles, readScannable, historyAddedLines, TEST_PATH } from './lib/fi
 import { collectPackages, queryOsv } from './lib/deps.mjs';
 import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
 import { annotate, baselineLines, tag } from './lib/baseline.mjs';
-import { parseLevel, levelOfWord, scratchDir } from './lib/levels.mjs';
+import { parseLevel, levelOfWord, scratchDir, consoleList } from './lib/levels.mjs';
+import { SITE_GROUPS, siteUrl, runSite, renderSiteMarkdown, diffRows, consoleItems } from './lib/site.mjs';
 
-export const VERSION = '2.1.1';
+export const VERSION = '2.2.0';
 const GROUPS = ['deps', 'secrets', 'xss', 'injection', 'request', 'crypto', 'config', 'ci'];
 const SEV = { high: 3, medium: 2, low: 1 };
 
-const USAGE = `audit-security ${VERSION} — code mode
-Usage: node scan.mjs [path] [options]
+const USAGE = `audit-security ${VERSION}
+Usage: node scan.mjs [path] [options]       code mode: a repo or folder
+       node scan.mjs <url> [options]        site mode: the live site, passive checks only
 
   --only a,b        Groups: ${GROUPS.join(' ')}
   --skip a,b        The inverse.
@@ -48,10 +51,22 @@ Usage: node scan.mjs [path] [options]
   --console         No report.md: after triage, print the compact list of confirmed issues instead.
                     findings.json goes to a scratch folder in the system temp folder. Add --report for both.
   --json            Print findings.json to stdout instead of the summary.
+
+Site mode (a URL instead of a path, or --url URL):
+  --only / --skip   Groups: ${SITE_GROUPS.join(' ')}. headers, redirects and exposed are audit-launch's
+                    checks (it must be installed next to this skill); blocklists are OpenPhish, plus
+                    Google Safe Browsing, URLhaus and VirusTotal when GOOGLE_SAFE_BROWSING_KEY,
+                    URLHAUS_AUTH_KEY or VIRUSTOTAL_API_KEY is set.
+  --header "N: v"   Send this header to the site (a WAF bypass rule), repeatable.
+  --insecure        Accept a self-signed certificate (local and staging hosts).
+  --offline         No blocklist lookups.
+  --out, --state, --baseline, --no-baseline, --level, --console, --report, --json as above;
+                    the site's target folder is <reports>/audit-security/<host>/ and the scanner
+                    writes report.json and report.md itself (no triage step).
 `;
 
 export function parseArgs(argv) {
-  const a = { root: '.', only: null, skip: [], history: 0, offline: false, tests: true, max: 6, out: null, json: false, baseline: null, noBaseline: false, state: null, visibility: null, levels: parseLevel('all'), console: false, report: false };
+  const a = { root: '.', only: null, skip: [], history: 0, offline: false, tests: true, max: 6, out: null, json: false, baseline: null, noBaseline: false, state: null, visibility: null, levels: parseLevel('all'), console: false, report: false, headers: {}, insecure: false };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i];
     const next = () => argv[++i];
@@ -71,11 +86,21 @@ export function parseArgs(argv) {
     else if (v === '--level') a.levels = parseLevel(next());
     else if (v === '--console') a.console = true;
     else if (v === '--report') a.report = true;
-    else if (v.startsWith('--')) throw new Error(`Unknown option ${v}`);
+    else if (v === '--url') a.root = next();
+    else if (v === '--insecure') a.insecure = true;
+    else if (v === '--header') {
+      const h = String(next() || '');
+      const i = h.indexOf(':');
+      if (i < 1) throw new Error(`--header needs "Name: value", got "${h}"`);
+      a.headers[h.slice(0, i).trim()] = h.slice(i + 1).trim();
+    } else if (v.startsWith('--')) throw new Error(`Unknown option ${v}`);
     else a.root = v;
   }
   if (a.visibility && !VISIBILITY.includes(a.visibility)) throw new Error(`--visibility must be one of ${VISIBILITY.join(', ')}`);
-  for (const g of [...(a.only || []), ...a.skip]) if (!GROUPS.includes(g)) throw new Error(`Unknown group "${g}". Groups: ${GROUPS.join(' ')}`);
+  a.mode = siteUrl(a.root) ? 'site' : 'code';
+  if (a.mode === 'code' && /^[a-z][a-z0-9+.-]*:\/\//i.test(a.root)) throw new Error(`Site mode takes an http or https URL, not ${a.root}`);
+  const groups = a.mode === 'site' ? SITE_GROUPS : GROUPS;
+  for (const g of [...(a.only || []), ...a.skip]) if (!groups.includes(g)) throw new Error(`Unknown group "${g}". Groups: ${groups.join(' ')}`);
   return a;
 }
 
@@ -307,10 +332,64 @@ export function summarise(r, max = 6, levels = null) {
   return L.join('\n');
 }
 
+/** The site's target folder: `--state`, else <reportsRoot>/audit-security/<host>/. */
+export function resolveSiteStateDir(state, url, { home = os.homedir(), base } = {}) {
+  if (state) return path.resolve(expandHome(state, home));
+  const u = new URL(url);
+  return targetDir({ reports: base || reportsRoot({ home }), skill: 'audit-security', name: u.host, owner: u.origin });
+}
+
+/** The site report to compare with: --baseline (a report.json or its folder), else the last site scan of this host. */
+export function resolveSiteBaseline(args, stateDir) {
+  if (args.noBaseline) return null;
+  if (args.baseline) {
+    const f = path.resolve(expandHome(args.baseline, os.homedir()));
+    return fs.existsSync(f) && fs.statSync(f).isDirectory() ? path.join(f, 'report.json') : f;
+  }
+  const last = path.join(stateDir, 'last-report.json');
+  return fs.existsSync(last) ? last : null;
+}
+
+async function siteMain(args) {
+  const url = siteUrl(args.root);
+  const origin = new URL(url).origin;
+  const stateDir = claimTarget(resolveSiteStateDir(args.state, url), origin);
+  const scratch = args.console && !args.report && !args.out ? scratchDir('audit-security') : null;
+  const outDir = scratch || resolveOutDir(args.out) || newRun(stateDir, { info: { skill: 'audit-security', target: origin } });
+  fs.mkdirSync(outDir, { recursive: true });
+  markRun(outDir, { skill: 'audit-security', target: origin });
+  const report = await runSite(args, { version: VERSION, outDir, stateDir, log });
+  const baseFile = resolveSiteBaseline(args, stateDir);
+  if (baseFile) {
+    try {
+      const prev = JSON.parse(fs.readFileSync(baseFile, 'utf8'));
+      if (prev?.tool === 'audit-security' && prev.mode === 'site') report.diff = { ...diffRows(prev, report), from: baseFile };
+    } catch (e) { log(`baseline not usable (${baseFile}): ${e.message}`); }
+  }
+  const notes = readNotes(stateDir);
+  report.state = { dir: stateDir, notes: notes ? path.join(stateDir, 'notes.md') : null };
+  const md = renderSiteMarkdown(report, { levels: args.levels });
+  fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify(report, null, 2));
+  if (!scratch) fs.writeFileSync(path.join(outDir, 'report.md'), md);
+  fs.writeFileSync(path.join(stateDir, 'last-report.json'), JSON.stringify(report, null, 2));
+  if (args.json) { process.stdout.write(JSON.stringify(report, null, 2)); return; }
+  if (args.console) { process.stdout.write(`${consoleList({ title: `audit-security site ${report.site.host}`, items: consoleItems(report), levels: args.levels })}${scratch ? '' : `\nReport: ${path.join(outDir, 'report.md')}`}\nState: ${stateDir}\n`); return; }
+  const c = report.counts;
+  const act = report.results.filter((r) => r.status === 'fail' || r.status === 'warn').sort((a, b) => (a.status === 'fail' ? -1 : 0) - (b.status === 'fail' ? -1 : 0));
+  process.stdout.write(`audit-security ${VERSION} — site mode — ${report.site.finalUrl}
+${c.pass} pass · ${c.warn} warn · ${c.fail} fail · ${c.info} info · ${c.skip} skipped
+${act.map((r) => `  ${r.status.toUpperCase().padEnd(4)} ${r.id}  ${r.title} — ${String(r.evidence).slice(0, 140)}`).join('\n')}${report.diff ? `\nSince last run: ${report.diff.new.length} new, ${report.diff.worse.length} worse, ${report.diff.fixed.length} fixed` : ''}
+
+report:   ${path.join(outDir, 'report.md')} (written by the scanner; add a **Verdict:** line under the title)
+state:    ${stateDir}${notes ? `\nnotes:    ${report.state.notes} (read it before presenting)` : ''}
+`);
+}
+
 async function main() {
   let args;
   try { args = parseArgs(process.argv.slice(2)); } catch (e) { log(e.message); log(USAGE); process.exit(2); }
   if (args.help) { process.stdout.write(USAGE); return; }
+  if (args.mode === 'site') { await siteMain(args); return; }
   const report = await run(args);
   const stateDir = claimTarget(resolveStateDir(args.state, report.root), report.root);
   // --console alone (no --report, no --out): findings.json goes to a scratch folder in the temp folder (kept for triage).

@@ -161,30 +161,7 @@ export function siteApex(host) {
   return /^(co|com|net|org|gov|ac|edu)\.[a-z]{2}$/.test(two) ? labels.slice(-3).join('.') : two;
 }
 
-export const CMP_SIGNATURES = [
-  { name: 'Cookiebot', re: /consent\.cookiebot\.(com|eu)|Cookiebot\b|CybotCookiebot/i },
-  { name: 'Usercentrics', re: /usercentrics/i },
-  { name: 'OneTrust', re: /onetrust|optanon|cookielaw\.org/i },
-  { name: 'Cookie Information', re: /cookieinformation\.com|coi-banner|CookieInformation/i },
-  { name: 'Didomi', re: /didomi/i },
-  { name: 'Klaro', re: /klaro/i },
-  { name: 'CookieYes', re: /cookieyes|cky-consent/i },
-  { name: 'Complianz', re: /complianz|cmplz/i },
-  { name: 'Borlabs Cookie', re: /borlabs/i },
-  { name: 'CookieFirst', re: /cookiefirst/i },
-  { name: 'Osano', re: /osano/i },
-  { name: 'TrustArc', re: /trustarc|truste\.com/i },
-  { name: 'Sourcepoint', re: /sourcepoint|sp-prod\.net|privacy-mgmt\.com/i },
-  { name: 'Quantcast Choice', re: /quantcast\.mgr\.consensu|quantcast choice/i },
-  { name: 'consentmanager', re: /consentmanager\.net/i },
-  { name: 'Axeptio', re: /axeptio/i },
-  { name: 'Iubenda', re: /iubenda/i },
-  { name: 'Termly', re: /termly/i },
-];
-
-export function detectCmp(text) {
-  return CMP_SIGNATURES.find((c) => c.re.test(text || ''))?.name || null;
-}
+export { CMP_SIGNATURES, detectCmp } from './cmp.mjs';
 
 /**
  * Google tag hits carry what Consent Mode told Google: gcs=G1<ad_storage><analytics_storage>

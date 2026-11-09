@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-security` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.2.0] - 2026-11-09
+
+### Added
+- Site mode: `scan.mjs <https://url>` (or `--url`) checks a live site from outside, passively, when there is no repo to scan. Groups `headers` (the six graded headers incl. CSP, Permissions-Policy, HSTS and Referrer-Policy, CSP lint, cookie flags, CORS, COOP/COEP/CORP, MDN Observatory, securityheaders.com), `redirects`, `exposed` (secret files, manifests, admin paths, security.txt) and `blocklists` (OpenPhish, plus Google Safe Browsing, URLhaus and VirusTotal with their keys). The header, redirect and exposed-file checks are audit-launch's, run from the sibling skill with its state kept apart; site mode adds a clickjacking row (CSP `frame-ancestors` against X-Frame-Options) and the blocklists (`lib/sources.mjs` and `lib/target.mjs`, identical copies of is-website-safe's, tested). The scanner writes `report.md` ("Security audit (site)") and `report.json` itself into `<reports>/audit-security/<host>/` and compares with the host's last site scan. `--header` and `--insecure` are new flags for it.
+
 ## [2.1.1] - 2026-11-09
 
 ### Fixed

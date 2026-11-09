@@ -372,3 +372,45 @@ test('kindOf: audit-seo run with --geo is titled GEO audit', () => {
   assert.equal(kindOf({ kind: 'audit-seo', md: md.replace(/^# SEO audit/, '# GEO audit') }).title, 'GEO audit');
   assert.equal(kindOf({ kind: 'audit-eco', md: '# GEO audit — x' }).title, 'Sustainability audit');
 });
+
+const SECURITY_SITE = `# Security audit (site) — www.example.com
+
+**Site:** https://www.example.com/  ·  **Environment:** production  ·  **Date:** 2026-11-09 15:08 UTC  ·  **Tool:** audit-security 2.2.0 (site mode)
+
+**Result:** 14 pass · 4 warn · 1 fail · 3 info · 4 skipped
+
+## Fix first
+
+- ❌ **Content-Security-Policy** — missing → Add one.
+
+## Security headers
+
+| | Check | Evidence | Fix |
+|---|---|---|---|
+| ❌ | Content-Security-Policy | missing | Add one. |
+| ✅ | HSTS | max-age=63072000 |  |
+`;
+
+test('audit-security on a URL: its own title, standfirst and at-a-glance row beside the code scan', () => {
+  const code = { kind: 'audit-security', target: 'shop-web', folder: 'audit-security-shop-web', md: SECURITY };
+  const site = { kind: 'audit-security', target: 'www.example.com', folder: 'audit-security-www.example.com', md: SECURITY_SITE };
+  assert.equal(kindOf(code).title, 'Security audit');
+  assert.match(kindOf(code).standfirst, /^The repository/);
+  assert.equal(kindOf(site).title, 'Security audit (site)');
+  assert.doesNotMatch(kindOf(site).standfirst, /repository|git history/);
+  assert.match(kindOf(site).standfirst, /frame-ancestors/);
+  const h = headline(site);
+  assert.deepEqual(h.counts, { pass: 14, warn: 4, fail: 1, info: 3, skipped: 4 });
+  assert.deepEqual(h.figures, [[1, 'fail'], [4, 'warn']]);
+  assert.equal(h.what, '14 checks passed on https://www.example.com/.');
+  assert.equal(headline({ ...site, md: SECURITY_SITE.replace('\n\n**Result:**', '\n\n**Verdict:** Fix the CSP before launch.\n\n**Result:**') }).what, 'Fix the CSP before launch.');
+  const reports = [code, site];
+  const args = { summary: parseSummary(SUMMARY), date: new Date('2026-11-09T09:00:00Z'), version: VERSION, css: '', style: 'serif' };
+  const html = combinedHtml({ ...args, reports, heads: reports.map(headline) });
+  assert.match(html, /<table class="glance">[\s\S]*<td>Security audit<span class="sub mono">shop-web<\/span>[\s\S]*<td>Security audit \(site\)<span class="sub mono">www.example.com<\/span><\/td><td>14 pass · 4 warn · 1 fail · 3 info · 4 skipped<\/td>/);
+  assert.match(html, /<div class="label">Security audit \(site\) · <span class="mono">www.example.com<\/span><\/div><div class="n">1 <small>fail<\/small> 4 <small>warn<\/small><\/div>/, 'its own tile on the cover');
+  assert.match(html, /<h2>Security audit \(site\) <span class="target mono">www.example.com<\/span><\/h2><p class="standfirst">The live site checked from outside/);
+  // A site security scan of another domain is flagged like the other site audits.
+  assert.equal(siteMismatches([site], [headline(site)], 'example.dk').length, 1);
+  assert.equal(siteMismatches([code], [headline(code)], 'example.dk').length, 0);
+});

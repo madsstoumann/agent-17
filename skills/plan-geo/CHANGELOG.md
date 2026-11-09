@@ -2,6 +2,11 @@
 
 All notable changes to the `plan-geo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.2.2] - 2026-11-09
+
+### Fixed
+- `extract` listed a page's meta description under "Only in the Next.js payload" when the payload repeated it, though it is in the served HTML's `<meta name="description">`. Text the head already carries (title, meta description, og: and twitter: values) is left out of the payload-only text and its word count.
+
 ## [1.2.1] - 2026-11-09
 
 ### Fixed

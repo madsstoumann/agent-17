@@ -148,7 +148,7 @@ async function main() {
     const policy = applyEnvPolicy(results, { production: opts.production, env: opts.env });
     const report = {
       schemaVersion: 1, tool: 'audit-launch', version: VERSION, generatedAt: new Date().toISOString(), durationMs: Date.now() - startedAt,
-      input: { url: opts.url, env: opts.env, envSource: opts.envSource, envReason: opts.envReason, production: opts.production, productionHost: opts.productionHost, flags: { pages: opts.pages, maxPages: opts.maxPages, skip: opts.skip, only: opts.only, lighthouse: opts.lighthouse, insecure: opts.insecure, noRemote: opts.noRemote, emailDomain: opts.emailDomain } },
+      input: { url: opts.url, env: opts.env, envSource: opts.envSource, envReason: opts.envReason, production: opts.production, productionHost: opts.productionHost, flags: { pages: opts.pages, maxPages: opts.maxPages, skip: opts.skip, only: opts.only, lighthouse: opts.lighthouse, psiKey: Boolean(opts.psiKey), insecure: opts.insecure, noRemote: opts.noRemote, emailDomain: opts.emailDomain } },
       site: { finalUrl, host, ip: curl.remoteIp || null, server: page.headers.server || null, httpVersion: curl.httpVersion || null, isPrivate, lighthouse: ctx.lh ? { runner: ctx.lh.runner, version: ctx.lh.version } : { runner: opts.lighthouse === 'off' ? 'off' : 'pending', version: null } },
       counts: countStatuses(policy.results),
       blockers: policy.results.filter((r) => r.blocker && r.status === 'fail').map((r) => r.id),

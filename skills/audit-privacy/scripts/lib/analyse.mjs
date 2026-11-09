@@ -76,7 +76,7 @@ export function analyse(d) {
   const firstCookies = consentCookies(first.cookies, host);
   const acceptParties = d.accept ? thirdParties(d.accept.requests, host) : [];
   const acceptCookies = d.accept ? consentCookies(d.accept.cookies, host) : [];
-  const cmp = detectCmp(`${first.html || ''}\n${allFirstRequests.map((r) => r.url).join('\n')}`) || (first.facts?.globals || []).find((g) => /Cookiebot|OneTrust|UC_UI|CookieInformation|Didomi|klaro/.test(g)) || null;
+  const cmp = detectCmp({ html: first.html || '', urls: allFirstRequests.map((r) => r.url), globals: first.facts?.globals || [] });
   const b = first.banner || { found: false, accept: [], reject: [], selection: [], settings: [] };
 
   // -------------------------------------------------------------- consent banner

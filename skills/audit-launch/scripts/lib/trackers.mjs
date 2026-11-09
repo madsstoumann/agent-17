@@ -33,31 +33,9 @@ export const TRACKERS = [
 /** Categories that are only ever loaded lawfully after consent. */
 export const CONSENT_CATEGORIES = new Set(['analytics', 'ads', 'session-replay', 'marketing', 'tag-manager']);
 
-export const CMP_PATTERNS = [
-  { name: 'Cookiebot', re: /cookiebot\.com|consent\.cookiebot|CookieConsent\b/i },
-  { name: 'OneTrust', re: /onetrust|optanon/i },
-  { name: 'Usercentrics', re: /usercentrics/i },
-  { name: 'Cookie Information', re: /cookieinformation\.com|CookieInformation/i },
-  { name: 'Klaro', re: /klaro/i },
-  { name: 'Didomi', re: /didomi/i },
-  { name: 'CookieYes', re: /cookieyes/i },
-  { name: 'Osano', re: /osano\.com/i },
-  { name: 'TrustArc', re: /trustarc|truste\.com/i },
-  { name: 'Quantcast Choice', re: /quantcast\.mgr\.consensu|InMobi choice/i },
-  { name: 'Complianz', re: /complianz/i },
-  { name: 'CookieFirst', re: /cookiefirst/i },
-];
-
 /** host -> { vendor, category } | null */
 export function classifyHost(host) {
   const h = String(host || '').toLowerCase();
   for (const t of TRACKERS) if (t.match.test(h)) return { vendor: t.vendor, category: t.category };
-  return null;
-}
-
-/** Which consent tool is on the page, from the HTML and the hosts contacted. */
-export function detectCmp(html, hosts = []) {
-  const hay = `${html || ''}\n${hosts.join('\n')}`;
-  for (const c of CMP_PATTERNS) if (c.re.test(hay)) return c.name;
   return null;
 }

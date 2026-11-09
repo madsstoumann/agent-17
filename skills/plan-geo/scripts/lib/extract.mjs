@@ -214,6 +214,12 @@ export function pageUrls(html, base) {
   return [...out];
 }
 
+/** The head's own text: title, meta description and the og: and twitter: values, one string. */
+export function headText(meta) {
+  const values = [meta.title, meta.description, ...Object.values(meta.og || {}), ...Object.values(meta.twitter || {})];
+  return values.filter((v) => typeof v === 'string' && v.trim()).join(' \n ');
+}
+
 /**
  * extractPage(html, url) -> the page record plan-geo keeps in pages/<slug>.json:
  * { url, title, description, lang, canonical, h1, words, markdown, outline, questions, dates,
@@ -229,7 +235,9 @@ export function extractPage(html, url) {
   const body = dropConsent(bodyHtml(html));
   const mainMd = toMarkdown(mainHtml(body));
   const shownText = clean(body);
-  const hidden = hiddenBlocks(html, shownText);
+  // Text the served HTML already has in its head (meta description, og: and twitter: tags, the title)
+  // is not hidden: Next.js repeats its metadata in the payload, and crawlers read the tags.
+  const hidden = hiddenBlocks(html, `${shownText} ${headText(meta)}`);
   const hiddenMd = blocksMarkdown(hidden);
   const hiddenText = hidden.filter((b) => !b.shown).map((b) => b.text).join(' ');
   const fullText = hiddenText ? `${shownText} ${hiddenText}` : shownText;

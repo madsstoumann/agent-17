@@ -90,7 +90,9 @@ Notes:
 found in the repo named in the question (type another one under "Other"). Customize shows two
 screens of four: Accessibility, Infrastructure, Launch, Privacy, then Security, SEO / GEO,
 Solution health, Sustainability. Infrastructure, Launch, Privacy, Security and Solution health
-are recommended; Accessibility, SEO / GEO and Sustainability are opt-in. It also asks for the
+are recommended; Accessibility, SEO / GEO and Sustainability are opt-in. Security scans each repo
+and, when there is a site, the live site too (audit-security's site mode), so a site with no repo
+still gets a security section of its own. It also asks for the
 report's look: Editorial (serif, like a printed report) or Modern (sans-serif). Every run writes
 two PDFs: `report.pdf` (everything) and `report-compact.pdf` (only what needs action, long URL and
 package lists cut to five rows). Flags skip the questions:
@@ -144,7 +146,7 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 | Flag | What it does |
 |---|---|
 | `--url URL` / `--no-site` | The live site to audit, or code audits only. |
-| `--only`, `--skip`, `--add` | Which audits run: `a11y`, `infra`, `launch`, `privacy`, `security`, `seo`, `health`, `eco` (or `all`). Default: infra, launch, privacy, security, health. |
+| `--only`, `--skip`, `--add` | Which audits run: `a11y`, `infra`, `launch`, `privacy`, `security`, `seo`, `health`, `eco` (or `all`). Default: infra, launch, privacy, security, health. `security` runs on each repo and on the site. |
 | `--geo` | A GEO audit: SEO / GEO (audit-seo `--geo`, with its GEO readiness score) plus Launch, and a summary that leads with AI search. |
 | `--yes` | No questions: the default audits, Editorial, level all, the detected URL. |
 | `--style serif\|sans` | Report look: Editorial (`serif`, default) or Modern (`sans`). |
@@ -248,9 +250,11 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 | Flag | What it does |
 |---|---|
 | `[path]` | The repo to scan (default: the current folder). |
-| `--only` / `--skip` | Groups: `deps secrets xss injection request crypto config ci`. |
+| `<url>` / `--url URL` | Site mode: the live site instead of a repo (headers, redirects, exposed files and admin paths, security.txt, blocklists; passive). Needs audit-launch next to it for the header, redirect and exposed-file checks. |
+| `--only` / `--skip` | Groups: `deps secrets xss injection request crypto config ci`; in site mode `headers redirects exposed blocklists`. |
+| `--header "Name: value"` / `--insecure` | Site mode: send a WAF bypass header (repeatable) / accept a self-signed certificate. |
 | `--history [N]` | Also scan the last N commits (default 1000) for removed secrets. |
-| `--offline` | No vulnerability lookup, dependency inventory only. |
+| `--offline` | No vulnerability lookup, dependency inventory only (site mode: no blocklist lookups). |
 | `--no-tests` | Leave out hits in test, fixture and docs paths. |
 | `--max N` | Hits printed per rule (default 6). |
 | `--visibility public\|private\|internal` | The repo's visibility when `gh` cannot tell. |

@@ -4,7 +4,8 @@
  * static scan of the HTML is the fallback).
  */
 import { result } from '../registry.mjs';
-import { classifyHost, detectCmp, CONSENT_CATEGORIES } from '../trackers.mjs';
+import { classifyHost, CONSENT_CATEGORIES } from '../trackers.mjs';
+import { detectCmp } from '../cmp.mjs';
 import { parseSetCookie } from '../headers.mjs';
 import { extractAssets } from '../html.mjs';
 import { hostOf } from '../http.mjs';
@@ -40,7 +41,7 @@ export default {
     const third = hosts.filter((h) => h !== hostname && h !== ctx.host && !h.endsWith(`.${ctx.apexHost}`));
     const classified = third.map((h) => ({ host: h, ...(classifyHost(h) || { vendor: null, category: null }) }));
     const trackers = classified.filter((c) => c.category && CONSENT_CATEGORIES.has(c.category));
-    const cmp = detectCmp(page.html || '', hosts);
+    const cmp = detectCmp({ html: page.html || '', urls: hosts });
     out.push(trackers.length
       ? result('privacy.trackers', 'warn', 'Trackers loaded before consent', `${[...new Set(trackers.map((t) => t.vendor))].join(', ')} contacted on first load (${source})${cmp ? `; consent tool present: ${cmp}` : '; no consent tool detected'}`, { fix: 'Load analytics, ads and session-replay only after consent (GTM consent mode / the CMP\'s script blocking); Webbkoll shows what a regulator sees.', beforeProduction: true, link: `https://webbkoll.dataskydd.net/en/check?url=${encodeURIComponent(finalUrl)}`, data: { trackers } })
       : result('privacy.trackers', 'pass', 'Trackers loaded before consent', `no known analytics/ads/session-replay host contacted on first load (${source})`));
