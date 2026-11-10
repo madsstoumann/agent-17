@@ -20,8 +20,14 @@ const scripts = join(here, '..');
 const PORT = 8700 + Math.floor(Math.random() * 200);
 const root = mkdtempSync(join(tmpdir(), 'audit-solution-health-test-'));
 const sh = join(root, '.audit-solution-health');
+// The fixture is read as on a machine without the .NET SDK or a NuGet setup of its own (the
+// assertions are about the fixture's obj/project.assets.json and NuGet.Config): hide a dotnet on
+// PATH and the user's ~/.nuget, so a CI runner with .NET installed reads the same thing.
+const home = mkdtempSync(join(tmpdir(), 'audit-solution-health-home-'));
+const PATH = (process.env.PATH || '').split(':').filter((d) => d && !existsSync(join(d, 'dotnet'))).join(':');
+const env = { ...process.env, HOME: home, USERPROFILE: home, PATH, DOTNET_ROOT: '', NUGET_PACKAGES: '' };
 const run = (name, ...args) => {
-  const r = spawnSync(process.execPath, [join(scripts, `${name}.mjs`), '--root', root, '--in-repo', ...args], { encoding: 'utf8', timeout: 300_000 });
+  const r = spawnSync(process.execPath, [join(scripts, `${name}.mjs`), '--root', root, '--in-repo', ...args], { encoding: 'utf8', timeout: 300_000, env });
   if (process.env.VERBOSE) process.stderr.write(r.stderr);
   return r;
 };
