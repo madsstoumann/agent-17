@@ -35,7 +35,7 @@ Copy its folder into `~/.claude/skills/` (Claude Code), or zip the folder and up
 
 ## Setup for the audit skills
 
-None of this is required; each item makes audit-launch (and audit-all) more complete.
+None of this is required; each item makes the audits (and audit-all) more complete.
 
 ### Environment variables
 
@@ -45,9 +45,12 @@ Set them in your shell profile (`~/.zshrc` on a Mac, then open a new terminal), 
 | Variable | What it does |
 |---|---|
 | `PSI_API_KEY` | Runs Lighthouse through the PageSpeed Insights API: real-user field data (CrUX), the same numbers as pagespeed.web.dev, and a fallback when a firewall blocks local Lighthouse. Without it Lighthouse runs locally with Chrome (lab data only). |
-| `AUDIT_HEADERS` | Extra headers sent to the audited site by audit-launch, Lighthouse, audit-a11y and audit-security's site mode, one `Name: value` per line. Used for the firewall bypass below. |
+| `AUDIT_HEADERS` | Extra headers sent to the audited site, one `Name: value` per line, by every site audit (audit-launch and its Lighthouse runs, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra's one page request, audit-security's site mode) and plan-geo. Used for the firewall bypass below; `--header` does the same for one run. |
 | `AUDIT_OUT_DIR` | Where reports go. Default: your Downloads folder, else `~/audit-reports/`. |
-| `GOOGLE_SAFE_BROWSING_KEY`, `URLHAUS_AUTH_KEY`, `VIRUSTOTAL_API_KEY` | Optional blocklist lookups for is-website-safe and audit-security's site mode. Without them only the keyless OpenPhish feed is checked, and the other blocklist rows are skipped. |
+| `CHROME_PATH` | The Chrome, Chromium or Edge to use when the skills cannot find one (audit-launch's local Lighthouse, audit-a11y, audit-seo, audit-eco, audit-privacy, plan-geo and audit-all's PDFs). |
+| `GOOGLE_SAFE_BROWSING_KEY`, `URLHAUS_AUTH_KEY`, `VIRUSTOTAL_API_KEY` | Optional blocklist lookups for is-website-safe and audit-security's site mode. Without them only the keyless OpenPhish feed is checked, and the other blocklist rows are skipped. `URLSCAN_API_KEY` raises is-website-safe's urlscan.io quota. |
+| `SECURITYHEADERS_API_KEY` | audit-launch: the securityheaders.com grade from their paid API. Without it the grade is read from their page or estimated, and the report says which. |
+| `AUDIT_FROM` | audit-launch: a contact address sent as a `From` header (the same as `--from`). |
 
 ```bash
 export PSI_API_KEY=AIza...                              # no quotes needed
@@ -142,12 +145,14 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 | `--header "Name: value"` | Sent to the audited site only (a firewall bypass rule). Repeatable; also `AUDIT_HEADERS`. |
 | `--insecure` | Accept a self-signed certificate (localhost, staging). |
 
+audit-infra and audit-privacy take `--out`, `--baseline`, `--header`, `--level`, `--console` and `--report`, but not `--state`, `--no-baseline` or `--insecure`. check-tech-stack, is-website-safe and check-node-toolchain have their own flags, below.
+
 ### audit-all
 
 | Flag | What it does |
 |---|---|
 | `--url URL` / `--no-site` | The live site to audit, or code audits only. |
-| `--only`, `--skip`, `--add` | Which audits run: `a11y`, `infra`, `launch`, `privacy`, `security`, `seo`, `health`, `eco` (or `all`). Default: infra, launch, privacy, security, health. `security` runs on each repo and on the site. |
+| `--only`, `--skip`, `--add` | Which audits run: `a11y`, `infra`, `launch`, `privacy`, `security`, `seo`, `health`, `eco` (or `all`). Default: infra, launch, privacy, security, health. `security` runs on each repo and on the site; audit-launch then leaves the header and exposed-file checks to it (and TLS to `infra`, cookies and trackers to `privacy`), so each finding appears once. |
 | `--geo` | A GEO audit: SEO / GEO (audit-seo `--geo`, with its GEO readiness score) plus Launch, and a summary that leads with AI search. |
 | `--yes` | No questions: the default audits, Editorial, level all, the detected URL. |
 | `--style serif\|sans` | Report look: Editorial (`serif`, default) or Modern (`sans`). |
@@ -174,13 +179,13 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 | `--pages N` | Extra sitemap pages for Lighthouse, indexable ones from different sections (default 3). |
 | `--max-pages N` / `--max-external N` | Crawl limit (default 100) and external links checked (default 200). |
 | `--skip a,b` / `--only a,b` | Groups: `crawl redirects notfound tls dns email exposed headers caching perf a11y privacy links social icons ops`. `--skip perf` skips Lighthouse. |
-| `--lighthouse local\|psi\|off` | Default `psi` with `PSI_API_KEY`, else `local`. |
+| `--lighthouse local\|psi\|off` | Default `psi` with `PSI_API_KEY`, else `local`. With perf skipped, the scoreboard's CrUX row says "not run (perf skipped)". |
 | `--email-domain D` | Where SPF and DMARC live (default: the host without www). |
 | `--ssllabs` | Also run Qualys SSL Labs (slow). |
 | `--no-remote` | Skip every third-party service. |
 | `--timeout MS` / `--lh-timeout MS` / `--concurrency N` | Per request (15000), per Lighthouse run (240000), parallel requests (6). |
 | `--ua STRING` / `--from EMAIL` | Override the User-Agent, add a From header. |
-| `--strict` | Exit code 3 when anything fails (CI). |
+| `--strict` | Exit code 3 when anything fails, so a CI step can fail on it. Without it the exit code is 0 whatever the findings. |
 | `--json` / `--quiet` | report.json on stdout / no progress output. |
 
 ### audit-a11y
@@ -245,18 +250,19 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 | `--email-domain D` | Mail domain when it is not the site's own. |
 | `--dkim-selector S` | Your provider's DKIM selector (repeatable). |
 | `--only` / `--skip` | Groups: `domain email tls edge ct`. |
-| `--no-ct` / `--max-subdomains N` | Skip the Certificate Transparency sweep, or limit it (default 30). |
+| `--no-ct` / `--max-subdomains N` | Skip the Certificate Transparency sweep (crt.sh, Cert Spotter when crt.sh does not answer), or limit the subdomains probed (default 30). |
 | `--no-legacy` | Skip the TLS 1.0/1.1 probe. |
 | `--platform-ok` | Audit a hosting platform's own domain anyway (`*.umbraco.io` and the like). |
+| `--header "Name: value"` | Sent with the one request for the home page (a WAF bypass rule). |
 
 ### audit-security
 
 | Flag | What it does |
 |---|---|
 | `[path]` | The repo to scan (default: the current folder). |
-| `<url>` / `--url URL` | Site mode: the live site instead of a repo (headers, redirects, exposed files and admin paths, security.txt, blocklists; passive). Needs audit-launch next to it for the header, redirect and exposed-file checks. |
+| `<url>` / `--url URL` | Site mode: the live site instead of a repo (headers, clickjacking via `frame-ancestors`, cookie flags, CORS, redirects, exposed files and admin paths, security.txt, blocklists; passive). Needs audit-launch next to it for the header, redirect and exposed-file checks. Its state is `<reports>/audit-security/<host>/`. |
 | `--only` / `--skip` | Groups: `deps secrets xss injection request crypto config ci`; in site mode `headers redirects exposed blocklists`. |
-| `--header "Name: value"` / `--insecure` | Site mode: send a WAF bypass header (repeatable) / accept a self-signed certificate. |
+| `--header "Name: value"` / `--insecure` | Site mode: send a WAF bypass header (repeatable; also `AUDIT_HEADERS`) / accept a self-signed certificate. |
 | `--history [N]` | Also scan the last N commits (default 1000) for removed secrets. |
 | `--offline` | No vulnerability lookup, dependency inventory only (site mode: no blocklist lookups). |
 | `--no-tests` | Leave out hits in test, fixture and docs paths. |

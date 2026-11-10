@@ -4,7 +4,7 @@ description: Use when someone wants a GDPR, ePrivacy or cookie compliance check 
 argument-hint: "<url> [--pages N] [--only first,reject,accept] [--lang L] [--header NAME:VALUE] [--out DIR] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, Write, Edit, WebFetch
 metadata:
-  version: "2.2.2"
+  version: "2.2.3"
 ---
 
 # Privacy audit
@@ -75,7 +75,7 @@ instead of adding it to `report.md`. With a level, write the policy review at th
 
 | Section | Checks (`id`) |
 |---|---|
-| Consent banner | `consent.cmp` (which tool; none with trackers fails), `consent.banner`, `consent.reject-first-layer` (missing is a fail), `consent.button-parity` (reject much smaller or plain text next to a filled accept), `consent.prechecked`, `consent.google-consent-mode` (v2 default with all four parameters denied) |
+| Consent banner | `consent.cmp` (which tool, by vendor: the host it loads from wins over markup, found by `lib/cmp.mjs`, shared with audit-launch; none with trackers fails), `consent.banner`, `consent.reject-first-layer` (missing is a fail), `consent.button-parity` (reject much smaller or plain text next to a filled accept), `consent.prechecked`, `consent.google-consent-mode` (v2 default with all four parameters denied) |
 | Before any choice | `before.trackers` (analytics, ads, session replay, marketing hosts), `before.cookieless-pings` (Consent Mode "advanced" hits with storage denied), `before.cookies`, `before.unclassified-cookies`, `before.storage`, `before.embeds` (YouTube, Maps, reCAPTCHA), `before.fonts` (Google Fonts), `before.tag-manager` |
 | After reject | `reject.works` (no tracker and no tracking cookie after reject and reload), `reject.method`, `reject.prechecked` |
 | After accept | `accept.inventory`: vendors and cookies that accepting turns on |

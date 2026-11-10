@@ -4,7 +4,7 @@ description: Use when someone wants an SEO, content or GEO (AI search) audit of 
 argument-hint: "<url | file.html> [--geo] [--schema-only] [--pages N] [--sitemap-sample N] [--external-links N] [--internal-links N] [--schema-pages N] [--render-pages N] [--bot-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console] [--from-archive DIR [--allow-live]] [--save-html DIR] [--no-validate]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "2.6.0"
+  version: "2.6.1"
 ---
 
 # SEO audit
@@ -172,6 +172,8 @@ Honesty rules:
   (`/news/2022/…`) or a date written as text on the page ("November 24, 2022"). Those count as
   articles without a machine-readable date. Question headings end in "?". Present them as where
   to look, not as defects, except undated or anonymous articles.
+- A page that comes back without a `<title>` is fetched twice more before `seo.title-missing`
+  counts it (up to three such pages), so a one-off answer from the server is not a finding.
 - og:image and link checks send HEAD and then GET (body discarded) when HEAD answers nothing or any
   4xx/5xx: image edges such as Sitecore's answer HEAD 404 for a resized variant they have not built
   yet, and scrapers use GET.

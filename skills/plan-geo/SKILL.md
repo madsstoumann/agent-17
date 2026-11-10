@@ -1,10 +1,10 @@
 ---
 name: plan-geo
 description: Use when someone wants to know what structured data and what content a website should add to be understood and quoted by AI answer engines (ChatGPT, Perplexity, Gemini, Google AI Overviews) — the follow-up to a GEO audit. Reads the site's pages, works out what each page template is, drafts JSON-LD from the pages' own text (Organization, WebSite, Article, Product or SoftwareApplication, Service, Event, FAQPage, BreadcrumbList…) and checks every value is on the page, then maps the questions people ask in the site's field to the pages that answer them and writes content briefs for the gaps (FAQ blocks, comparison tables, glossary, "what is" pages). Also for the "technical GEO implementation" and "AI content framework" phases of a client proposal, and for sample pages with the proposed JSON-LD to show a client in Google's Rich Results Test or validator.schema.org. Proposes work; it gives no verdict.
-argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--no-remote | --no-validate] [--samples] [--live] [--from-archive DIR [--allow-live]]"
+argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--insecure] [--no-remote | --no-validate] [--samples] [--live] [--from-archive DIR [--allow-live]]"
 allowed-tools: Bash(node:*), Read, Write
 metadata:
-  version: "1.4.0"
+  version: "1.4.1"
 ---
 
 # GEO plan
@@ -38,7 +38,8 @@ are recorded in `inventory.json` for the later steps (a queries file is copied i
 folder as `input-queries.<ext>`). Default `--pages 24`: the start
 page, a representative page of each template (a title of its own, not thin, the most recent in news and article sections), a second page of each large template, then pages with
 three or more question headings. Pages whose served HTML is thin are rendered in Chrome
-(`--no-render` turns that off). `--header` is the WAF bypass header, as for the audit skills.
+(`--no-render` turns that off). `--header` is the WAF bypass header, as for the audit skills
+(also `AUDIT_HEADERS`), and `--insecure` accepts a self-signed certificate on a local or staging site.
 
 It writes into the run folder:
 

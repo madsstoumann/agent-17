@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-privacy` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.2.3] - 2026-11-10
+
+### Changed
+- SKILL.md says how `consent.cmp` names the consent tool (by vendor host, `lib/cmp.mjs`).
+
 ## [2.2.2] - 2026-11-09
 
 ### Changed

@@ -4,7 +4,7 @@ description: Use when someone wants the infrastructure or domain hygiene of a si
 argument-hint: "<url or domain> [--email-domain D] [--dkim-selector S] [--no-ct] [--max-subdomains N] [--only domain,email,tls,edge,ct] [--out DIR] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
-  version: "2.4.4"
+  version: "2.4.5"
 ---
 
 # Infrastructure audit
@@ -33,7 +33,7 @@ skips) to stdout. Exit code 0 whatever it finds; non-zero means the script faile
 
 | Flag | Use it when |
 |---|---|
-| `<url or domain>` | The site (`https://www.shop.dk/`) or a bare domain. Mail checks run on the registrable domain (`shop.dk`). Always the live, public domain: a hosting platform's address (`*.umbraco.io`, `*.azurewebsites.net`, `*.vercel.app`, `*.netlify.app`, …) gets only its TLS and edge checked, with a warning, because that domain, its DNS and its mail are the platform's. When the URL came from a repo and is such an address, ask for the live domain. |
+| `<url or domain>` | The site (`https://www.example.dk/`) or a bare domain. Mail checks run on the registrable domain (`example.dk`). Always the live, public domain: a hosting platform's address (`*.umbraco.io`, `*.azurewebsites.net`, `*.vercel.app`, `*.netlify.app`, …) gets only its TLS and edge checked, with a warning, because that domain, its DNS and its mail are the platform's. When the URL came from a repo and is such an address, ask for the live domain. |
 | `--platform-ok` | Only when the user wants the platform's own domain audited. |
 | `--email-domain D` | Mail is sent from another domain than the site's. |
 | `--dkim-selector S` | The user knows their provider's selector (it is `s=` in the DKIM-Signature header of a sent mail). Repeatable. About 25 common selectors are always tried. |
@@ -63,7 +63,7 @@ the report as well, and so does `--console --out DIR` (the run's files go to tha
 | Section | Checks (`id`) |
 |---|---|
 | Domain & DNS | `domain.registration` (expiry < 30 days fail, < 60 warn), `domain.transfer-lock`, `dns.nameservers` (≥ 2), `dns.soa` timers, `dns.dnssec` (DS + validation; SERVFAIL with a DS is a blocker; a host that is an alias into an unsigned zone is info, insecure by delegation), `dns.addresses` (A/AAAA, TTL), `dns.dangling` (CNAME to nothing: blocker), `dns.caa` |
-| Email | `email.mx` (resolves, no CNAME, null MX), `email.spf` (whole include tree, > 10 lookups or `+all` fail, void includes), `email.dmarc` (p, sp, pct, rua, external destinations publish the `_report._dmarc` record), `email.dkim` (keys found, < 2048-bit RSA warn), `email.mta-sts` (policy file, mode, covers every MX), `email.tls-rpt`, `email.bimi` |
+| Email | `email.mx` (resolves, no CNAME, null MX), `email.spf` (whole include tree, > 10 lookups or `+all` fail; an include that uses macros such as `%{ir}` counts as one lookup and is not followed, void includes), `email.dmarc` (p, sp, pct, rua, external destinations publish the `_report._dmarc` record), `email.dkim` (keys found, < 2048-bit RSA warn), `email.mta-sts` (policy file, mode, covers every MX), `email.tls-rpt`, `email.bimi` |
 | TLS | One handshake per host (site + www/apex sibling) and per IP: `tls.chain` (missing intermediates), `tls.expiry` (soonest endpoint), `tls.consistency`, `tls.san`, `tls.key`, `tls.protocol`, `tls.alpn` (h2), `tls.ocsp-stapling`, `tls.legacy` (TLS 1.0/1.1 accepted), `tls.caa-match` (CAA allows the CA that issued the live certificate, or renewal fails), `tls.ipv6` |
 | Edge | `edge.cdn` (and cache status), `edge.http3` (Alt-Svc or HTTPS record), `hsts.preload-list` (apex on the preload list per hstspreload.org, Chromium list as fallback; pass when listed and the header still qualifies, warn when listed but the header dropped a requirement) |
 | Subdomains | `ct.inventory` from crt.sh (or Cert Spotter, said in the row), `ct.dangling` (claimable services such as azurewebsites.net or github.io are blockers), `ct.certificates` (expired, wrong name, untrusted), `ct.no-https` (warn when HSTS includeSubDomains or preload would lock them out), `ct.issuers` vs CAA, `ct.stale` |
@@ -74,6 +74,11 @@ logs, something on the network re-signs TLS (corporate proxy, VPN, antivirus, a 
 egress proxy). The script then marks the certificate rows as skipped instead of reporting the
 proxy's certificate. Tell the user to run
 it from another network for those rows.
+
+DNS is read over DNS-over-HTTPS (Cloudflare, then Google), with the system resolver as the fallback.
+When neither DoH provider answers and the system resolver returns no NS records for the domain (a
+resolver that answers addresses only, as in some cloud sandboxes), the DNS and mail rows are
+skipped with "the local resolver returned no records" rather than reported as missing.
 
 ## Reading the result
 
