@@ -153,3 +153,39 @@ export function scratchDir(skill) {
 export function removeScratch(dir) {
   if (dir && path.basename(dir).includes('-console-') && path.dirname(dir) === os.tmpdir()) fs.rmSync(dir, { recursive: true, force: true });
 }
+
+/**
+ * "Degraded, not wrong": a condition of the run, not of the site (a re-signed TLS chain, a firewall
+ * challenge, an answer that is not the page, a file an archive does not hold). degrade() turns the
+ * row that names the condition into a skip marked `environment: 'degraded'` with no level, no
+ * blocker and no task; its fix says how to run cleanly. notChecked() turns a row the condition
+ * makes meaningless into a plain skip that says why. Every skill reports unusual input this way
+ * rather than as a finding (CONTRIBUTING.md).
+ */
+export const DEGRADED = 'degraded run, this network and not the site';
+
+export function degrade(row, why = '') {
+  if (!row) return row;
+  row.status = 'skip';
+  row.environment = 'degraded';
+  const evidence = why || row.evidence || '';
+  row.evidence = evidence.startsWith(DEGRADED) ? evidence : `${DEGRADED}: ${evidence}`;
+  delete row.blocker;
+  delete row.severity;
+  delete row.beforeProduction;
+  return row;
+}
+
+export function notChecked(row, because) {
+  if (!row || row.status === 'skip') return row;
+  row.evidence = `not checked (${because}); seen: ${row.evidence}`;
+  row.status = 'skip';
+  row.fix = '';
+  delete row.blocker;
+  delete row.severity;
+  delete row.beforeProduction;
+  return row;
+}
+
+/** True for a row degrade() marked. */
+export const isDegraded = (row) => row?.environment === 'degraded';

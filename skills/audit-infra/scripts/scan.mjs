@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseLevel, shows, levelNote, consoleList, scratchDir, removeScratch } from './lib/levels.mjs';
+import { parseLevel, shows, levelNote, consoleList, scratchDir, removeScratch, degrade, notChecked } from './lib/levels.mjs';
 import { createResolver, apexOf, undot } from './lib/dns.mjs';
 import { SECTIONS, domainChecks, emailChecks, tlsChecks, edgeChecks, ctChecks } from './lib/checks.mjs';
 import { DKIM_SELECTORS } from './lib/email.mjs';
@@ -162,19 +162,11 @@ export function markBlindResolver(results, why) {
  */
 export function markIntercepted(results) {
   if (!results.some((r) => r.id === 'tls.interception')) return results;
-  for (const r of results.filter((x) => x.id === 'tls.interception')) {
-    r.status = 'skip';
-    r.environment = 'degraded';
-    r.evidence = `degraded run, this network and not the site: ${r.evidence}`;
-    delete r.blocker;
-    delete r.severity;
-  }
+  for (const r of results.filter((x) => x.id === 'tls.interception')) degrade(r);
   for (const r of results) {
-    if (!/^tls\.(chain|expiry|consistency|san|key|protocol|alpn|ocsp-stapling|legacy|caa-match)$|^ct\.certificates$/.test(r.id) || r.status === 'skip') continue;
-    r.evidence = `not checked from this network (TLS is re-signed on the way, see "TLS interception"); seen: ${r.evidence}`;
-    r.status = 'skip';
-    r.fix = '';
-    delete r.blocker;
+    if (/^tls\.(chain|expiry|consistency|san|key|protocol|alpn|ocsp-stapling|legacy|caa-match)$|^ct\.certificates$/.test(r.id)) {
+      notChecked(r, 'TLS is re-signed on the way from this network, see "TLS interception"');
+    }
   }
   return results;
 }

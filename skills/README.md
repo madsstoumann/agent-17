@@ -138,6 +138,8 @@ Every skill that writes a report takes the same two flags:
 
 The level filters what people read: the console list, `report.md`, the combined report and PDFs, and audit-all's `fix/TODO.md`. It never filters saved data (`report.json`, `findings.json`, `tasks.json`, `last-report.json`, `state.json`, `triage.json`), so the next run's comparison is unaffected. audit-all passes the level to each sub-audit, applies it to the fix plan, and asks for it on its first screen.
 
+A row that only describes the run (a re-signed TLS chain, a firewall challenge, an answer that is not the page) is marked with `degrade()` from `levels.mjs`: a skip with `environment: "degraded"`, no level and no task, whose fix says how to run cleanly. Rows that condition makes meaningless get `notChecked()`. See [CONTRIBUTING.md](../CONTRIBUTING.md).
+
 Skills install separately, so each carries an identical `scripts/lib/levels.mjs` (`audit-all/scripts/test/levels.test.mjs` checks the copies). Change one, copy it to the others.
 
 The same goes for `scripts/lib/hsts-preload.mjs` in audit-launch and audit-infra (`audit-launch/scripts/test/hsts-preload.test.mjs` checks the two copies).

@@ -5,6 +5,7 @@ All notable changes to the `audit-infra` skill. Format follows [Keep a Changelog
 ## [2.6.0] - 2026-11-10
 
 ### Changed
+- The TLS interception row and the certificate rows it makes meaningless use the shared `degrade()` and `notChecked()` from `lib/levels.mjs` (new in every copy): a condition of the run is a skip with `environment: "degraded"`, no level and no task. The skipped rows now read "not checked (TLS is re-signed on the way from this network, …); seen: …".
 - The zone apex (`apexOf`) is the registrable domain by the Public Suffix List's ICANN section (`example.com.au`, `example.co.jp` and every other two- and three-label suffix), not only `co|com|net|org|gov|ac|edu` under a country code.
 - A hosting platform's address (`dns.platform`) is any host under a private Public Suffix List entry or a platform in `hosts.json` (Umbraco Cloud, WP Engine, Kinsta…), from the shared `lib/hosts.mjs`, instead of a hand list of about 30 platforms.
 
