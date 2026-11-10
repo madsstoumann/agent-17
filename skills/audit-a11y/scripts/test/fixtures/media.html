@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Media controls</title></head>
+<body>
+  <main>
+    <h1>Native media controls</h1>
+    <a href="#before">Before the video</a>
+    <!-- Tab moves through the shadow-DOM controls while activeElement stays on the element. -->
+    <video controls autoplay muted loop src="/tone.wav" width="400" height="200"></video>
+    <audio controls src="/tone.wav"></audio>
+    <a href="#after">After the media</a>
+  </main>
+  <script>
+    // /trap: a script that keeps Tab on the video, a real trap on a media element.
+    if (location.pathname === '/trap') document.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab' && document.activeElement.localName === 'video') { e.preventDefault(); document.activeElement.focus(); }
+    });
+  </script>
+</body>
+</html>

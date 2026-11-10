@@ -154,7 +154,7 @@ You rarely need these: say what you want in plain words ("errors only", "skip Li
 | `--level`, `--console` | As above. The level is passed to every audit and applied to `fix/TODO.md`; `--console` prints the fix plan as a list instead of the combined report and PDFs. |
 | `--out DIR` | The run folder. |
 
-`combine.mjs` (run by the skill) also takes `--repo PATH` (copy a repo's audit-solution-health report in), `--no-pdf`, `--no-compact`, `--chrome PATH` and `--new <name>` (create a run folder).
+`combine.mjs` (run by the skill) also takes `--repo PATH` (copy a repo's audit-solution-health report in), `--expect LIST` (the audits that ran; one that left no report becomes a "Failed" row with its kept stderr), `--no-pdf`, `--no-compact`, `--chrome PATH` and `--new <name>` (create a run folder).
 
 ### audit-fix
 
@@ -293,7 +293,7 @@ Three steps with Claude's writing in between; the skill runs them. `plan.mjs ext
 | Flag | What it does |
 |---|---|
 | `<input>` | An audit-all run folder (the plan goes into its `plan-geo/`), an audit-seo run folder or `report.json`, or a URL (the host's last audit-seo run; with none, audit-seo runs first with `--geo`). |
-| `--pages N` | Pages read in full (default 24): the start page, the longest page of each template, a second page of large templates, then pages with three or more question headings. |
+| `--pages N` | Pages read in full (default 24): the start page, a representative page of each template (a title of its own, not thin, the most recent in news and article sections), a second page of large templates, then pages with three or more question headings. |
 | `--only markup\|content` | Plan the structured data only, or the content gaps only. Default both. |
 | `--queries FILE` | Search Console queries, People Also Ask or the client's own questions to start the question map from (otherwise the questions are Claude's informed guess, and the plan says so). |
 | `--competitors a.com,b.com` | Alternatives comparison briefs may name. Without it, only alternatives the site already names. |

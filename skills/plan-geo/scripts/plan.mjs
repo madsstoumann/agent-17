@@ -21,19 +21,20 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 
 import { extractPage, pageDigest } from './lib/extract.mjs';
 import { groupTemplates, pickSample, pageSlug, indexable } from './lib/templates.mjs';
 import { verifyDraft, typesIn } from './lib/verify.mjs';
 import { readQuestions, renderProposals, QUESTION_COLUMNS } from './lib/proposals.mjs';
 import { richIssues, prop } from './lib/rich.mjs';
-import { schemaValidate } from './lib/schema.mjs';
+import { schemaValidate, SCHEMA_VALIDATOR } from './lib/schema.mjs';
 import { launch, render, findChrome } from './lib/render.mjs';
 import { targetDir, claimTarget, newRun, markRun, RUN_MARKER } from './lib/target-state.mjs';
 import { writeFixPlan, validateTasks } from './lib/tasks.mjs';
 import { mergeGraph, sampleHtml, injectLive, samplesReadme } from './lib/samples.mjs';
 
-export const VERSION = '1.2.2';
+export const VERSION = '1.3.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const log = (...a) => process.stderr.write(`${a.join(' ')}\n`);
@@ -136,6 +137,8 @@ const http = {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeout);
     try {
+      // PLAN_GEO_VALIDATOR points validator.schema.org posts at a stand-in (the tests count posts with it).
+      if (process.env.PLAN_GEO_VALIDATOR && url === SCHEMA_VALIDATOR) url = process.env.PLAN_GEO_VALIDATOR;
       const res = await fetch(url, { method: 'POST', headers: { 'user-agent': UA, ...headers }, body, signal: ctrl.signal });
       return { ok: res.ok, status: res.status, body: await res.text() };
     } catch (e) { return { ok: false, status: 0, body: null, error: e?.message || String(e) }; } finally { clearTimeout(timer); }
@@ -290,12 +293,59 @@ export function draftPage(run, inv, slug) {
   return { slug: pageSlugName, page: readJson(path.join(pages, `${pageSlugName}.json`)), template: own && t?.example && t.example !== own ? { key: t.key, example: t.example } : null };
 }
 
+const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
+
+/** validator.schema.org rate-limits a burst of posts (HTTP 429): wait and try again, twice. */
+async function validateWithRetry(html, waits = [5000, 15000]) {
+  let v = await schemaValidate(http, { html });
+  for (const ms of waits) {
+    if (v.ok || !/429|rate/i.test(String(v.error || ''))) break;
+    log(`validator.schema.org rate limit: waiting ${ms / 1000} s`);
+    await sleep(ms);
+    v = await schemaValidate(http, { html });
+  }
+  return v;
+}
+
+
+/**
+ * validator.schema.org answers for this run, by the SHA-256 of the posted HTML, in
+ * <run>/markup/validator.json. check, samples and build share it, so a draft or sample that has not
+ * changed is never posted twice (the validator rate-limits a burst with HTTP 429). Only answers
+ * are kept, never failures.
+ */
+function validatorCache(run) {
+  const file = path.join(run, 'markup', 'validator.json');
+  const data = readJson(file) || {};
+  const key = (html) => crypto.createHash('sha256').update(html).digest('hex');
+  return {
+    get: (html) => data[key(html)] || null,
+    set(html, v) { data[key(html)] = v; fs.mkdirSync(path.dirname(file), { recursive: true }); writeJson(file, data); },
+  };
+}
+
+const RATE = /429|rate/i;
+
+/** Validate through the run's cache: { ok, objects, errors, warnings, messages, cached } or { ok: false, error }. */
+async function validateCached(cache, html, { limited = null } = {}) {
+  const hit = cache.get(html);
+  if (hit) return { ...hit, ok: true, cached: true };
+  if (limited) return { ok: false, error: limited };
+  const v = await validateWithRetry(html);
+  if (!v.ok) return { ok: false, error: v.error };
+  const out = { objects: v.objects, errors: v.errors, warnings: v.warnings, messages: v.nodes.flatMap((n) => [...n.errors, ...n.warnings].map((e) => `${n.types.join('/')}: ${e.property || ''} ${e.type || ''}`.trim())).slice(0, 10) };
+  cache.set(html, out);
+  return { ...out, ok: true, cached: false };
+}
+
 async function check(run, opts, { quiet = false } = {}) {
   const inv = readJson(path.join(run, 'inventory.json'));
   if (!inv) throw new Error(`no inventory.json in ${run}: run "plan.mjs extract" first`);
   const dir = path.join(run, 'markup');
   const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.jsonld')).sort() : [];
   const drafts = [];
+  const cache = validatorCache(run);
+  let limited = null; // after a 429 that outlasts the retries, the remaining drafts are not posted
   for (const f of files) {
     const slug = f.replace(/\.jsonld$/, '');
     const d = { file: `markup/${f}`, slug, page: null, types: [], parseError: null, notOnPage: [], required: [], recommended: [], validator: null };
@@ -307,10 +357,15 @@ async function check(run, opts, { quiet = false } = {}) {
     if (target?.page) { d.page = target.page.url; d.notOnPage = verifyDraft(data, target.page); } else d.noPage = true;
     if (target?.template) d.alsoTemplate = target.template;
     for (const r of richIssues([data])) { for (const p of r.required) d.required.push(`${r.type}.${p}`); for (const p of r.recommended) d.recommended.push(`${r.type}.${p}`); }
-    if (opts.remote) {
+    // build --samples validated each draft inside its sample a moment ago: reuse that answer.
+    const fromSample = opts.sampleResults?.get(slug);
+    if (opts.remote && fromSample) d.validator = { ...fromSample };
+    else if (opts.remote) {
       const html = `<!doctype html><html><head><title>draft</title><script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script></head><body></body></html>`;
-      const v = await schemaValidate(http, { html });
-      d.validator = v.ok ? { objects: v.objects, errors: v.errors, warnings: v.warnings, messages: v.nodes.flatMap((n) => [...n.errors, ...n.warnings].map((e) => `${n.types.join('/')}: ${e.property || ''} ${e.type || ''}`.trim())).slice(0, 10) } : { error: v.error };
+      const v = await validateCached(cache, html, { limited });
+      const { ok, cached, ...rest } = v;
+      d.validator = ok ? rest : { error: v.error };
+      if (!ok && RATE.test(String(v.error || ''))) limited = `${v.error}; paste the draft into validator.schema.org by hand`;
     }
     drafts.push(d);
   }
@@ -330,10 +385,10 @@ export function checkLine(d) {
   if (d.noPage) bits.push('no page to check against (name it after a page slug, a template slug or "site")');
   // A draft named after a page is meant for that page: say what it matched, and only mention the
   // template of the same name as the other draft one could write, not as a naming mistake.
-  if (d.alsoTemplate) bits.push(`checked against the page ${d.page}, which its name matches (markup for every "${d.alsoTemplate.key}" page would be a separate draft, ${d.alsoTemplate.example}.jsonld, checked against that template's example)`);
+  if (d.alsoTemplate) bits.push(`checked against ${d.page}, the page it is named after, as intended; keep the file name. Only if every "${d.alsoTemplate.key}" page needs markup too, add a second draft for that, ${d.alsoTemplate.example}.jsonld, checked against the template's example`);
   if (d.notOnPage.length) bits.push(`${d.notOnPage.length} value(s) not on the page: ${d.notOnPage.slice(0, 4).map((f) => `${f.path} "${String(f.value).slice(0, 40)}"`).join('; ')}`);
   if (d.required.length) bits.push(`for Google's rich result also needs ${d.required.join(', ')} (leave out when the page does not show it)${d.slug === 'site' ? '; the site graph is on every page, so move that node to the draft for its own template' : ''}`);
-  if (d.validator?.errors) bits.push(`validator.schema.org: ${d.validator.errors} error(s): ${d.validator.messages.slice(0, 3).join('; ')}`);
+  if (d.validator?.errors) bits.push(`validator.schema.org${d.validator.via ? ` (in ${d.validator.via})` : ''}: ${d.validator.errors} error(s): ${d.validator.messages.slice(0, 3).join('; ')}`);
   if (d.validator?.error) bits.push(`validator.schema.org not reached (${d.validator.error})`);
   if (d.validator && !d.validator.error && !d.validator.objects) bits.push('validator.schema.org found no objects');
   const status = d.notOnPage.length || d.validator?.errors || d.noPage ? 'WARN' : 'OK  ';
@@ -352,20 +407,6 @@ export function topTypes(data) {
 
 // ---------------------------------------------------------------- samples
 
-const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
-
-/** validator.schema.org rate-limits a burst of posts (HTTP 429): wait and try again, twice. */
-async function validateWithRetry(html, waits = [5000, 15000]) {
-  let v = await schemaValidate(http, { html });
-  for (const ms of waits) {
-    if (v.ok || !/429|rate/i.test(String(v.error || ''))) break;
-    log(`validator.schema.org rate limit: waiting ${ms / 1000} s`);
-    await sleep(ms);
-    v = await schemaValidate(http, { html });
-  }
-  return v;
-}
-
 /** samples/<slug>.html for each draft: the site graph and the draft as one @graph; with --live also <slug>.live.html. */
 async function samples(run, opts, { quiet = false } = {}) {
   const inv = readJson(path.join(run, 'inventory.json'));
@@ -381,6 +422,7 @@ async function samples(run, opts, { quiet = false } = {}) {
   const outDir = path.join(run, 'samples');
   fs.mkdirSync(outDir, { recursive: true });
   const rows = [];
+  const cache = validatorCache(run);
   let limited = null; // after a 429 that outlasts the retries, the remaining samples are not posted
   for (const slug of slugs) {
     const draft = slug === 'site' ? null : parse(`${slug}.jsonld`);
@@ -399,11 +441,11 @@ async function samples(run, opts, { quiet = false } = {}) {
     const file = `${slug}.html`;
     fs.writeFileSync(path.join(outDir, file), html);
     let validator = null;
-    if (opts.remote && limited) validator = { error: limited };
-    else if (opts.remote) {
-      const v = await validateWithRetry(html);
-      validator = v.ok ? { errors: v.errors, warnings: v.warnings } : { error: v.error };
-      if (!v.ok && /429|rate/i.test(String(v.error || ''))) limited = `${v.error}; paste the file into validator.schema.org by hand`;
+    if (opts.remote) {
+      const v = await validateCached(cache, html, { limited });
+      const { ok, cached, ...rest } = v;
+      validator = ok ? rest : { error: v.error };
+      if (!ok && RATE.test(String(v.error || ''))) limited = `${v.error}; paste the file into validator.schema.org by hand`;
     }
     let live = null; let removed = 0;
     if (opts.live && page?.url) {
@@ -414,7 +456,7 @@ async function samples(run, opts, { quiet = false } = {}) {
         fs.writeFileSync(path.join(outDir, live), injected.html);
       } else log(`live copy of ${page.url} skipped: ${res.error || `HTTP ${res.status}`}`);
     }
-    rows.push({ file, live, url: page?.url || null, types: topTypes(graph), validator, required, notOnPage, removed });
+    rows.push({ slug, file, live, url: page?.url || null, types: topTypes(graph), validator, required, notOnPage, removed });
   }
   fs.writeFileSync(path.join(outDir, 'README.md'), samplesReadme({ host: inv.host, rows, live: opts.live }));
   if (!quiet) {
@@ -434,8 +476,21 @@ async function build(run, opts) {
   const inv = readJson(path.join(run, 'inventory.json'));
   if (!inv) throw new Error(`no inventory.json in ${run}: run "plan.mjs extract" first`);
   const problems = [];
-  const checked = await check(run, opts, { quiet: true });
-  if (opts.samples) await samples(run, opts, { quiet: true });
+  // With --samples, samples go first and check reuses their validator answers: each sample holds
+  // the draft (merged with the site graph), and posting every draft again right after hits HTTP 429.
+  const sampleResults = new Map();
+  if (opts.samples) {
+    const rows = await samples(run, opts, { quiet: true });
+    const homeSlug = inv.templates.find((t) => t.key === 'home')?.slug;
+    for (const r of rows) {
+      if (!r.validator || r.validator.error) continue;
+      const v = { ...r.validator, via: `samples/${r.file}` };
+      sampleResults.set(r.slug, v);
+      // The start page's sample carries the site graph too.
+      if (r.slug === homeSlug && !sampleResults.has('site')) sampleResults.set('site', v);
+    }
+  }
+  const checked = await check(run, { ...opts, sampleResults }, { quiet: true });
   const hasSamples = fs.existsSync(path.join(run, 'samples', 'README.md'));
 
   const qFile = path.join(run, 'content', 'questions.csv');

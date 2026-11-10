@@ -13,14 +13,14 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { discoverReports, headline, parseSummary, combinedMarkdown, combinedHtml, siteMismatches } from './lib/report.mjs';
+import { discoverReports, headline, parseSummary, combinedMarkdown, combinedHtml, siteMismatches, failedAudits, EXPECT_KEYS } from './lib/report.mjs';
 import { printPdf, pdfDestPages } from './lib/pdf.mjs';
 import { writeFixPlan } from './lib/tasks.mjs';
 import { readStack } from './lib/stack.mjs';
 import { parseLevel, levelOfWord, consoleList } from './lib/levels.mjs';
 import { targetDir, claimTarget, newRun, previousRuns, readNotes, targetName } from './lib/target-state.mjs';
 
-export const VERSION = '1.17.0';
+export const VERSION = '1.18.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.join(HERE, '..', 'assets');
 const SIBLINGS = path.join(HERE, '..', '..');
@@ -38,6 +38,9 @@ Flags:
   --repo PATH          Copy PATH's audit-solution-health report (<reports>/audit-solution-health/<repo name>/report.md,
                        or PATH/.audit-solution-health/report.md for --in-repo setups) into <run-dir>/audit-solution-health-<repo name>/ first.
                        Repeat for several repos.
+  --expect LIST        The audits that were run (launch,a11y,seo,eco,privacy,infra,security,health). One that left
+                       no report folder (or no report.md) is a failure: a "Failed" row in the report, with the
+                       last lines of <run-dir>/logs/<folder>.stderr when its stderr was kept there.
   --no-pdf             Write report.md and the HTML files only.
   --no-compact         Skip report-compact.html and report-compact.pdf (the full report with long lists
                        cut to five rows, passing checks and reference sections left out).
@@ -54,7 +57,7 @@ Flags:
 const STYLES = { serif: 'serif', sans: 'sans', editorial: 'serif', modern: 'sans' };
 
 export function parseArgs(argv) {
-  const a = { dir: null, style: 'serif', repos: [], pdf: true, compact: true, chrome: null, newName: null, help: false, levels: parseLevel('all'), console: false, report: false };
+  const a = { dir: null, style: 'serif', repos: [], expect: [], pdf: true, compact: true, chrome: null, newName: null, help: false, levels: parseLevel('all'), console: false, report: false };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i];
     const next = () => { if (i + 1 >= argv.length) throw new Error(`${v} needs a value`); return argv[++i]; };
@@ -64,7 +67,11 @@ export function parseArgs(argv) {
       if (!STYLES[s]) throw new Error(`Unknown style "${s}". Styles: serif (editorial), sans (modern)`);
       a.style = STYLES[s];
     } else if (v === '--repo') a.repos.push(next());
-    else if (v === '--no-pdf') a.pdf = false;
+    else if (v === '--expect' || v.startsWith('--expect=')) {
+      a.expect = (v.includes('=') ? v.split('=')[1] : next()).split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+      const bad = a.expect.filter((k) => !EXPECT_KEYS[k]);
+      if (bad.length) throw new Error(`--expect: unknown audit ${bad.join(', ')} (${Object.keys(EXPECT_KEYS).join(', ')})`);
+    } else if (v === '--no-pdf') a.pdf = false;
     else if (v === '--no-compact') a.compact = false;
     else if (v === '--chrome') a.chrome = next();
     else if (v === '--level' || v.startsWith('--level=')) a.levels = parseLevel(v.includes('=') ? v.split('=')[1] : next());
@@ -207,6 +214,8 @@ export async function combine(args, { now = new Date(), log = (m) => process.std
   for (const c of collectSolutionHealth(runDir, args.repos)) log(c.ok ? `audit-solution-health: copied ${c.repo} -> ${c.dest}` : `audit-solution-health: no report for ${c.repo} (run audit-solution-health there first)`);
 
   const reports = discoverReports(runDir);
+  const failed = failedAudits(runDir, args.expect || [], reports);
+  for (const f of failed) log(`FAILED ${f.kind}: ${f.reason}${f.stderr ? `; its stderr ends:\n  ${f.stderr.split('\n').join('\n  ')}` : f.log ? ` (${f.log} is empty)` : '; its stderr was not kept'}`);
   if (!reports.length) throw new Error(`No reports in ${runDir}. Expected sub-folders like audit-launch/, audit-a11y/, audit-privacy/, audit-infra/, audit-security-<repo>/, audit-solution-health-<repo>/ with a report.md each.`);
   const summaryFile = path.join(runDir, 'summary.md');
   let summaryMd = fs.existsSync(summaryFile) ? fs.readFileSync(summaryFile, 'utf8') : '';
@@ -222,12 +231,12 @@ export async function combine(args, { now = new Date(), log = (m) => process.std
   const toolVersions = Object.fromEntries([...new Set(reports.map((r) => r.kind))].map((k) => [k, skillVersion(k)]).filter(([, v]) => v));
 
   const stack = readStack(runDir);
-  const md = combinedMarkdown({ summary, reports, heads, date: now, version: VERSION, stack });
+  const md = combinedMarkdown({ summary, reports, heads, date: now, version: VERSION, stack, failed });
   // --console alone: no combined report files, only the fix plan and the list on stdout.
   const files = !args.console || args.report;
-  const htmlArgs = { summary, reports, heads, date: now, version: VERSION, css: stylesheet(args.style), style: args.style, toolVersions, stack };
+  const htmlArgs = { summary, reports, heads, date: now, version: VERSION, css: stylesheet(args.style), style: args.style, toolVersions, stack, failed };
   const html = combinedHtml(htmlArgs);
-  const out = { md: files ? path.join(runDir, 'report.md') : null, html: files ? path.join(runDir, 'report.html') : null, pdf: null, todo: null, reports: reports.map((r) => r.folder) };
+  const out = { md: files ? path.join(runDir, 'report.md') : null, html: files ? path.join(runDir, 'report.html') : null, pdf: null, todo: null, reports: reports.map((r) => r.folder), failed };
   if (files) {
     fs.writeFileSync(out.md, md);
     fs.writeFileSync(out.html, html);
@@ -291,7 +300,7 @@ async function main() {
     const out = await combine(args);
     if (out.list) process.stdout.write(`${out.list}\n\n`);
     if (args.console && !args.report) { process.stdout.write(`fix plan: ${out.todo || '(not written: no tasks.json)'}\n`); return; }
-    process.stdout.write(`combined: ${out.reports.join(', ')}\n\nreport.md:   ${out.md}\nreport.html: ${out.html}\nreport.pdf:  ${out.pdf || '(not written)'}\ncompact:     ${out.compactPdf || out.compactHtml || '(not written)'}\nfix plan:    ${out.todo || '(not written)'}\n`);
+    process.stdout.write(`combined: ${out.reports.join(', ')}\n${out.failed.length ? `FAILED:   ${out.failed.map((f) => `${f.kind} (${f.reason})`).join(', ')}\n` : ''}\nreport.md:   ${out.md}\nreport.html: ${out.html}\nreport.pdf:  ${out.pdf || '(not written)'}\ncompact:     ${out.compactPdf || out.compactHtml || '(not written)'}\nfix plan:    ${out.todo || '(not written)'}\n`);
   } catch (e) {
     process.stderr.write(`${e.message}\n`);
     process.exit(1);

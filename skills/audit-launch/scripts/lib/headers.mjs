@@ -349,6 +349,22 @@ export function lintAssetCaching({ url = '', headers = {} } = {}) {
 
 // ---------------------------------------------------------------- hsts, cors, cross-origin
 
+/** One year: the hstspreload.org minimum and the usual recommendation. */
+export const HSTS_YEAR = 31536000;
+
+/**
+ * hstsVerdict(value) -> { status: 'pass'|'warn', note }: the HSTS row's own verdict. Below one year
+ * is a warning (the securityheaders.com grade above keeps its 180-day rule); a missing
+ * includeSubDomains is mentioned with it, since the subdomains are then left to first-visit http.
+ */
+export function hstsVerdict(value) {
+  const p = parseHsts(value);
+  if (p.maxAge == null) return { status: 'warn', note: 'no valid max-age' };
+  if (p.maxAge >= HSTS_YEAR) return { status: 'pass', note: '' };
+  const days = Math.round(p.maxAge / 86400);
+  return { status: 'warn', note: `max-age ${p.maxAge} (${days} days) is under one year${p.includeSubDomains ? '' : ', and there is no includeSubDomains'}` };
+}
+
 /**
  * parseHsts(value) -> { maxAge: number|null, includeSubDomains: boolean, preload: boolean },
  * or null when the header is absent or empty.

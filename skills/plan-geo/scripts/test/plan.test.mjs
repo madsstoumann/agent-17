@@ -7,8 +7,8 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { templateKey, groupTemplates, pickSample, pageSlug, guessType } from '../lib/templates.mjs';
-import { toMarkdown, questionPairs, visibleDates, leadDate, breadcrumbs, organisation, extractPage } from '../lib/extract.mjs';
+import { templateKey, groupTemplates, pickSample, siteName, properTitle, pageDate, pageSlug, guessType } from '../lib/templates.mjs';
+import { toMarkdown, questionPairs, visibleDates, leadDate, breadcrumbs, organisation, extractPage, pageDigest } from '../lib/extract.mjs';
 import { verifyDraft, norm, onPage, knownUrl } from '../lib/verify.mjs';
 import { parseCsv, readQuestions, renderProposals } from '../lib/proposals.mjs';
 import { extractMeta } from '../lib/html.mjs';
@@ -79,11 +79,36 @@ test('groupTemplates and pickSample: home first, case duplicates once, legal ski
   const s = pickSample(t, pages, { max: 10 });
   assert.equal(s[0].url, 'https://x.com/');
   assert.ok(!s.some((x) => x.template === 'legal'), 'legal pages are not read');
-  assert.equal(s.find((x) => x.template === 'blog').url, 'https://x.com/blog/2025/post-5', 'the longest page first');
+  assert.equal(s.find((x) => x.template === 'blog').url, 'https://x.com/blog/2025/post-5', 'undated and untitled alike: the longest');
   assert.ok(s.some((x) => x.url === 'https://x.com/products/b' && /question headings/.test(x.why)));
   assert.equal(pickSample(t, pages, { max: 2 }).length, 2);
   assert.equal(pageSlug('https://x.com/'), 'home');
   assert.equal(pageSlug('https://x.com/Blog/2025/Post-1/'), 'blog-2025-post-1');
+});
+
+test('pickSample: the example page is representative and recent with a title of its own, not the longest', () => {
+  const news = (y, slug, title, words, shown) => page(`https://example.com/about/news/${y}/${slug}`, { title: `${title} | Example`, words, sig: { questionHeadings: 0, visibleDate: shown } });
+  const pages = [
+    page('https://example.com/', { title: 'Welcome to Example | Example' }),
+    news(2023, 'statement-by-the-board', '', 2400, 'June 7, 2023'), // longest, titled only with the site name
+    news(2022, 'old-award', 'Example wins an award', 900, 'December 1, 2022'),
+    news(2026, 'new-client', 'A client selects Example One', 650, 'May 20, 2026'),
+    news(2026, 'stub', 'Short note', 40, 'June 1, 2026'), // thin for the template
+    news(2025, 'award', 'Example wins best platform', 700, 'November 7, 2025'),
+  ];
+  pages[1].title = 'Example';
+  assert.equal(siteName(pages), 'example');
+  assert.equal(properTitle('Example', 'example'), false);
+  assert.equal(properTitle('Example | Example', 'example'), false);
+  assert.equal(properTitle('A client selects Example One | Example', 'example'), true);
+  assert.equal(pageDate(pages[3]), '2026-05-20');
+  const s = pickSample(groupTemplates(pages), pages, { max: 10 });
+  const ex = s.find((x) => x.template === 'about/news');
+  assert.equal(ex.url, 'https://example.com/about/news/2026/new-client', 'recent, a proper title, not thin');
+  assert.equal(ex.why, 'representative page of the template');
+  assert.equal(s.find((x) => x.why === 'second page of a large template').url, 'https://example.com/about/news/2025/award');
+  const listing = [page('https://example.com/docs/a', { title: 'A guide | Example', words: 300 }), page('https://example.com/docs/b?page=2', { title: 'B guide | Example', words: 350 })];
+  assert.equal(pickSample(groupTemplates(listing), listing).find((x) => x.template === 'docs').url, 'https://example.com/docs/a', 'a query-string variant is not the example');
 });
 
 // ---------------------------------------------------------------- extract
@@ -121,6 +146,16 @@ test('toMarkdown, questionPairs, dates and the page date', () => {
   assert.equal(leadDate('March 7 2023\n\n# Title\n\nText.'), '2023-03-07');
   assert.equal(leadDate('# Title\n\nPublished 4 June 2024\n\nText.'), '2024-06-04');
   assert.equal(leadDate(`# Title\n\n${'word '.repeat(200)}\n\nThe deadline is 1 January 2027.`), null, 'a date deep in the text is not the page date');
+  // A news item dated above its h1 whose first paragraph cites an older order: the shown date wins.
+  const news = 'June 7, 2023\n\n# Statement by the Board\n\n- News\n\nWith reference to the announcement of 25 May 2023 under Executive Order no. 636 of 15 May 2020 on Takeover Offers.';
+  assert.equal(leadDate(news), '2023-06-07', 'first date in reading order, not the earliest');
+  const meta = (d) => `<html lang="en"><head><title>Example</title><meta property="article:published_time" content="${d}T08:00:00Z"></head><body><main><h1>Statement</h1><p>Board statement.</p><p>Published ${d === '2023-06-07' ? '7 June 2023' : 'some day'}.</p>${'<p>word word word word word word word word word word word word word word word word word word word word.</p>'.repeat(8)}</main></body></html>`;
+  const shown = extractPage(meta('2023-06-07'), 'https://example.com/news/statement');
+  assert.equal(shown.publishedMeta, '2023-06-07');
+  assert.equal(shown.leadDate, '2023-06-07');
+  const unshown = extractPage(meta('2021-01-02'), 'https://example.com/news/statement');
+  assert.equal(unshown.leadDate, null, 'article:published_time alone is not a date the page shows');
+  assert.match(pageDigest(unshown), /article:published_time 2021-01-02 \(not shown on the page\)/);
 });
 
 test('extractPage: main content, breadcrumb, organisation details, no cookie banner', () => {
@@ -244,9 +279,9 @@ test('draftPage: a page slug wins over a template of the same name', () => {
 test('checkLine: a draft named after a page reads as matched to that page, not as misnamed', () => {
   const line = checkLine({ file: 'markup/besog.jsonld', slug: 'besog', page: 'https://example.dk/besog', types: ['WebPage'], notOnPage: [], required: [], recommended: [], validator: null, alsoTemplate: { key: 'besog', example: 'besog-aarskort' } });
   assert.match(line, /^OK {3}markup\/besog\.jsonld/);
-  assert.match(line, /checked against the page https:\/\/example\.dk\/besog, which its name matches/);
-  assert.match(line, /would be a separate draft, besog-aarskort\.jsonld/);
-  assert.doesNotMatch(line, /not the example|name the draft/);
+  assert.match(line, /checked against https:\/\/example\.dk\/besog, the page it is named after, as intended; keep the file name/);
+  assert.match(line, /Only if every "besog" page needs markup too, add a second draft for that, besog-aarskort\.jsonld/);
+  assert.doesNotMatch(line, /not the example|name the draft|would be a separate draft|rename/);
 });
 
 test('verifyDraft: event dates the page shows in Danish pass; a date without a year is flagged', () => {
@@ -491,6 +526,57 @@ test('extract → check → build on a local site', async () => {
     assert.match(none.err, /does not exist/);
   } finally {
     server.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// validator.schema.org rate-limits a burst: build --samples must reuse the answers this run already
+// has (samples first, then check reads them) instead of posting every draft again.
+test('build --samples reuses the run\'s validator answers instead of posting every draft again', { timeout: 120000 }, async () => {
+  const home = '<html lang="en"><head><title>Acme</title></head><body><main><h1>Acme</h1><p>Acme makes investment software for pension funds.</p></main></body></html>';
+  const server = await serve({ '/': home, '/insights/what-is-an-ibor': HTML });
+  let posts = 0;
+  const answer = `)]}'\n${JSON.stringify({ numObjects: 1, totalNumErrors: 0, totalNumWarnings: 0, tripleGroups: [{ nodes: [{ types: [{ value: 'Article' }] }] }] })}`;
+  // Two posts are fine; any more is a burst and gets HTTP 429, as the real validator does.
+  const validator = http.createServer((req, res) => {
+    req.resume();
+    req.on('end', () => {
+      posts += 1;
+      if (posts > 2) { res.writeHead(429); res.end('slow down'); return; }
+      res.writeHead(200, { 'content-type': 'application/json' }); res.end(answer);
+    });
+  });
+  await new Promise((r) => validator.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const env = { PLAN_GEO_VALIDATOR: `http://127.0.0.1:${validator.address().port}/validate` };
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-geo-'));
+  try {
+    const seoRun = path.join(tmp, 'seo-run');
+    fs.mkdirSync(seoRun);
+    fs.writeFileSync(path.join(seoRun, 'report.json'), JSON.stringify({ tool: 'audit-seo', mode: 'site', site: { url: `${base}/`, host: `127.0.0.1:${server.address().port}` }, pages: [page(`${base}/`), page(`${base}/insights/what-is-an-ibor`)] }));
+    const out = path.join(tmp, 'plan');
+    assert.equal((await run(['extract', seoRun, '--out', out, '--no-render'], { AUDIT_OUT_DIR: path.join(tmp, 'reports') })).code, 0);
+    const inv = JSON.parse(fs.readFileSync(path.join(out, 'inventory.json'), 'utf8'));
+    fs.mkdirSync(path.join(out, 'markup'));
+    fs.writeFileSync(path.join(out, 'markup', 'insights.jsonld'), JSON.stringify({ '@context': 'https://schema.org', '@type': 'Article', headline: 'What is an IBOR?' }));
+    fs.writeFileSync(path.join(out, 'markup', 'site.jsonld'), JSON.stringify({ '@context': 'https://schema.org', '@type': 'Organization', name: 'Acme', url: `${base}/` }));
+    fs.writeFileSync(path.join(out, 'summary.md'), 'Add Article markup first.');
+    fs.writeFileSync(inv.profile, '# Acme\n');
+    fs.writeFileSync(path.join(out, 'tasks.json'), JSON.stringify({ tasks: [{ id: 'G1', owner: 'human', title: 'Article markup', fix: 'Follow markup/insights.jsonld', sources: ['plan-geo'] }] }));
+
+    const sm = await run(['samples', out], env);
+    assert.equal(sm.code, 0, sm.err);
+    assert.equal(posts, 2, 'one post per sample');
+    const b = await run(['build', out, '--samples'], env);
+    assert.equal(b.code, 0, b.err);
+    assert.equal(posts, 2, 'build --samples right after samples posts nothing new');
+    assert.doesNotMatch(b.out, /not reached/);
+    assert.doesNotMatch(fs.readFileSync(path.join(out, 'samples', 'README.md'), 'utf8'), /not reached/);
+    const ck = JSON.parse(fs.readFileSync(path.join(out, 'markup', 'check.json'), 'utf8'));
+    assert.deepEqual(ck.drafts.map((d) => [d.slug, d.validator?.via]), [['insights', 'samples/insights.html'], ['site', 'samples/site.html']]);
+    assert.ok(ck.drafts.every((d) => d.validator && !d.validator.error && d.validator.errors === 0));
+  } finally {
+    server.close(); validator.close();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { siteUrl, envHeaders, launchArgs, frameAncestors, blocklistRows, diffRows, runSite, renderSiteMarkdown, SITE_GROUPS, LAUNCH_SCRIPT } from '../lib/site.mjs';
+import { siteUrl, envHeaders, launchArgs, frameAncestors, publicWildcard, blocklistRows, diffRows, runSite, renderSiteMarkdown, SITE_GROUPS, LAUNCH_SCRIPT } from '../lib/site.mjs';
 import { parseArgs, resolveSiteStateDir, resolveSiteBaseline } from '../scan.mjs';
 import { parseLevel } from '../lib/levels.mjs';
 
@@ -44,6 +44,25 @@ test('frameAncestors: CSP frame-ancestors wins, X-Frame-Options alone is a warni
   assert.equal(frameAncestors({ 'x-frame-options': 'ALLOW-FROM https://example.org' }).status, 'fail');
   assert.equal(frameAncestors({}).status, 'fail');
   assert.equal(frameAncestors({}).id, 'headers.frame-ancestors');
+});
+
+test('frameAncestors: wildcards on public hosting suffixes warn; the fix keeps the X-Frame-Options value sent', () => {
+  const open = frameAncestors({ 'content-security-policy': "frame-ancestors 'self' https://*.cms.example.com https://*.vercel.app", 'x-frame-options': 'DENY' });
+  assert.equal(open.status, 'warn');
+  assert.match(open.evidence, /https:\/\/\*\.vercel\.app is a public hosting suffix/);
+  assert.doesNotMatch(open.evidence, /cms\.example\.com is/, 'a site\'s own wildcard is not flagged');
+  assert.match(open.fix, /keep X-Frame-Options: DENY/);
+  for (const src of ['*.netlify.app', 'https://*.github.io', 'https://*.azurewebsites.net:443', '*.pages.dev/']) {
+    assert.equal(frameAncestors({ 'content-security-policy': `frame-ancestors ${src}` }).status, 'warn', src);
+  }
+  assert.equal(publicWildcard('https://app.vercel.app'), null, 'one exact deployment is fine');
+  assert.equal(publicWildcard('https://*.example.vercel.app'), null, 'only a wildcard on the suffix itself');
+  assert.equal(frameAncestors({ 'content-security-policy': "frame-ancestors 'self' https://*.cms.example.com" }).status, 'pass');
+  // Item 3: the fix text keeps whatever valid X-Frame-Options the site already sends.
+  assert.match(frameAncestors({ 'x-frame-options': 'DENY' }).fix, /keep X-Frame-Options: DENY/);
+  assert.doesNotMatch(frameAncestors({ 'x-frame-options': 'deny' }).fix, /SAMEORIGIN/);
+  assert.match(frameAncestors({ 'x-frame-options': 'SAMEORIGIN' }).fix, /keep X-Frame-Options: SAMEORIGIN/);
+  assert.match(frameAncestors({}).fix, /add X-Frame-Options: SAMEORIGIN/);
 });
 
 test('blocklistRows: listed is a blocker, a missing key is a skip, never a pass', () => {

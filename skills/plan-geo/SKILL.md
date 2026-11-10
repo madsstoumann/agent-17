@@ -4,7 +4,7 @@ description: Use when someone wants to know what structured data and what conten
 argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--no-remote] [--samples] [--live]"
 allowed-tools: Bash(node:*), Read, Write
 metadata:
-  version: "1.2.2"
+  version: "1.3.0"
 ---
 
 # GEO plan
@@ -36,7 +36,7 @@ an audit-seo run folder or `report.json`, or the site's URL (the host's last aud
 with none, audit-seo runs first with `--geo`, a minute or two). `--queries`, `--competitors`, `--repo` and `--only`
 are recorded in `inventory.json` for the later steps (a queries file is copied into the run
 folder as `input-queries.<ext>`). Default `--pages 24`: the start
-page, the longest page of each template, a second page of each large template, then pages with
+page, a representative page of each template (a title of its own, not thin, the most recent in news and article sections), a second page of each large template, then pages with
 three or more question headings. Pages whose served HTML is thin are rendered in Chrome
 (`--no-render` turns that off). `--header` is the WAF bypass header, as for the audit skills.
 
@@ -126,6 +126,11 @@ the page does not show. Fix the drafts until each line is OK or the remaining no
 deliberate (say why in the draft's `.md`): a value flagged "not on the page" is removed, or the
 `.md` says the page must show it first.
 
+validator.schema.org rate-limits a burst of posts (HTTP 429). Every answer is kept for the run in
+`markup/validator.json` by the hash of what was posted, so `check`, `samples` and `build` post only
+drafts and samples that changed since the last post; after a 429 that outlasts the retries the rest
+are left unposted (paste them by hand).
+
 ### Samples (when the drafts are to be shown)
 
 When the user wants to show the client the markup, or asks for sample pages or files to paste
@@ -145,7 +150,8 @@ page, types, validator.schema.org result (`--no-remote` skips it; after a rate l
 left for pasting by hand) and what Google's rich-result rules still ask for. Fix any sample with
 values not on the page before it goes to the client; a missing price or rating the page does not
 show stays missing, and the README says the Rich Results Test marks that item invalid.
-`build --samples` writes them as part of the build and links them from `proposals.md`.
+`build --samples` writes them as part of the build (first, so its check reuses their validator
+answers instead of posting every draft again) and links them from `proposals.md`.
 
 ### Content (skip with `--only markup`)
 

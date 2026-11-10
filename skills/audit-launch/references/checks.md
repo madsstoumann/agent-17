@@ -75,7 +75,7 @@ On **dev/staging** (`--env dev|staging`, or guessed from the hostname), findings
 | id | Meaning | Rule | Fix |
 |---|---|---|---|
 | `headers.grade` | securityheaders.com-style grade, **estimated locally** | A+/A pass; B/C warn; D–F fail | Add missing headers; resolve warnings for A+. |
-| `headers.hsts` … `headers.permissions-policy` | Each of the six headers | missing fail; HSTS max-age < 6 months warn; XCTO not `nosniff` fail; report-only CSP warn | One line each in the server/CDN/framework config. |
+| `headers.hsts` … `headers.permissions-policy` | Each of the six headers | missing fail; HSTS max-age under one year (31536000, the preload minimum) warn; XCTO not `nosniff` fail; report-only CSP warn | One line each in the server/CDN/framework config. |
 | `headers.csp-lint` | `unsafe-inline`/`unsafe-eval`/wildcards/no script restriction/bypass hosts/missing `frame-ancestors` | any warn | Nonces or hashes, `strict-dynamic`, `object-src 'none'`, `base-uri 'self'`. |
 | `headers.info-leak` | `server` with a version, `x-powered-by`, `x-aspnet-version`, … | warn | Remove the headers. |
 | `headers.cookies` | Flags on first-response cookies | `SameSite=None` without Secure fail; no Secure warn; sensitive without HttpOnly warn | `Secure; HttpOnly; SameSite=Lax`. |

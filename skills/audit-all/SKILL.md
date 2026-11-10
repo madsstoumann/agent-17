@@ -4,7 +4,7 @@ description: Use when someone wants the full audit of a site and its code in one
 argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--geo] [--yes] [--style serif|sans|editorial|modern] [--level error|warn|error,warn|all] [--console] [--out DIR]"
 allowed-tools: AskUserQuestion, Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.17.0"
+  version: "1.18.0"
 ---
 
 # Audit all
@@ -171,7 +171,15 @@ folder the output goes to. Run folders are marked with an `.audit-run` file and 
 
 ## 3. Run the audits
 
-Run them one after another, each into its own sub-folder of the run folder. Folder names matter:
+Run them one after another, each into its own sub-folder of the run folder. Keep each audit's
+stderr: send it to `<run>/logs/<folder>.stderr` (`mkdir -p "<run>/logs"`, then
+`node … 2> "<run>/logs/audit-eco.stderr"`), never to `/dev/null`. After each audit, check its exit
+code and that its folder holds its `report.md`; when one is missing, read the end of its stderr log,
+re-run that audit once, and if it fails again carry on and say so in summary.md. Pass the audits you
+ran to `combine.mjs --expect` (step 6): one that left no folder or no `report.md` gets a "Failed" row
+in the report with the last lines of its stderr, instead of silently leaving the report shorter.
+
+Folder names matter:
 `combine.mjs` finds reports by the prefix `audit-launch`, `audit-a11y`, `audit-seo`, `audit-eco`, `audit-privacy`, `audit-infra`,
 `audit-security` or `audit-solution-health`,
 optionally followed by `-<target>`. With one repo, plain names are fine; with several, add the repo
@@ -324,8 +332,12 @@ text in articles) are `owner: "human"`.
 ## 6. Combine
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/scripts/combine.mjs" "<run>" [--style serif|sans] [--repo <repo>]... [--level <level>] [--console [--report]]
+node "${CLAUDE_SKILL_DIR}/scripts/combine.mjs" "<run>" --expect <audits you ran> [--style serif|sans] [--repo <repo>]... [--level <level>] [--console [--report]]
 ```
+
+`--expect` takes the same keys as `--only` (`launch,a11y,seo,eco,privacy,infra,security,health`).
+Stdout then has a `FAILED:` line for any of them that left no report, and the report a "Failed"
+row: mention it in the verdict.
 
 `--level` writes `fix/TODO.md` and the prompts in `fix/tasks/` for the tasks at that level only
 (blocker and high are errors, medium and low warnings) and says how many were left out;

@@ -76,6 +76,43 @@ export function discoverReports(runDir) {
   return found.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind) || a.folder.localeCompare(b.folder));
 }
 
+// --expect keys -> report folder prefixes.
+export const EXPECT_KEYS = { launch: 'audit-launch', a11y: 'audit-a11y', seo: 'audit-seo', eco: 'audit-eco', privacy: 'audit-privacy', infra: 'audit-infra', security: 'audit-security', health: 'audit-solution-health' };
+
+/** The last `n` non-empty lines of a stderr log, or null. */
+function tail(file, n = 12) {
+  try {
+    const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/).filter((l) => l.trim());
+    return lines.length ? lines.slice(-n).join('\n') : null;
+  } catch { return null; }
+}
+
+/**
+ * Audits that were started (--expect) but left no report: no `<kind>` or `<kind>-<target>` folder, or
+ * a folder without report.md. -> [{ key, kind, title, folder, reason, log, stderr }]. The stderr the
+ * audit printed, when it was kept in `<run>/logs/<folder>.stderr`, comes along (last lines).
+ */
+export function failedAudits(runDir, expect = [], reports = []) {
+  const out = [];
+  const names = fs.existsSync(runDir) ? fs.readdirSync(runDir) : [];
+  for (const key of expect) {
+    const kind = EXPECT_KEYS[key];
+    if (!kind || reports.some((r) => r.kind === kind)) continue;
+    const folder = names.find((n) => (n === kind || n.startsWith(`${kind}-`)) && fs.statSync(path.join(runDir, n)).isDirectory()) || null;
+    const logs = path.join(runDir, 'logs');
+    const logName = (fs.existsSync(logs) ? fs.readdirSync(logs) : []).find((n) => n === `${folder || kind}.stderr` || (n.startsWith(`${kind}`) && n.endsWith('.stderr'))) || null;
+    const log = logName ? `logs/${logName}` : null;
+    out.push({
+      key, kind, title: KINDS[kind].title, folder,
+      reason: folder ? `${folder}/ has no report.md` : `no ${kind}/ folder was written`,
+      log, stderr: log ? tail(path.join(runDir, log)) : null,
+    });
+  }
+  return out;
+}
+
+const failedText = (f) => `Failed: ${f.reason}${f.log ? ` (stderr in ${f.log})` : ''}`;
+
 /** Split a report into its H1, the intro blocks before the first H2, and one section per H2. */
 export function splitReport(md) {
   const blocks = parseBlocks(md);
@@ -219,7 +256,7 @@ export function parseAction(text) {
 const fmtDate = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 
 /** The combined report as Markdown: summary, at-a-glance table, then every report with headings demoted one level. */
-export function combinedMarkdown({ summary, reports, heads, date, version, stack = [] }) {
+export function combinedMarkdown({ summary, reports, heads, date, version, stack = [], failed = [] }) {
   const subject = summary.meta.subject || heads.find((h) => h.target)?.target || 'Audit';
   const out = [`# ${summary.meta.title || `Audit report: ${subject}`}`, ''];
   out.push(`${subject} · ${fmtDate(date)} · audit-all ${version}`, '');
@@ -229,7 +266,9 @@ export function combinedMarkdown({ summary, reports, heads, date, version, stack
   if (body) out.push(body, '');
   out.push('## At a glance', '', '| Audit | Target | Result | Report |', '|---|---|---|---|');
   reports.forEach((r, i) => out.push(`| ${kindOf(r).title} | ${heads[i].target || ''} | ${(heads[i].result || '').replace(/\|/g, '\\|')} | \`${r.folder}/report.md\` |`));
+  for (const f of failed) out.push(`| ${f.title} | | **${failedText(f).replace(/\|/g, '\\|')}** | — |`);
   out.push('');
+  for (const f of failed) if (f.stderr) out.push(`${f.title} stderr (last lines):`, '', '```', f.stderr, '```', '');
   for (const m of siteMismatches(reports, heads, summary.meta.subject)) out.push(`> ⚠️ ${mismatchNote(m)}`, '');
   for (const r of reports) {
     out.push(demote(r.md).trim(), '');
@@ -281,11 +320,11 @@ function renderSummary(summary) {
   return parts.join('\n');
 }
 
-function glanceTable(reports, heads) {
-  const rows = reports.map((r, i) => {
+function glanceTable(reports, heads, failed = []) {
+  const rows = [...reports.map((r, i) => {
     const h = heads[i];
     return `<tr><td>${kindOf(r).title}${h.target ? `<span class="sub mono">${escapeHtml(h.target)}</span>` : ''}</td><td>${escapeHtml(h.result || '')}</td><td class="mono">${escapeHtml(r.folder)}/report.md</td></tr>`;
-  }).join('\n');
+  }), ...failed.map((f) => `<tr class="failed"><td>${escapeHtml(f.title)}</td><td><span class="mk fail"></span><strong>${escapeHtml(failedText(f))}</strong></td><td class="mono">—</td></tr>`)].join('\n');
   return `<div class="tbl-wrap"><table class="glance"><thead><tr><th>Audit</th><th>Result</th><th>Full report</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
@@ -331,7 +370,7 @@ const PAGE_FONT = { serif: '"AA Newsreader", "Iowan Old Style", Charter, Georgia
  * With more than one report a contents page follows the cover; `pages` ({ summary, 'audit-1', … })
  * fills in its page numbers once a first print has shown where each section starts.
  */
-export function combinedHtml({ summary, reports, heads, date, version, css, style, toolVersions = {}, compact = false, pages = {}, stack = [] }) {
+export function combinedHtml({ summary, reports, heads, date, version, css, style, toolVersions = {}, compact = false, pages = {}, stack = [], failed = [] }) {
   const subject = summary.meta.subject || heads.find((h) => h.target)?.target || 'Audit';
   const title = summary.meta.title || `Audit report: ${subject}`;
   const names = [...new Set(reports.map((r) => kindOf(r).title))].map((t, i) => (i ? t.toLowerCase() : t));
@@ -372,7 +411,7 @@ ${css}
 ${reports.length > 1 ? tocPage(reports, heads, pages) : ''}
 <section class="summary" id="summary">
 ${renderSummary(summary)}
-${row('At a glance', glanceTable(reports, heads) + siteMismatches(reports, heads, summary.meta.subject).map((m) => `<p class="mismatch"><span class="mk warn"></span>${escapeHtml(mismatchNote(m))}</p>`).join(''))}
+${row('At a glance', glanceTable(reports, heads, failed) + siteMismatches(reports, heads, summary.meta.subject).map((m) => `<p class="mismatch"><span class="mk warn"></span>${escapeHtml(mismatchNote(m))}</p>`).join(''))}
 </section>
 ${audits}
 </article>

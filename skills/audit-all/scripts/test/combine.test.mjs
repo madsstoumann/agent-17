@@ -211,6 +211,39 @@ test('combine: run folder -> report.md and report.html (no PDF), audit-solution-
   }
 });
 
+// An audit that exits without writing its folder (seen once with audit-eco in a chained run) is a
+// failure in the report, with its kept stderr, not a silently shorter report.
+test('combine --expect: an audit that left no folder is a Failed row with its stderr', async () => {
+  const run = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-all-failed-'));
+  try {
+    fs.mkdirSync(path.join(run, 'audit-launch'));
+    fs.writeFileSync(path.join(run, 'audit-launch', 'report.md'), sample('audit-launch'));
+    fs.mkdirSync(path.join(run, 'audit-infra'));
+    fs.mkdirSync(path.join(run, 'logs'));
+    fs.writeFileSync(path.join(run, 'logs', 'audit-eco.stderr'), 'crawl: 12 pages\naudit-eco failed: Error: socket hang up\n');
+    fs.writeFileSync(path.join(run, 'summary.md'), SUMMARY);
+    assert.deepEqual(parseArgs([run, '--expect', 'launch,eco,infra']).expect, ['launch', 'eco', 'infra']);
+    assert.throws(() => parseArgs([run, '--expect', 'launch,nope']), /unknown audit nope/);
+    const logs = [];
+    const out = await combine({ dir: run, style: 'serif', repos: [], pdf: false, expect: ['launch', 'eco', 'infra'] }, { now: new Date('2026-10-30T09:00:00Z'), log: (m) => logs.push(m) });
+    assert.deepEqual(out.failed.map((f) => [f.kind, f.reason, f.log]), [
+      ['audit-eco', 'no audit-eco/ folder was written', 'logs/audit-eco.stderr'],
+      ['audit-infra', 'audit-infra/ has no report.md', null],
+    ]);
+    assert.ok(logs.some((l) => /^FAILED audit-eco: no audit-eco\/ folder was written; its stderr ends:[\s\S]*socket hang up/.test(l)));
+    assert.ok(logs.some((l) => /^FAILED audit-infra: .*its stderr was not kept/.test(l)));
+    const md = fs.readFileSync(out.md, 'utf8');
+    assert.match(md, /\| Sustainability audit \| \| \*\*Failed: no audit-eco\/ folder was written \(stderr in logs\/audit-eco\.stderr\)\*\* \| — \|/);
+    assert.match(md, /```\ncrawl: 12 pages\naudit-eco failed: Error: socket hang up\n```/);
+    assert.match(fs.readFileSync(out.html, 'utf8'), /<tr class="failed"><td>Infrastructure audit<\/td><td><span class="mk fail"><\/span><strong>Failed: audit-infra\/ has no report\.md/);
+    // Without --expect nothing changes.
+    const plain = await combine({ dir: run, style: 'serif', repos: [], pdf: false }, { log: () => {} });
+    assert.deepEqual(plain.failed, []);
+  } finally {
+    fs.rmSync(run, { recursive: true, force: true });
+  }
+});
+
 test('combine: a run folder with no reports is an error', async () => {
   const run = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-all-empty-'));
   try {

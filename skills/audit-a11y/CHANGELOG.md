@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-a11y` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.1.4] - 2026-11-10
+
+### Fixed
+- The keyboard walk reported a Blocker "Keyboard focus gets stuck" on a `<video>` or `<audio>` element with native controls. Tab moves through the controls in the element's shadow DOM while `document.activeElement` stays on the element, and the walk's own focus-indicator check blurred and refocused the element on every press, which sent focus back to the first control each time. The check now leaves media elements with `controls` alone (the browser draws their focus ring), and the walk allows up to 10 presses inside one before it counts as stuck (also when checking whether Escape releases a loop). A script that holds Tab on a video is still a trap. Tested end to end in Chrome with `test/fixtures/media.html`.
+
 ## [2.1.3] - 2026-11-09
 
 ### Fixed

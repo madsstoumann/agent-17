@@ -5,6 +5,10 @@ import { inPage, focusSnapshot, resetFocus, tabbableCount } from './probes.mjs';
 
 const keyOf = (s) => (s.none ? '<document>' : s.uid ?? s.path);
 
+// Tab presses focus may spend inside one video or audio element with native controls (play,
+// timeline, volume, fullscreen and the overflow menu are shadow-DOM buttons) before it counts as stuck.
+export const MEDIA_PRESSES = 10;
+
 /**
  * Tab up to `maxTabs` times. Stops when focus leaves the document after visiting something (the
  * normal end), or when it comes back to a stop already seen without leaving (a possible trap).
@@ -17,12 +21,17 @@ export async function walk(page, { maxTabs = 200 } = {}) {
   const seen = new Map();
   let loop = null;
   let ended = 'max';
+  let inside = 0;
   for (let i = 0; i < maxTabs; i++) {
     await page.key('Tab');
     const s = await page.eval(inPage(focusSnapshot)).catch((e) => ({ error: e.message }));
     if (s.error) { ended = 'error'; stops.push(s); break; }
     const prev = stops[stops.length - 1];
-    if (s.iframe && prev && keyOf(prev) === keyOf(s)) continue; // moving inside an iframe
+    const same = prev && !prev.none && keyOf(prev) === keyOf(s);
+    if (s.iframe && same) continue; // moving inside an iframe
+    // Moving through a media element's native controls; held longer than that is stuck.
+    if (s.mediaControls && same && ++inside < MEDIA_PRESSES) continue;
+    if (!same) inside = 0;
     if (s.none) {
       if (stops.some((x) => !x.none)) { ended = 'left-document'; break; }
       continue;
@@ -41,7 +50,9 @@ export async function walk(page, { maxTabs = 200 } = {}) {
     await page.key('Escape');
     const cycle = new Set(stops.slice(loop.from).map(keyOf));
     escape = 'held';
-    for (let i = 0; i < cycle.size + 2; i++) {
+    // Native media controls in the cycle can take several presses each before focus moves on.
+    const tries = cycle.size + 2 + (stops.slice(loop.from).some((x) => x.mediaControls) ? MEDIA_PRESSES : 0);
+    for (let i = 0; i < tries; i++) {
       await page.key('Tab');
       const s = await page.eval(inPage(focusSnapshot)).catch(() => ({ none: true }));
       if (s.none || !cycle.has(keyOf(s))) { escape = 'released'; break; }
