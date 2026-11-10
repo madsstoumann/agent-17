@@ -109,6 +109,7 @@ Other shared copies, each checked by a test:
 
 | File | In | What it is |
 | --- | --- | --- |
+| `lib/hosts.mjs`, `lib/hosts.json`, `lib/psl.dat.gz` | audit-launch, audit-security, audit-infra | Who owns a host name: the Public Suffix List (refresh with `node tools/psl/update.mjs`) and platform facts it does not hold |
 | `lib/cmp.mjs` | audit-launch, audit-privacy | The consent-tool detector: the vendor host the page loads wins over markup |
 | `lib/rsc.mjs` | audit-privacy, plan-geo | Text from a Next.js page's script payload, the page's own components only |
 | `lib/schema.mjs` | audit-launch, audit-seo, plan-geo | validator.schema.org |

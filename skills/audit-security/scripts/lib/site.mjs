@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { parseTarget } from './target.mjs';
 import { openPhish, safeBrowsing, urlhaus, virusTotal } from './sources.mjs';
 import { shows, levelNote, levelOf } from './levels.mjs';
+import { isPublicSuffix, stagingLabel, isPreviewPlatform } from './hosts.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const LAUNCH_SCRIPT = path.resolve(HERE, '..', '..', '..', 'audit-launch', 'scripts', 'audit.mjs');
@@ -67,38 +68,30 @@ function cspDirectives(value) {
   return out;
 }
 
-// Hosting suffixes where anyone can publish a site for free: a wildcard on one of them lets any
-// stranger's deployment frame the page. Public suffixes, not a vendor's own subdomains.
-export const PUBLIC_HOSTING_SUFFIXES = [
-  'vercel.app', 'now.sh', 'netlify.app', 'netlify.com', 'github.io', 'gitlab.io', 'pages.dev', 'workers.dev',
-  'azurewebsites.net', 'azurestaticapps.net', 'cloudapp.net', 'blob.core.windows.net', 'web.core.windows.net',
-  'herokuapp.com', 'herokudns.com', 'web.app', 'firebaseapp.com', 'appspot.com', 'run.app', 'cloudfront.net',
-  's3.amazonaws.com', 'amplifyapp.com', 'onrender.com', 'fly.dev', 'railway.app', 'surge.sh', 'glitch.me',
-  'repl.co', 'replit.app', 'ngrok.io', 'ngrok-free.app', 'ngrok.app', 'trycloudflare.com', 'deno.dev',
-  'netlify.live', 'webflow.io', 'framer.app', 'framer.website', 'wixsite.com', 'squarespace.com', 'wordpress.com',
-  'blogspot.com', 'codepen.io', 'stackblitz.io', 'csb.app', 'loca.lt',
-];
-
-/** The public hosting suffix a frame-ancestors source wildcards, or null: 'https://*.vercel.app' -> 'vercel.app'. */
+/**
+ * The public suffix a frame-ancestors source wildcards, or null: 'https://*.vercel.app' -> 'vercel.app'.
+ * Any name on the Public Suffix List counts (lib/hosts.mjs): anyone can register or deploy below
+ * it, so a wildcard on it lets a stranger's site frame the page. A site's own wildcard
+ * ('https://*.cms.example.com') is not one.
+ */
 export function publicWildcard(source) {
   const m = /^(?:[a-z][a-z0-9+.-]*:\/\/)?\*\.([^/:]+)(?::[0-9*]+)?(?:\/.*)?$/i.exec(String(source || '').trim());
   if (!m) return null;
   const host = m[1].toLowerCase().replace(/\.$/, '');
-  return PUBLIC_HOSTING_SUFFIXES.find((sfx) => host === sfx) || null;
+  return isPublicSuffix(host) ? host : null;
 }
 
-// Hosts that are not production: a dev, staging, test or preview deployment ("dev-site.example.io",
-// "stage.example.com"). Allowed to frame the live site, one of them is a weaker, less watched origin.
-const NON_PROD = /^(?:dev|develop|development|stage|staging|stg|test|testing|uat|qa|preview|sandbox|demo|local)$/i;
-
-/** The host of a frame-ancestors source when it is a dev, staging, test or preview host, else null. */
+/**
+ * The host of a frame-ancestors source when it is a dev, staging, test or preview host, else null:
+ * a staging word in a label below its registrable domain ("dev.example.com", "site-stage.example.io")
+ * or a deployment platform's preview address. Allowed to frame the live site, one of them is a weaker,
+ * less watched origin.
+ */
 export function nonProductionSource(source) {
   const m = /^(?:[a-z][a-z0-9+.-]*:\/\/)?([^/:*]+)(?::[0-9*]+)?(?:\/.*)?$/i.exec(String(source || '').trim());
   if (!m || String(source).startsWith("'")) return null;
   const host = m[1].toLowerCase().replace(/\.$/, '');
-  const labels = host.split('.');
-  // The first label, or a part of it: dev.example.com, dev-site.example.io, site-stage.example.io.
-  return labels.slice(0, Math.max(1, labels.length - 2)).some((l) => l.split(/[-_]/).some((p) => NON_PROD.test(p))) ? host : null;
+  return stagingLabel(host) || isPreviewPlatform(host) ? host : null;
 }
 
 /**
@@ -119,7 +112,7 @@ export function frameAncestors(headers = {}) {
     if (fa.some((s) => s === '*' || /^https?:$/i.test(s))) return row('headers.frame-ancestors', 'fail', title, `frame-ancestors ${v} lets any site frame the page`, { fix });
     const open = fa.filter(publicWildcard);
     if (open.length) {
-      return row('headers.frame-ancestors', 'warn', title, `frame-ancestors ${v}: ${open.join(', ')} ${open.length > 1 ? 'are public hosting suffixes' : 'is a public hosting suffix'}, so anyone's deployment there can frame the page`, {
+      return row('headers.frame-ancestors', 'warn', title, `frame-ancestors ${v}: ${open.join(', ')} ${open.length > 1 ? 'are public suffixes' : 'is a public suffix'} (Public Suffix List), so anyone's site or deployment there can frame the page`, {
         fix: `Replace ${open.join(', ')} with the exact hosts that need to frame the page (a preview or editor host), or drop ${open.length > 1 ? 'them' : 'it'}; ${keep}.`,
       });
     }

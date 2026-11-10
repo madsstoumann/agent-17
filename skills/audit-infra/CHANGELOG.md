@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-infra` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.6.0] - 2026-11-10
+
+### Changed
+- The zone apex (`apexOf`) is the registrable domain by the Public Suffix List's ICANN section (`example.com.au`, `example.co.jp` and every other two- and three-label suffix), not only `co|com|net|org|gov|ac|edu` under a country code.
+- A hosting platform's address (`dns.platform`) is any host under a private Public Suffix List entry or a platform in `hosts.json` (Umbraco Cloud, WP Engine, Kinsta…), from the shared `lib/hosts.mjs`, instead of a hand list of about 30 platforms.
+
 ## [2.5.0] - 2026-11-10
 
 ### Changed
