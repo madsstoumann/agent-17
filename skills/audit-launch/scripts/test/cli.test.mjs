@@ -61,7 +61,9 @@ test('isStagingHost and detectEnv', () => {
   assert.equal(isStagingHost('dev.tld'), false, 'a site whose own domain name is the word is a live site');
   assert.equal(isStagingHost('www.demo.tld'), false);
   assert.equal(isStagingHost('dev.example.com'), true);
-  assert.equal(isStagingHost('demo-shop.tld'), true);
+  assert.equal(isStagingHost('demo-shop.tld'), false, 'the word inside the site\'s own name is not a staging label');
+  assert.equal(isStagingHost('shop-demo.example.co.uk'), true, 'a staging word below a two-label public suffix');
+  assert.equal(isStagingHost('dev.co.uk'), false, 'dev.co.uk is a registrable domain');
   assert.equal(isStagingHost('example-test.vercel.app'), true);
   assert.equal(isStagingHost('example-live.euwest01.umbraco.io'), false, 'Umbraco Cloud live environment (and its media origin)');
   assert.equal(isStagingHost('dev-example-live.euwest01.umbraco.io'), true);

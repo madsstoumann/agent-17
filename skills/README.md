@@ -109,6 +109,8 @@ Other shared copies, each checked by a test:
 
 | File | In | What it is |
 | --- | --- | --- |
+| `lib/hosts.mjs`, `lib/hosts.json`, `lib/psl.dat.gz` | audit-launch, audit-security, audit-infra | Who owns a host name: the Public Suffix List (refresh with `node tools/psl/update.mjs`) and platform facts it does not hold |
+| `lib/consent.mjs` | audit-seo, plan-geo, audit-privacy, audit-a11y | The consent banners every skill leaves out of a page's text (selectors, id/class names, served-HTML filter) |
 | `lib/cmp.mjs` | audit-launch, audit-privacy | The consent-tool detector: the vendor host the page loads wins over markup |
 | `lib/rsc.mjs` | audit-privacy, plan-geo | Text from a Next.js page's script payload, the page's own components only |
 | `lib/schema.mjs` | audit-launch, audit-seo, plan-geo | validator.schema.org |
@@ -136,6 +138,8 @@ Every skill that writes a report takes the same two flags:
   The run's files go to a scratch folder in the system temp folder, or to `--out DIR` when given; the target folder's `last-report.json` is still saved. `--console --report` writes both.
 
 The level filters what people read: the console list, `report.md`, the combined report and PDFs, and audit-all's `fix/TODO.md`. It never filters saved data (`report.json`, `findings.json`, `tasks.json`, `last-report.json`, `state.json`, `triage.json`), so the next run's comparison is unaffected. audit-all passes the level to each sub-audit, applies it to the fix plan, and asks for it on its first screen.
+
+A row that only describes the run (a re-signed TLS chain, a firewall challenge, an answer that is not the page) is marked with `degrade()` from `levels.mjs`: a skip with `environment: "degraded"`, no level and no task, whose fix says how to run cleanly. Rows that condition makes meaningless get `notChecked()`. See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 Skills install separately, so each carries an identical `scripts/lib/levels.mjs` (`audit-all/scripts/test/levels.test.mjs` checks the copies). Change one, copy it to the others.
 

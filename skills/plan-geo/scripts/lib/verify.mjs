@@ -97,7 +97,7 @@ export function verifyDraft(data, page) {
       const shown = year ? haystack.includes(value) : dates.has(d) || (!PAGE_DATE_KEYS.test(key) && /^\d{4}-\d{2}-\d{2}$/.test(d) && dayMonths.has(d.slice(5)));
       if (!shown) out.push({ path: p, value, reason: year ? 'year not on the page' : 'date not shown on the page' });
       // A publication date must be the date the page shows as its own, not a deadline in the text.
-      else if (PAGE_DATE_KEYS.test(key) && !year && d !== page.leadDate) out.push({ path: p, value, reason: page.leadDate ? `the page's own date is ${page.leadDate}` : 'the page shows no date of its own near the top; this date is from the text' });
+      else if (PAGE_DATE_KEYS.test(key) && !year && d !== page.leadDate) out.push({ path: p, value, reason: !page.leadDate ? 'the page states no date of its own near the top; this date is from the text' : ['dateline', 'press'].includes(page.leadDateSource) ? `the page does not label its own date; the date line by the title reads ${page.leadDate}` : `the page's own date is ${page.leadDate}` });
       continue;
     }
     if (/^#|^_:/.test(value)) continue;

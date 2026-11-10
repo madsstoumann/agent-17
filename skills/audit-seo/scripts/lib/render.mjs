@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { CONSENT_SELECTOR } from './consent.mjs';
 
 // ---------------------------------------------------------------- finding a browser
 // Copied from audit-eco/scripts/lib/browser.mjs (same search order as audit-all's pdf.mjs); keep them in step.
@@ -126,14 +127,9 @@ const DOM = '(document.doctype ? new XMLSerializer().serializeToString(document.
 
 // Consent banners and the policy pages a consent manager mounts with them (Cookie Information
 // keeps its whole cookie policy in #cookie-information-template-wrapper): added by script on almost
-// every site, and they say nothing about the page.
-export const CONSENT_SELECTOR = [
-  '[id^="onetrust" i]', '[id*="cookiebot" i]', '[id*="usercentrics" i]', '[id*="didomi" i]', '[id*="cookie-consent" i]', '[id*="cookieconsent" i]',
-  '[class*="cookie-consent" i]', '[class*="cookieconsent" i]', '[id*="cookie-banner" i]', '[class*="cookie-banner" i]', '[aria-label*="cookie" i][role="dialog"]',
-  '[aria-label*="consent" i][role="dialog"]', '[id*="cookie-information" i]', '[id^="coi-" i]', '[id^="coiOverlay" i]', '[class*="coi-banner" i]', '[class*="coi-consent" i]',
-  '[id*="cookiefirst" i]', '[id^="cky-" i]', '[class*="cky-consent" i]', '[id*="cmplz" i]', '[class*="cmplz-cookiebanner" i]', '[id^="BorlabsCookie" i]',
-  '[class*="osano-cm" i]', '[id*="truste" i]', '[id^="sp_message_container" i]', '[id^="qc-cmp2" i]', '[id*="cookiescript" i]', '[id^="axeptio" i]', '[id^="tarteaucitron" i]',
-].join(',');
+// every site, and they say nothing about the page. The list lives in lib/consent.mjs, shared with
+// plan-geo, audit-privacy and audit-a11y.
+export { CONSENT_SELECTOR };
 
 // Runs in the page: the words and headings a reader sees once JavaScript has run. Consent banners
 // (CONSENT_SELECTOR) and hidden text (display: none, visibility: hidden, closed <details>, the

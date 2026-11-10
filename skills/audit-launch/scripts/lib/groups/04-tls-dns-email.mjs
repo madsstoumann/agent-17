@@ -9,6 +9,7 @@ import { tlsInfo, publicTlsInfo, certSummary, dnsRecords, dnssecStatus, evaluate
 import { preloadLookup, preloadVerdict } from '../hsts-preload.mjs';
 import net from 'node:net';
 import { isPlatformHost } from '../cli.mjs';
+import { degrade, notChecked } from '../levels.mjs';
 
 export default {
   id: 'tls',
@@ -48,13 +49,10 @@ export default {
         out.push(result('tls.issuer', 'info', 'Issuer', `${sum.issuer}${info.cert?.serialNumber ? ` · serial ${info.cert.serialNumber.slice(0, 16)}…` : ''}`, { link: `https://www.ssllabs.com/ssltest/analyze.html?d=${encodeURIComponent(hostname)}&hideResults=on` }));
         if (info.intercepted) {
           // The rows above describe the proxy's certificate, not the site's.
-          for (const r of out.slice(tlsStart)) {
-            r.evidence = `not checked from this network (TLS is re-signed on the way, see "TLS interception"); seen: ${r.evidence}`;
-            r.status = 'skip'; r.fix = ''; delete r.blocker; delete r.beforeProduction;
-          }
+          for (const r of out.slice(tlsStart)) notChecked(r, 'TLS is re-signed on the way from this network, see "TLS interception"');
           ctx.scoreboard.tls = null;
           // A condition of this network, not of the site: a degraded run, never a warning or a task.
-          out.push(result('tls.interception', 'skip', 'TLS interception', `degraded run, this network and not the site: the certificate this machine received for ${hostname} chains to ${info.interceptedBy}, which only this machine's own CA store trusts, not the public roots. A proxy, VPN, antivirus or cloud egress gateway re-signs TLS here`, { fix: 'Run the audit from a network without TLS inspection (your own machine) to check the real certificate.', environment: 'degraded', link: `https://www.ssllabs.com/ssltest/analyze.html?d=${encodeURIComponent(hostname)}&hideResults=on` }));
+          out.push(degrade(result('tls.interception', 'skip', 'TLS interception', `the certificate this machine received for ${hostname} chains to ${info.interceptedBy}, which only this machine's own CA store trusts, not the public roots. A proxy, VPN, antivirus or cloud egress gateway re-signs TLS here`, { fix: 'Run the audit from a network without TLS inspection (your own machine) to check the real certificate.', environment: 'degraded', link: `https://www.ssllabs.com/ssltest/analyze.html?d=${encodeURIComponent(hostname)}&hideResults=on` })));
         }
       }
     }

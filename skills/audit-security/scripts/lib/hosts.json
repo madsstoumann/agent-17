@@ -1,0 +1,47 @@
+{
+  "about": "Platform facts the Public Suffix List (psl.dat.gz) does not hold. Shared by audit-launch, audit-security and audit-infra as identical copies. platforms: domains whose sub-domains are a platform's addresses, not a customer's own domain, that the PSL leaves out. previewSuffixes: platforms whose addresses are previews or default addresses, never a site's live domain. stagingWords: a label, or a -/_ part of one, below the registrable domain that marks a non-production host.",
+  "platforms": [
+    "umbraco.io",
+    "amazonaws.com",
+    "kinsta.cloud",
+    "wpengine.com",
+    "hubspotpagebuilder.com",
+    "squarespace.com",
+    "herokudns.com"
+  ],
+  "previewSuffixes": [
+    "ondigitalocean.app",
+    "vercel.app",
+    "netlify.app",
+    "pages.dev",
+    "workers.dev",
+    "azurewebsites.net",
+    "azurestaticapps.net",
+    "herokuapp.com",
+    "fly.dev",
+    "web.app",
+    "firebaseapp.com",
+    "appspot.com",
+    "ngrok.io",
+    "ngrok-free.app",
+    "trycloudflare.com",
+    "amplifyapp.com",
+    "cloudfront.net"
+  ],
+  "stagingWords": [
+    "dev",
+    "develop",
+    "development",
+    "staging",
+    "stage",
+    "stg",
+    "test",
+    "testing",
+    "uat",
+    "qa",
+    "preview",
+    "sandbox",
+    "demo",
+    "local"
+  ]
+}

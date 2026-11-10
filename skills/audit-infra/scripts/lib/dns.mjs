@@ -2,6 +2,7 @@
 // the same answer on every machine, reports the DNSSEC AD flag, and works where port 53 is
 // filtered or a local resolver answers only A records (VPNs, corporate networks, sandboxes).
 import { promises as sysdns } from 'node:dns';
+import { registrableDomain } from './hosts.mjs';
 
 export const TYPES = { 1: 'A', 2: 'NS', 5: 'CNAME', 6: 'SOA', 15: 'MX', 16: 'TXT', 28: 'AAAA', 43: 'DS', 48: 'DNSKEY', 64: 'SVCB', 65: 'HTTPS', 257: 'CAA' };
 const RCODES = { 1: 'FORMERR', 2: 'SERVFAIL', 3: 'NXDOMAIN', 4: 'NOTIMP', 5: 'REFUSED' };
@@ -106,11 +107,10 @@ export function parseSoa(d) {
   return { mname: undot(mname), rname: undot(rname), serial: Number(serial), refresh: Number(refresh), retry: Number(retry), expire: Number(expire), minimum: Number(minimum) };
 }
 
-/** The registrable domain, good enough for the common cases (two-label public suffixes like co.uk). */
+/** The registrable domain of a host (its DNS zone apex), from the Public Suffix List. */
 export function apexOf(host) {
-  const labels = undot(host).split('.');
-  if (labels.length <= 2) return labels.join('.');
-  const two = labels.slice(-2).join('.');
-  const SECOND_LEVEL = /^(co|com|net|org|gov|ac|edu)\.[a-z]{2}$/;
-  return SECOND_LEVEL.test(two) ? labels.slice(-3).join('.') : two;
+  // The registrable domain by the Public Suffix List's ICANN section (example.co.uk, example.com.au),
+  // so a platform's customer address keeps the platform's zone apex.
+  const h = undot(host);
+  return registrableDomain(h, { icann: true }) || h;
 }

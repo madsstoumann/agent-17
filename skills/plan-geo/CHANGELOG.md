@@ -2,6 +2,13 @@
 
 All notable changes to the `plan-geo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.6.0] - 2026-11-10
+
+### Changed
+- The page date records where it was read (`leadDateSource` in `pages/<slug>.json`, named on the `Page date:` line): a date element or a published/updated label is the page stating its date; a date line next to the h1 or a press release dateline is a reading of how a line looks. For those two, `article:published_time` or the page's own JSON-LD `datePublished` wins when the page shows that date, and `Page date:` asks to confirm a date read from a line alone. A page that states no date says "none stated near the top (unknown)". On the six saved test sites no page date changed; 14 dates read from lines are now confirmed by the page's JSON-LD.
+- The served HTML is read without every consent banner in the shared `lib/consent.mjs` (also audit-seo, audit-privacy and audit-a11y), not only the nine tools plan-geo matched itself.
+- `check` says "the page does not label its own date; the date line by the title reads …" when a draft's `datePublished` differs from a date read from a line, instead of calling that line the page's own date.
+
 ## [1.5.0] - 2026-11-10
 
 ### Added

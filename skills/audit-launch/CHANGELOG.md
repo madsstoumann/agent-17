@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-launch` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.6.0] - 2026-11-10
+
+### Changed
+- The TLS interception row and the certificate rows it makes meaningless use the shared `degrade()` and `notChecked()` from `lib/levels.mjs` (new in every copy): a condition of the run is a skip with `environment: "degraded"`, no level and no task. The skipped rows now read "not checked (TLS is re-signed on the way from this network, …); seen: …".
+- Staging and platform hosts are read with the Public Suffix List (new shared `lib/hosts.mjs`, `lib/psl.dat.gz` and `lib/hosts.json`, identical in audit-launch, audit-security and audit-infra, tested). A staging word counts only in a label below the registrable domain, so `dev.example.com` and `shop-demo.example.co.uk` are staging and a site whose own name holds the word (`dev.<tld>`, `demo-shop.<tld>`, `dev.co.uk`) is not; `demo-shop.<tld>` was staging before. A platform's preview addresses (`*.vercel.app`, `*.ondigitalocean.app` and the rest) are a data list in `hosts.json`, and a platform address for the DNS and mail rows is any name under a private Public Suffix List entry or a platform in `hosts.json` (Umbraco Cloud, WP Engine, Kinsta…), not a hand list in the code.
+
 ## [2.5.3] - 2026-11-10
 
 ### Fixed

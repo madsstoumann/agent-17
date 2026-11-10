@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-privacy` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.3.1] - 2026-11-10
+
+### Changed
+- The consent-banner list is the new shared `lib/consent.mjs` (identical in audit-seo, plan-geo, audit-privacy and audit-a11y, tested), so a banner tool added once is left out by every skill. No change in the policy text.
+
 ## [2.3.0] - 2026-11-10
 
 ### Added

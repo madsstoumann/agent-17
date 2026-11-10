@@ -5,6 +5,8 @@ Agent skills, in two plugins:
 - [`skills/`](skills/): audits, checks and plans for websites and code. See [skills/README.md](skills/README.md) for the list and how they are versioned.
 - [`memory/`](memory/): memory management for a project's AI agents. See [memory/README.md](memory/README.md).
 
+[CONTRIBUTING.md](CONTRIBUTING.md) says which reported issues become a fix and how a fix is checked against saved sites (`tools/corpus/`) before it ships.
+
 ## Install the skills
 
 The repository is a plugin marketplace with two plugins: `skills`, which holds every skill in `skills/`, and `memory`, which holds the memory setup in `memory/`. Install one or both and you get new skills and fixes as they land here.
@@ -333,4 +335,4 @@ No flags.
 
 ## Adding a skill
 
-Put it in its own folder under `skills/` with a `SKILL.md` and a `CHANGELOG.md`. The plugin picks it up with no other change. Refer to bundled scripts as `${CLAUDE_SKILL_DIR}/...`, not a fixed `~/.claude/skills/...` path, because a plugin installs the skill somewhere else. Add a row for it to the contents in [skills/README.md](skills/README.md#contents), and keep that row up to date when the skill changes or goes away. A skill about agent memory goes under `memory/` instead, with its row and flags in [memory/README.md](memory/README.md).
+Put it in its own folder under `skills/` with a `SKILL.md` and a `CHANGELOG.md`. The plugin picks it up with no other change. Refer to bundled scripts as `${CLAUDE_SKILL_DIR}/...`, not a fixed `~/.claude/skills/...` path, because a plugin installs the skill somewhere else. Add a row for it to the contents in [skills/README.md](skills/README.md#contents), and keep that row up to date when the skill changes or goes away. A skill about agent memory goes under `memory/` instead, with its row and flags in [memory/README.md](memory/README.md). Add its test folder to the matrix in `.github/workflows/test.yml`, and read [CONTRIBUTING.md](CONTRIBUTING.md) before changing a skill after an audit run.

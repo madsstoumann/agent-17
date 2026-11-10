@@ -37,6 +37,7 @@ export function installHelpers() {
     for (let n = el; n && n !== document.body; n = n.parentElement) if (/fixed|sticky/.test(getComputedStyle(n).position)) found = n;
     return found;
   };
+  // Runs in the page, so it cannot import: keep this pattern equal to CONSENT_HINT in lib/consent.mjs (tested).
   window.__a11yConsent = (el) => !!el && /cookie|consent|coi|cmp|onetrust|cookiebot|usercentrics|didomi|gdpr|samtykke/i.test(`${el.id} ${el.className} ${el.getAttribute('aria-label') || ''}`);
   window.__a11ySnippet = (el) => (el && el.outerHTML ? el.outerHTML.replace(/\s+/g, ' ').slice(0, 220) : null);
   return true;

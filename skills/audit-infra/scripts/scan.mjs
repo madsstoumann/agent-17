@@ -5,13 +5,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseLevel, shows, levelNote, consoleList, scratchDir, removeScratch } from './lib/levels.mjs';
+import { parseLevel, shows, levelNote, consoleList, scratchDir, removeScratch, degrade, notChecked } from './lib/levels.mjs';
 import { createResolver, apexOf, undot } from './lib/dns.mjs';
 import { SECTIONS, domainChecks, emailChecks, tlsChecks, edgeChecks, ctChecks } from './lib/checks.mjs';
 import { DKIM_SELECTORS } from './lib/email.mjs';
 import { result, countStatuses, prepareRun, finishRun, consoleItems, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, settle, GLYPH } from './lib/common.mjs';
+import { platformOf } from './lib/hosts.mjs';
 
-export const VERSION = '2.5.0';
+export const VERSION = '2.6.0';
 const UA = `Mozilla/5.0 (compatible; audit-infra/${VERSION})`;
 
 const USAGE = `audit-infra ${VERSION}: domain, DNS, email, TLS and subdomain audit
@@ -80,15 +81,10 @@ export function parseTarget(t) {
   return { host: u.hostname.toLowerCase(), url: u.href };
 }
 
-// Hosting platforms that hand out sub-domains of their own domain (a staging or default address). For
-// such a host the "registrable domain" is the platform's: its registration, DNS, mail and subdomains
-// say nothing about the site. umbraco.io is Umbraco Cloud's.
-const PLATFORMS = ['umbraco.io', 'azurewebsites.net', 'azurestaticapps.net', 'azurefd.net', 'cloudapp.azure.com', 'trafficmanager.net', 'vercel.app',
-  'netlify.app', 'pages.dev', 'workers.dev', 'herokuapp.com', 'ondigitalocean.app', 'onrender.com', 'fly.dev', 'web.app', 'firebaseapp.com',
-  'github.io', 'gitlab.io', 'appspot.com', 'cloudfront.net', 'amazonaws.com', 'elasticbeanstalk.com', 'railway.app', 'surge.sh', 'wpengine.com',
-  'kinsta.cloud', 'pantheonsite.io', 'myshopify.com', 'wixsite.com', 'webflow.io', 'squarespace.com', 'hubspotpagebuilder.com'];
-/** The hosting platform's domain when host is one of its addresses ("x.euwest01.umbraco.io" -> "umbraco.io"), else null. */
-export const platformOf = (host) => PLATFORMS.find((p) => host === p || host.endsWith(`.${p}`)) || null;
+// A hosting platform's address (a staging or default address on the platform's own domain): its
+// registration, DNS, mail and subdomains say nothing about the site. From the Public Suffix List's
+// private section and hosts.json (lib/hosts.mjs), e.g. "x.euwest01.umbraco.io" -> "umbraco.io".
+export { platformOf };
 
 export const siblingOf = (host, apex) => (host === apex ? `www.${apex}` : host === `www.${apex}` ? apex : null);
 
@@ -166,19 +162,11 @@ export function markBlindResolver(results, why) {
  */
 export function markIntercepted(results) {
   if (!results.some((r) => r.id === 'tls.interception')) return results;
-  for (const r of results.filter((x) => x.id === 'tls.interception')) {
-    r.status = 'skip';
-    r.environment = 'degraded';
-    r.evidence = `degraded run, this network and not the site: ${r.evidence}`;
-    delete r.blocker;
-    delete r.severity;
-  }
+  for (const r of results.filter((x) => x.id === 'tls.interception')) degrade(r);
   for (const r of results) {
-    if (!/^tls\.(chain|expiry|consistency|san|key|protocol|alpn|ocsp-stapling|legacy|caa-match)$|^ct\.certificates$/.test(r.id) || r.status === 'skip') continue;
-    r.evidence = `not checked from this network (TLS is re-signed on the way, see "TLS interception"); seen: ${r.evidence}`;
-    r.status = 'skip';
-    r.fix = '';
-    delete r.blocker;
+    if (/^tls\.(chain|expiry|consistency|san|key|protocol|alpn|ocsp-stapling|legacy|caa-match)$|^ct\.certificates$/.test(r.id)) {
+      notChecked(r, 'TLS is re-signed on the way from this network, see "TLS interception"');
+    }
   }
   return results;
 }

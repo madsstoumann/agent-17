@@ -2,6 +2,7 @@
 // links, invisible or obscured focus and big jumps in focus order. The walk itself needs a browser;
 // `analyseWalk` is pure so it can be tested on recorded walks.
 import { inPage, focusSnapshot, resetFocus, tabbableCount } from './probes.mjs';
+import { CONSENT_HINT } from './consent.mjs';
 
 const keyOf = (s) => (s.none ? '<document>' : s.uid ?? s.path);
 
@@ -112,7 +113,7 @@ export function analyseWalk(w, { viewportHeight = 900 } = {}) {
   for (const o of out.obscured) by[o.by] = (by[o.by] || 0) + 1;
   const [top, n] = Object.entries(by).sort((a, b) => b[1] - a[1])[0] || [];
   if (top && n >= 5 && n >= stops.filter((s) => s.visible).length * 0.5) {
-    out.overlay = { by: top, count: n, consent: /cookie|consent|coi|cmp|onetrust|cookiebot|usercentrics|didomi|gdpr|samtykke/i.test(top) };
+    out.overlay = { by: top, count: n, consent: CONSENT_HINT.test(top) };
     out.obscured = out.obscured.filter((o) => o.by !== top);
   }
   // Focus going back up the page by more than a screen, between two visible stops.

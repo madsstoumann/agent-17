@@ -70,3 +70,20 @@ test('consoleList: one aligned line per issue, errors first, counts in the title
   assert.equal(consoleList({ title: 't', items: [], levels: parseLevel('error') }), 't — 0 errors · 0 warnings · 0 info — showing errors only\nNo errors.');
   assert.match(consoleList({ items, max: 1 }), /\+2 more$/);
 });
+
+test('degrade and notChecked: a condition of the run is a skip with no level, never a finding', async () => {
+  const { degrade, notChecked, isDegraded, levelOf, DEGRADED } = await import('../lib/levels.mjs');
+  const row = degrade({ id: 'tls.interception', status: 'warn', severity: 'high', blocker: true, evidence: 'proxy re-signs TLS', fix: 'Run from another network.' });
+  assert.equal(row.status, 'skip');
+  assert.equal(isDegraded(row), true);
+  assert.equal(levelOf(row), null);
+  assert.equal(row.blocker, undefined);
+  assert.equal(row.evidence, `${DEGRADED}: proxy re-signs TLS`);
+  assert.equal(degrade(row).evidence, row.evidence, 'marking twice does not repeat the prefix');
+  assert.equal(row.fix, 'Run from another network.', 'the fix says how to run cleanly');
+  const dep = notChecked({ id: 'tls.expiry', status: 'fail', blocker: true, evidence: 'expires in 2 days', fix: 'Renew.' }, 'TLS is re-signed');
+  assert.equal(dep.status, 'skip');
+  assert.equal(dep.fix, '');
+  assert.match(dep.evidence, /^not checked \(TLS is re-signed\); seen: expires in 2 days$/);
+  assert.equal(isDegraded(dep), false);
+});

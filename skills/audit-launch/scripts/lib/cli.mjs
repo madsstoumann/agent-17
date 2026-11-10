@@ -9,6 +9,7 @@ import path from 'node:path';
 import { normaliseUrl, isPrivateHost, hostOf, stripWww, parseHeaderLines, VERSION } from './http.mjs';
 import { targetDir } from './target-state.mjs';
 import { parseLevel } from './levels.mjs';
+import { platformOf, isPreviewPlatform, stagingLabel } from './hosts.mjs';
 
 export const DEFAULTS = {
   pages: 3, maxPages: 100, maxExternal: 200, timeout: 15000, lhTimeout: 240000, concurrency: 6,
@@ -21,43 +22,31 @@ export const ENV_ALIASES = {
   prod: 'production', production: 'production', live: 'production',
 };
 
-/** A label in the hostname that marks a non-production site ("dev" must be its own label: devices.example.com is not staging). */
-const STAGING_WORDS = 'dev|develop|development|staging|stage|stg|test|testing|uat|qa|preview|sandbox|demo';
-export const STAGING_HOST_RE = new RegExp(`(^|[.-])(${STAGING_WORDS})([.-]|$)`, 'i');
-const STAGING_WORD_RE = new RegExp(`^(${STAGING_WORDS})$`, 'i');
-/** Platform hosts that are never a customer's live domain. */
-export const STAGING_SUFFIXES = [
-  '.ondigitalocean.app', '.vercel.app', '.netlify.app', '.pages.dev', '.workers.dev', '.azurewebsites.net',
-  '.azurestaticapps.net', '.herokuapp.com', '.fly.dev', '.web.app', '.firebaseapp.com', '.appspot.com',
-  '.ngrok.io', '.ngrok-free.app', '.trycloudflare.com', '.amplifyapp.com', '.cloudfront.net',
-];
-/**
- * Platform hosts that also serve the live environment: Umbraco Cloud's live site (and its media,
- * which headless front ends load from it) is <project>.<region>.umbraco.io, while its development
- * and staging environments are dev-<project>… and stage-<project>…, which STAGING_HOST_RE catches.
- */
-export const LIVE_PLATFORM_SUFFIXES = ['.umbraco.io'];
-
 export function normaliseEnv(value) {
   const env = ENV_ALIASES[String(value || '').toLowerCase()];
   return env ? { env, production: env === 'production' } : null;
 }
 
-/** A hosting platform's own hostname (…ondigitalocean.app, …vercel.app): its DNS, CAA and mail records belong to the platform, not the site. */
+/**
+ * A hosting platform's address (…ondigitalocean.app, …vercel.app, …umbraco.io): its DNS, CAA and mail
+ * records belong to the platform, not the site. From the Public Suffix List's private section and
+ * hosts.json (lib/hosts.mjs).
+ */
 export function isPlatformHost(host) {
-  const h = String(host || '').toLowerCase().replace(/:\d+$/, '');
-  return [...STAGING_SUFFIXES, ...LIVE_PLATFORM_SUFFIXES].some((s) => h.endsWith(s));
+  return !!platformOf(host);
 }
 
+/**
+ * A non-production host: a private host, a deployment platform's preview or default address
+ * (hosts.json previewSuffixes), or a staging word in a label below the registrable domain
+ * (dev.example.com, site-stage.example.co.uk, stage-x.region.umbraco.io). A site whose own domain
+ * name is the word (dev.<tld>, demo-shop.<tld>) and a platform's live address are not.
+ */
 export function isStagingHost(host) {
   const h = String(host || '').toLowerCase().replace(/:\d+$/, '');
   if (!h) return false;
   if (isPrivateHost(h)) return true;
-  if (STAGING_SUFFIXES.some((s) => h.endsWith(s))) return true;
-  // A site whose own domain name is the word (dev.<tld>, www.demo.<tld>) is a live site, not a staging host.
-  const labels = h.replace(/^www\./, '').split('.');
-  if (labels.length === 2 && STAGING_WORD_RE.test(labels[0])) return false;
-  return STAGING_HOST_RE.test(h);
+  return isPreviewPlatform(h) || !!stagingLabel(h);
 }
 
 /** Guess the environment from the hostname; the report says the guess and how to override it. */

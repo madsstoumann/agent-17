@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-security` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.5.0] - 2026-11-10
+
+### Changed
+- Site mode: a frame-ancestors wildcard warns when it is on any name on the Public Suffix List (`*.vercel.app`, `*.github.io`, `*.s3.amazonaws.com`, `*.co.uk`), read from the shared `lib/hosts.mjs` and its vendored list, instead of a hand-kept list of hosting suffixes. The evidence says "is a public suffix".
+- Site mode: a dev, staging or test source in frame-ancestors is a staging word in a label below its registrable domain, or a platform preview address (`hosts.json`); a site whose own name is the word (`dev.<tld>`) is not one.
+
 ## [2.4.0] - 2026-11-10
 
 ### Added

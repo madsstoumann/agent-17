@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { templateKey, groupTemplates, pickSample, siteName, properTitle, pageDate, pageSlug, guessType } from '../lib/templates.mjs';
-import { toMarkdown, questionPairs, visibleDates, dayMonths, leadDate, bylines, markDated, pressDateline, breadcrumbs, organisation, extractPage, pageDigest } from '../lib/extract.mjs';
+import { toMarkdown, questionPairs, visibleDates, dayMonths, leadDate, bylines, markDated, pressDateline, breadcrumbs, organisation, extractPage, pageDigest, ownDate } from '../lib/extract.mjs';
 import { richIssues } from '../lib/rich.mjs';
 import { verifyDraft, norm, onPage, knownUrl } from '../lib/verify.mjs';
 import { parseCsv, readQuestions, renderProposals } from '../lib/proposals.mjs';
@@ -320,7 +320,7 @@ test('verifyDraft: values from the page pass, invented ones are flagged', () => 
     author: { '@type': 'Person', name: 'John Smith', sameAs: 'https://www.linkedin.com/in/johnsmith' }, url: 'https://acme.com/somewhere-else',
   };
   const flags = Object.fromEntries(verifyDraft(bad, p).map((f) => [f.path, f.reason]));
-  assert.match(flags.datePublished, /page's own date is 2025-03-07/);
+  assert.match(flags.datePublished, /date line by the title reads 2025-03-07/);
   assert.match(flags.dateModified, /not shown/);
   assert.match(flags.award, /text not on the page/);
   assert.match(flags.foundingDate, /year not on the page/);
@@ -806,4 +806,26 @@ test('extract --urls and extract --from-archive without a run folder or URL', as
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+test('ownDate: a stated date wins, a meta or JSON-LD date shown on the page beats a date line, else unknown', () => {
+  const dates = ['2026-05-03', '2026-04-01'];
+  assert.deepEqual(ownDate({ date: '2026-04-01', source: 'label' }, { published: '2026-05-03', dates }), { date: '2026-04-01', source: 'label' });
+  assert.deepEqual(ownDate({ date: '2026-04-01', source: 'dateline' }, { published: '2026-05-03', dates }), { date: '2026-05-03', source: 'meta' });
+  assert.deepEqual(ownDate({ date: '2026-04-01', source: 'press' }, { jsonLd: [{ data: { '@type': 'NewsArticle', datePublished: '2026-05-03T09:00:00Z' } }], dates }), { date: '2026-05-03', source: 'jsonld' });
+  // a head date the page does not show is not used
+  assert.deepEqual(ownDate({ date: '2026-04-01', source: 'dateline' }, { published: '2025-01-01', dates }), { date: '2026-04-01', source: 'dateline' });
+  assert.equal(ownDate(null, { published: '2025-01-01', dates }), null);
+  // two different JSON-LD dates: no answer from JSON-LD
+  assert.equal(ownDate(null, { jsonLd: [{ data: { datePublished: '2026-05-03' } }, { data: { datePublished: '2026-04-01' } }], dates }), null);
+});
+
+test('extractPage records where the page date came from', () => {
+  const labelled = extractPage('<html><body><main><h1>Results</h1><p>Published 3 May 2026</p><p>Body text.</p></main></body></html>', 'https://example.com/a');
+  assert.equal(labelled.leadDate, '2026-05-03');
+  assert.equal(labelled.leadDateSource, 'label');
+  const none = extractPage('<html><body><main><h1>About</h1><p>Founded on 3 May 1990 in a garage.</p></main></body></html>', 'https://example.com/b');
+  assert.equal(none.leadDate, null);
+  assert.equal(none.leadDateSource, null);
+  assert.match(pageDigest(none), /Page date: none stated near the top \(unknown\)/);
 });

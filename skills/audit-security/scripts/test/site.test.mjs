@@ -49,7 +49,7 @@ test('frameAncestors: CSP frame-ancestors wins, X-Frame-Options alone is a warni
 test('frameAncestors: wildcards on public hosting suffixes warn; the fix keeps the X-Frame-Options value sent', () => {
   const open = frameAncestors({ 'content-security-policy': "frame-ancestors 'self' https://*.cms.example.com https://*.vercel.app", 'x-frame-options': 'DENY' });
   assert.equal(open.status, 'warn');
-  assert.match(open.evidence, /https:\/\/\*\.vercel\.app is a public hosting suffix/);
+  assert.match(open.evidence, /https:\/\/\*\.vercel\.app is a public suffix/);
   assert.doesNotMatch(open.evidence, /cms\.example\.com is/, 'a site\'s own wildcard is not flagged');
   assert.match(open.fix, /keep X-Frame-Options: DENY/);
   for (const src of ['*.netlify.app', 'https://*.github.io', 'https://*.azurewebsites.net:443', '*.pages.dev/']) {
@@ -57,6 +57,8 @@ test('frameAncestors: wildcards on public hosting suffixes warn; the fix keeps t
   }
   assert.equal(publicWildcard('https://app.vercel.app'), null, 'one exact deployment is fine');
   assert.equal(publicWildcard('https://*.example.vercel.app'), null, 'only a wildcard on the suffix itself');
+  assert.equal(publicWildcard('https://*.co.uk'), 'co.uk', 'any public suffix, ICANN or private');
+  assert.equal(publicWildcard('*.s3.amazonaws.com'), 's3.amazonaws.com');
   assert.equal(frameAncestors({ 'content-security-policy': "frame-ancestors 'self' https://*.cms.example.com" }).status, 'pass');
   // Item 3: the fix text keeps whatever valid X-Frame-Options the site already sends.
   assert.match(frameAncestors({ 'x-frame-options': 'DENY' }).fix, /keep X-Frame-Options: DENY/);
@@ -174,6 +176,8 @@ test('frameAncestors: a dev, staging or test host allowed to frame the live site
   assert.equal(fa("'self' https://staging.example.com").status, 'warn');
   assert.equal(nonProductionSource('https://www.devon.example.com'), null, 'a word that only starts like "dev" is not one');
   assert.equal(nonProductionSource("'self'"), null);
+  assert.equal(nonProductionSource('https://dev.tld'), null, 'a site whose own name is the word');
+  assert.equal(nonProductionSource('https://example-test.vercel.app'), 'example-test.vercel.app', 'a platform preview address');
 });
 
 test('hstsSubdomains: a long max-age without includeSubDomains gets an info note', () => {
