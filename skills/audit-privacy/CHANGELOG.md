@@ -2,6 +2,15 @@
 
 All notable changes to the `audit-privacy` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.3.0] - 2026-11-10
+
+### Added
+- `policy.thin`: a privacy policy with fewer than 400 words of its own is a warning. A thin page that links to policies under it (a selector page, one policy per product) has those pages read too, one level down and at most three, saved as `policy-1-1.txt` and on; the row is info when one of them holds a full policy, and a warning naming the pages further down when they are selectors too.
+- When the start page has no link to a privacy or cookie policy, the policy is looked for in the sitemaps (from robots.txt, the www or bare host alike, else `/sitemap.xml` and `/sitemap_index.xml`) and then at common paths (`/privatlivspolitik`, `/privacy-policy`, `/privacy`, `/cookiepolitik`, `/datenschutz` and others), and read. `policy.privacy` still fails, and says where the policy was found.
+
+### Changed
+- `policy-*.txt` holds the policy page's own text: the consent banner, the site header, navigation, sidebars and footer are left out (a cookie declaration the page embeds stays). The word count in `policy.privacy` is of that text.
+
 ## [2.2.3] - 2026-11-10
 
 ### Changed

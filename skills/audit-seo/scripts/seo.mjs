@@ -105,7 +105,9 @@ function saveArchive(dir, recorder, report, log) {
   // The crawl's own answer: whole (the start-page probe reads only 512 kB) and, after a retry, the one with a title.
   const pick = (list) => list.find((r) => !r.truncated && titled(r)) || list.find((r) => !r.truncated) || list[0];
   const done = new Set();
-  for (const p of report.pages || []) {
+  // Pages that answered 200 first: /page/ (the page) takes the plain slug, /page (its redirect) the -x one.
+  const ok = (p) => (p.status >= 200 && p.status < 300 ? 0 : 1);
+  for (const p of [...(report.pages || [])].sort((a, b) => ok(a) - ok(b))) {
     const list = recorder.responses.get(p.url);
     if (!list?.length) continue;
     const r = pick(list);
@@ -240,7 +242,7 @@ async function fullAudit(opts, http, siteHosts, log, archive = null) {
     const notArchivedLinks = [...crawl.inlinks.keys()].filter((l) => archive.notArchived.has(l)).length;
     const applied = applyArchiveMode(rows, { robots: robots.status > 0, sitemap: sitemap.sources.some((x) => x.status > 0), llms: geo.llms.status > 0, notArchivedLinks });
     rows.splice(0, rows.length, ...applied.rows);
-    archiveInfo = archiveSummary(archive, opts, { skipped: applied.skipped, degraded: applied.degraded, extra: crawl.archiveExtra });
+    archiveInfo = archiveSummary(archive, opts, { skipped: applied.skipped, degraded: applied.degraded, extra: crawl.archiveExtra, notArchivedLinks });
   }
 
   const date = new Date().toISOString().slice(0, 10);
@@ -286,9 +288,9 @@ function archiveCrawl(archive, opts, { startUrl, hosts, robots, log }) {
 }
 
 /** report.archive: where the pages came from and what archive mode left out. */
-function archiveSummary(archive, opts, { skipped = [], degraded = [], extra = 0 } = {}) {
+function archiveSummary(archive, opts, { skipped = [], degraded = [], extra = 0, notArchivedLinks = 0 } = {}) {
   return {
-    dir: archive.dir, date: archive.date, allowLive: opts.allowLive, extra,
+    dir: archive.dir, date: archive.date, allowLive: opts.allowLive, extra, notArchivedLinks,
     live: [...archive.live], notArchived: [...archive.notArchived], masked: archive.maskedValues, maskedUrls: [...archive.masked],
     skipped, degraded,
   };

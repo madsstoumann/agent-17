@@ -48,7 +48,7 @@ function bodyHtml(html) {
 }
 
 /** Cookie banners and dialogs say nothing about the page. */
-const dropConsent = (html) => html.replace(/<(div|section|aside)\b[^>]*(?:id|class)\s*=\s*["'][^"']*(?:onetrust|cookiebot|usercentrics|didomi|cookie-?consent|cookie-?banner)[^"']*["'][^>]*>[\s\S]*?<\/\1\s*>/gi, ' ');
+const dropConsent = (html) => html.replace(/<(div|section|aside)\b[^>]*(?:id|class)\s*=\s*["'][^"']*(?:onetrust|cookiebot|usercentrics|didomi|cookie-?consent|cookie-?banner|cookie-information|coi-banner|coioverlay)[^"']*["'][^>]*>[\s\S]*?<\/\1\s*>/gi, ' ');
 
 /** The main content: <main> when there is one, else the body without nav, header, footer and aside. */
 function mainHtml(body) {
@@ -108,12 +108,16 @@ export function questionPairs(markdown, { maxWords = 120 } = {}) {
 const pad = (n) => String(n).padStart(2, '0');
 const iso = (y, m, d) => (m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 1990 && y <= 2100 ? `${y}-${pad(m)}-${pad(d)}` : null);
 
+/** Weekday names in the languages MONTH_NAMES covers, for telling a dateline ("Thursday 5 November 2026") from prose. */
+const WEEKDAYS = new Set('monday tuesday wednesday thursday friday saturday sunday mon tue wed thu fri sat sun mandag tirsdag onsdag torsdag fredag lørdag søndag måndag tisdag fredag lördag söndag montag dienstag mittwoch donnerstag freitag samstag sonntag maandag dinsdag woensdag donderdag vrijdag zaterdag zondag lundi mardi mercredi jeudi vendredi samedi dimanche lunes martes miércoles jueves viernes sábado domingo'.split(' '));
+
 /**
  * Dates written on the page, as YYYY-MM-DD: "12 March 2025", "March 12, 2025", "2025-03-12",
  * "12.03.2025", "12/03/2025" (day first), and day-month-year in the languages MONTH_NAMES covers:
  * "1. oktober 2026", "d. 9. november 2026", "1er octobre 2026", "1 de octubre de 2026". In a range
- * ("1. oktober – 29. marts 2027", "3.–5. juni 2026") the first date takes the year from the second.
- * A date without a year ("torsdag den 5. november") is not a date the page shows in full.
+ * ("1. oktober – 29. marts 2027", "3.–5. juni 2026") the first date takes the year from the second;
+ * in a list ("5., 12. og 19. december 2026", "5, 12 and 19 December 2026") every day counts.
+ * A date without a year ("torsdag den 5. november") is not a full date: see dayMonths().
  */
 export function visibleDates(text) {
   const out = new Set();
@@ -135,31 +139,161 @@ export function visibleDates(text) {
     out.add(iso(m1 > m2 ? y - 1 : y, m1, +m[1]));
   }
   for (const m of t.matchAll(rangeDays)) out.add(iso(+m[4], month(m[3]), +m[1]));
+  // Lists of days in one month: "5., 12. og 19. december 2026", "5, 12 and 19 December 2026".
+  for (const m of t.matchAll(dayList(true))) {
+    const [mo, y] = [month(m[2]), +m[3]];
+    for (const d of m[1].match(/\d{1,2}/g)) out.add(iso(y, mo, +d));
+  }
   for (const m of t.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) out.add(iso(+m[1], +m[2], +m[3]));
   for (const m of t.matchAll(/\b(\d{1,2})[./](\d{1,2})[./](\d{4})\b/g)) out.add(iso(+m[3], +m[2], +m[1]));
   out.delete(null);
   return [...out].sort();
 }
 
+/** "5., 12. og 19. december[ 2026]": the days (group 1), the month (2) and, with `year`, the year (3). */
+function dayList(year) {
+  const d = '\\d{1,2}(?:st|nd|rd|th|er|e)?\\.?';
+  const and = '(?:og|and|und|en|et|y|och|&)';
+  return new RegExp(`(?<![\\p{L}\\d.])((?:${d}\\s*,\\s*)*${d}\\s*,?\\s+${and}\\s+${d})\\s+(${MONTH_RE})\\.?(?![\\p{L}])${year ? ',?\\s+(\\d{4})(?!\\d)' : '(?!,?\\s+\\d{4})'}`, 'giu');
+}
+
 /**
- * The page's own date, when it shows one: the first date in the opening of the main content
- * (above or just under the h1, before the body text starts). null when the page shows none there;
- * dates further down are usually about something else (a deadline, an event, a quoted report).
+ * Day and month shown without a year, as MM-DD: "torsdag den 5. november kl. 17-22", "5 November",
+ * "5., 12. og 19. december". A draft date on such a day is on the page (an event page that leaves
+ * the year to its context); a date that carries a year is left to visibleDates().
  */
-export function leadDate(markdown) {
+export function dayMonths(text) {
+  const out = new Set();
+  const t = String(text || '');
+  const month = (w) => MONTH.get(w.toLowerCase().replace(/\.$/, '')) || 0;
+  const add = (mo, d) => { if (mo && d >= 1 && d <= 31) out.add(`${pad(mo)}-${pad(d)}`); };
+  const dm = new RegExp(`(?<![\\p{L}\\d.])(\\d{1,2})(?:st|nd|rd|th|er|e)?\\.?\\s+(?:de\\s+)?(${MONTH_RE})\\.?(?![\\p{L}])(?!,?\\s+(?:de\\s+)?\\d{4})`, 'giu');
+  const md = new RegExp(`(?<![\\p{L}\\d])(${MONTH_RE})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?![\\d\\p{L}])(?!,?\\s+\\d{4})(?!\\s*:)`, 'giu');
+  for (const m of t.matchAll(dm)) add(month(m[2]), +m[1]);
+  for (const m of t.matchAll(md)) add(month(m[1]), +m[2]);
+  for (const m of t.matchAll(dayList(false))) for (const d of m[1].match(/\d{1,2}/g)) add(month(m[2]), +d);
+  return [...out].sort();
+}
+
+// Labels that put a page's own date next to it: "Opdateret 9. november 2026", "Published: 4 June 2024".
+const DATE_LABEL = /(?:^|[\s(|·•,–—-])(?:sidst\s+|last\s+|zuletzt\s+|senast\s+)?(?:opdateret|publiceret|udgivet|offentliggjort|redigeret|revideret|ændret|updated|published|posted|revised|edited|oppdatert|publisert|uppdaterad|publicerad|aktualisiert|veröffentlicht|bijgewerkt|gepubliceerd|mis\s+à\s+jour|publié|actualizado|publicado)(?:\s+(?:d\.|den|on|le|am|op|el|the))?\s*:?\s*/giu;
+// Marks the start of a <time> element or an element classed as a date or byline (see markDated()).
+const DATE_MARK = '⁣';
+const DATE_CLASS = /^(?:[\w-]*[-_])?(?:date|dateline|byline|by-line|author|authors|writer|published|pubdate|posted|timestamp|datetime|meta-?date|post-?meta|article-?meta)(?:[-_][\w-]*)?$/i;
+const NOT_PAGE_DATE_CLASS = /event|start|end|range|deadline|opening|calendar|schedule|expir|birth/i;
+
+/**
+ * The HTML with DATE_MARK in front of each <time> element (and its datetime value) and the text of
+ * each element whose class, id or itemprop names a date or byline, so leadDate() can tell a
+ * dateline from a date in the prose.
+ */
+export function markDated(html) {
+  return String(html || '')
+    .replace(/<time\b([^>]*)>([\s\S]{0,200}?)<\/time\s*>/gi, (m, attrs, inner) => {
+      // The datetime value counts only when the element shows a day too: a teaser's
+      // <time datetime="2026-07-20">2026</time> says the year of a card, not the page's date.
+      const dt = /\bdatetime\s*=\s*["']\s*(\d{4}-\d{2}-\d{2})/i.exec(attrs)?.[1];
+      const text = clean(inner);
+      const shown = visibleDates(text).length || dayMonths(text).length || /\b\d+\s+\w+\s+ago\b|\bsiden\b/i.test(text);
+      return `<time${attrs}>${DATE_MARK}${dt && shown ? `${dt} ` : ''}${inner}</time>`;
+    })
+    .replace(/<([a-z][\w-]*)\b([^>]*)>/gi, (m, tag, attrs) => {
+      if (/^(time|script|style|a|html|body|main|article|section)$/i.test(tag)) return m;
+      const values = [...attrs.matchAll(/\b(?:class|id|itemprop)\s*=\s*["']([^"']*)["']/gi)].flatMap((x) => x[1].split(/\s+/)).filter(Boolean);
+      return values.some((v) => DATE_CLASS.test(v) && !NOT_PAGE_DATE_CLASS.test(v)) ? `${m}${DATE_MARK}` : m;
+    });
+}
+
+// Words before a date that make it something other than the page's date: an event's start, a
+// deadline, a release, an appointment ("Fra torsdag den 5. februar 2026", "Appointed 16 September 2024").
+const NOT_PAGE_DATE_WORD = /^(?:fra|from|til|to|until|indtil|siden|since|ab|bis|seit|du|au|vanaf|tot|sinds|desde|hasta|från|frå|appointed|joined|born|founded|died|udnævnt|udpeget|født|død|ansat|tiltrådt|grundlagt|etableret|deadline|frist|ansøgningsfrist|opens?|opening|åbner|åbning|closes?|lukker|ends?|slutter|starts?|starter|begins?|release[sd]?|udkommer|udgives|premiere|valid|gyldig|expires?|udløber|event|arrangement)$/i;
+
+/**
+ * True when a line is a date with at most a short label before it: "June 7, 2023", "Torsdag 7. juni
+ * 2023", "News November 5, 2026", "Patch Notes July 24, 2026". Not a list or range of dates, and
+ * not a date after "Fra", "Appointed", "Deadline" and the like.
+ */
+function dateline(line) {
+  const t = String(line || '').replace(new RegExp(DATE_MARK, 'g'), '').trim();
+  if (visibleDates(t).length !== 1) return false;
+  const rest = t.replace(/\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g, ' ').toLowerCase().split(/[\s,.]+/).filter(Boolean);
+  const label = rest.filter((w) => !(/^\d{1,4}(?:st|nd|rd|th|er|e)?$/.test(w) || MONTH.has(w) || WEEKDAYS.has(w) || /^(den|d|de|the|of|le|am|el)$/.test(w)));
+  return label.length <= 3 && label.every((w) => /^[\p{L}&|·•:-]+$/u.test(w) && !NOT_PAGE_DATE_WORD.test(w.replace(/:$/, '')));
+}
+
+/**
+ * The date of a press release's dateline at the start of a line: up to seven capitalised place
+ * words, then the date, then a dash ("New York, June 5, 2024 – Example has won", "NASHVILLE,
+ * Tenn., February 17, 2026 - …"). null when the line does not open that way.
+ */
+export function pressDateline(line) {
+  const words = String(line || '').split(/\s+/);
+  for (let k = 1; k <= Math.min(7, words.length - 2); k++) {
+    const place = words.slice(0, k);
+    if (!place.every((w) => /^(?:\p{Lu}[\p{L}.'’]*,?|[–—-])$/u.test(w)) || place.some((w) => NOT_PAGE_DATE_WORD.test(w.replace(/[,.]$/, '')))) break;
+    if (/^[–—-]$/.test(place[0])) break;
+    const rest = words.slice(k).join(' ');
+    if (!new RegExp(`^(?:\\d|(?:${MONTH_RE})(?![\\p{L}]))`, 'iu').test(rest)) continue;
+    const m = /^(.{6,30}?)\s[–—-]\s/u.exec(rest);
+    const d = m && visibleDates(m[1]);
+    if (d && d.length === 1) return d[0];
+  }
+  return null;
+}
+
+/**
+ * The page's own date, when it shows one near the title: a <time> element or an element classed as
+ * a date or byline, a date after a label ("Opdateret 9. november 2026", "Published: 4 June 2024"),
+ * a dateline right above or below the h1 ("June 7, 2023", "News November 5, 2026"), or a press
+ * release's dateline opening the first paragraph ("New York, June 5, 2024 – Example has won"). Never a date in the
+ * prose, an FAQ answer, an event's dates or a label such as "Appointed" or "Born", and never a
+ * date after `today`: a page is not published in the future, an event is. null when there is none.
+ * `markdown` is toMarkdown() of the main content, with markDated() applied for the element rule.
+ */
+export function leadDate(markdown, { today = new Date().toISOString().slice(0, 10) } = {}) {
   const lines = String(markdown || '').split('\n').filter(Boolean);
   const h1 = lines.findIndex((l) => /^# /.test(l));
   let words = 0;
   const head = [];
-  for (const l of lines.slice(0, Math.max(0, h1) + 40)) {
-    head.push(l);
+  for (const [i, l] of lines.slice(0, Math.max(0, h1) + 40).entries()) {
+    head.push([i, l]);
     if (!/^(#|- )/.test(l)) words += l.split(/\s+/).length;
     if (words > 120) break;
   }
-  // The first date in reading order, not the earliest: a news item dated above its h1 often cites
-  // older dates (an earlier announcement, a law) in its first paragraph.
-  for (const l of head) {
-    const d = visibleDates(l)[0];
+  const ok = (d) => (d && d <= today ? d : null);
+  // The lines next to the h1 (list items, a breadcrumb trail, skipped): `near` is the one right
+  // above and the one right below, `close` up to three either side (where a date or byline
+  // element sits; further down it is a teaser's).
+  const near = new Set();
+  const close = new Set();
+  const around = (from, step) => {
+    let n = 0;
+    for (let i = from; i >= 0 && i < lines.length && n < 3; i += step) {
+      if (/^- /.test(lines[i])) continue;
+      if (!n) near.add(i);
+      close.add(i); n++;
+    }
+  };
+  if (h1 >= 0) { around(h1 - 1, -1); around(h1 + 1, 1); } else around(0, 1);
+  // In reading order: the first line that shows the page's date by one of the rules wins.
+  for (const [i, l] of head) {
+    if (/^# /.test(l)) continue;
+    const mark = l.indexOf(DATE_MARK);
+    if (mark >= 0 && close.has(i)) {
+      const d = ok(visibleDates(l.slice(mark, mark + 80))[0]);
+      if (d) return d;
+    }
+    DATE_LABEL.lastIndex = 0;
+    for (const m of l.matchAll(DATE_LABEL)) {
+      const d = ok(visibleDates(l.slice(m.index + m[0].length, m.index + m[0].length + 40))[0]);
+      if (d) return d;
+    }
+    if (near.has(i) && dateline(l)) {
+      const d = ok(visibleDates(l)[0]);
+      if (d) return d;
+    }
+    // A press release's dateline: "Copenhagen, New York – 23 April 2024 – Example today announced".
+    const d = !/^#/.test(l) && ok(pressDateline(l));
     if (d) return d;
   }
   return null;
@@ -172,10 +306,73 @@ export function publishedMeta(html) {
   return c ? c[1] : null;
 }
 
-/** "By Jane Doe", "Author: Jane Doe", "Written by …": the names a byline shows. */
-export function bylines(text) {
+// Job-title words that end a name in a byline ("Jane Doe Head of Data", "Ole Hansen, Senior Partner").
+const ROLE_WORD = /^(?:head|chief|senior|junior|director|global|principal|manager|partner|ceo|cto|cfo|coo|cmo|vp|svp|evp|vice|president|lead|leder|direktør|chef|professor|lektor|specialist|analyst|editor|redaktør|journalist|founder|co-founder|medstifter|stifter|consultant|konsulent|associate|fellow|researcher|forsker|economist|økonom|strategist|engineer|officer|advisor|rådgiver|team|research|product|marketing|sales|executive|managing|general|group|portfolio|investment|business|head-of)$/i;
+const NAME_WORD = /^(?:\p{Lu}[\p{L}'’.-]*|van|von|de|der|den|la|le|du|da|af)$/u;
+const BYLINE_LABEL = /^(?:(?:intro|text|tekst|words|interview|article|artikel|essay|blog|post|story|historie|foto|photo|photos|video|illustration|indlæg|report|rapport)\s+(?:by|af)|by|af|skrevet af|written by|authors?:?|forfattere?:?|tekst(?: og foto)?:|text:|von|door|par|por|av|autor(?:en)?:?|auteur:?)\s*/i;
+const AND = /^(?:og|and|und|en|et|y|och|&)$/i;
+
+/** The name a line opens with: two to four capitalised words, ended by a role word, a comma or the line. */
+function nameAt(text) {
+  const words = String(text || '').trim().split(/\s+/);
+  const name = [];
+  let sep = false; // the name ended on a separator ("Doe," or "Doe |")
+  for (const w of words) {
+    const bare = w.replace(/[,|·•–—(/:]+$/, '');
+    if (!bare || ROLE_WORD.test(bare) || !NAME_WORD.test(bare) || /^\p{Lu}{2,}$/u.test(bare)) break;
+    name.push(bare);
+    if (bare !== w) { sep = true; break; }
+    if (name.length === 4) break;
+  }
+  while (name.length && /^(van|von|de|der|den|la|le|du|da|af)$/.test(name.at(-1))) name.pop();
+  if (name.length < 2 || name.filter((w) => /^\p{Lu}/u.test(w)).length < 2 || visibleDates(name.join(' ')).length) return null;
+  const rest = words.slice(name.length).join(' ').replace(/^[,|·•–—(/:]+/, '').trim();
+  // After the name: nothing, a separator, a job title, or "og/and" and a second name.
+  const next = rest.split(/\s+/)[0] || '';
+  if (rest && !sep && !/^[,|·•–—(/]/.test(words.slice(name.length).join(' ')) && !ROLE_WORD.test(next) && !AND.test(next)) return null;
+  return { name: name.join(' '), rest };
+}
+
+/**
+ * The names a byline shows: a line that starts with a byline label and names one or two people
+ * ("By Jane Doe, Head of Data", "Af Mette Hansen og Ole Jensen"), the name lines under a label of
+ * their own ("Authors:" then "Jane Doe" / "Head of Data" / "Ole Hansen"), or the text of an element
+ * classed as a byline or author (`markdown` with markDated() applied). A name in the prose ("made
+ * by Example AG", "Udpeget af …"), a teaser label or a staff list is not a byline.
+ */
+export function bylines(markdown) {
   const out = new Set();
-  for (const m of String(text || '').matchAll(/\b(?:[Bb]y|[Aa]uthors?:|[Ww]ritten by|af|[Ss]krevet af)\s+((?:[A-ZÆØÅÄÖÜ][\p{L}'-]+\s?){2,4})/gu)) out.add(m[1].trim());
+  const lines = String(markdown || '').split('\n').map((raw) => ({
+    marked: raw.includes(DATE_MARK),
+    text: raw.replace(new RegExp(DATE_MARK, 'g'), ' ').replace(/^#{1,6}\s+|^-\s+/, '').replace(/\s+/g, ' ').trim(),
+  })).filter((l) => l.text);
+  const take = (text) => {
+    const a = nameAt(text);
+    if (!a) return false;
+    out.add(a.name);
+    const and = /^(?:og|and|und|en|et|y|och|&)\s+(.*)$/i.exec(a.rest);
+    const b = and && nameAt(and[1]);
+    if (b) out.add(b.name);
+    return true;
+  };
+  for (const [i, { marked, text }] of lines.entries()) {
+    if (text.split(' ').length > 14) continue;
+    const label = BYLINE_LABEL.exec(text);
+    if (label && label[0].length === text.length) {
+      // "Authors:" on its own line: the name lines under it (job titles in between are skipped).
+      for (const next of lines.slice(i + 1, i + 7)) {
+        if (next.text.split(' ').length > 12) break;
+        take(next.text);
+      }
+      continue;
+    }
+    if (label && /^[A-ZÆØÅÄÖÜÉ]/.test(text.slice(label[0].length))) {
+      take(text.slice(label[0].length));
+      continue;
+    }
+    DATE_LABEL.lastIndex = 0;
+    if (marked && !DATE_LABEL.test(text)) take(text);
+  }
   return [...out].slice(0, 5);
 }
 
@@ -246,7 +443,11 @@ export function headText(meta) {
 export function extractPage(html, url) {
   const meta = extractMeta(html, url);
   const body = dropConsent(bodyHtml(html));
-  const mainMd = toMarkdown(mainHtml(body));
+  const main = mainHtml(body);
+  const mainMd = toMarkdown(main);
+  // The same content with <time>, date and byline elements marked: where the page's own date and
+  // byline are read from.
+  const markedMd = toMarkdown(markDated(main));
   const shownText = clean(body);
   // Text the served HTML already has in its head (meta description, og: and twitter: tags, the title)
   // is not hidden: Next.js repeats its metadata in the payload, and crawlers read the tags.
@@ -255,6 +456,7 @@ export function extractPage(html, url) {
   const hiddenText = hidden.filter((b) => !b.shown).map((b) => b.text).join(' ');
   const fullText = hiddenText ? `${shownText} ${hiddenText}` : shownText;
   const dates = visibleDates(fullText);
+  const days = dayMonths(fullText);
   const published = publishedMeta(html);
   return {
     url,
@@ -270,9 +472,10 @@ export function extractPage(html, url) {
     tables: mainMd.split('\n').filter((l) => l.startsWith('| ')).length,
     dates,
     // The date shown at the top; without one, article:published_time when the page shows that date too.
-    leadDate: leadDate(mainMd) || (dates.includes(published) ? published : null),
+    leadDate: leadDate(markedMd) || (dates.includes(published) ? published : null),
     publishedMeta: published,
-    bylines: bylines(fullText),
+    dayMonths: days,
+    bylines: bylines(markedMd),
     breadcrumbs: breadcrumbs(body, url),
     org: organisation(html, url, meta),
     og: meta.og,

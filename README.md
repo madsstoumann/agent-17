@@ -302,14 +302,15 @@ Three steps with Claude's writing in between; the skill runs them. `plan.mjs ext
 | Flag | What it does |
 |---|---|
 | `<input>` | An audit-all run folder (the plan goes into its `plan-geo/`), an audit-seo run folder or `report.json`, or a URL (the host's last audit-seo run; with none, audit-seo runs first with `--geo`). |
-| `--pages N` | Pages read in full (default 24): the start page, a representative page of each template (a title of its own, not thin, the most recent in news and article sections), a second page of large templates, then pages with three or more question headings. |
+| `--pages N` | Pages read in full (default 24): the start page, a representative page of each template (a title of its own, not thin, the most recent in news and article sections; its canonical URL; legal pages and listings last), a second page of large templates, then pages with three or more question headings. No URL is read twice. |
+| `--urls a,b` | On `extract`: pages to read first and use as examples (full URLs or paths). |
 | `--only markup\|content` | Plan the structured data only, or the content gaps only. Default both. |
 | `--queries FILE` | Search Console queries, People Also Ask or the client's own questions to start the question map from (otherwise the questions are Claude's informed guess, and the plan says so). |
 | `--competitors a.com,b.com` | Alternatives comparison briefs may name. Without it, only alternatives the site already names. |
 | `--repo PATH` | The site's code, so markup and module tasks go to audit-fix as agent tasks. |
 | `--no-render` | Never use Chrome (by default pages whose served HTML is thin are rendered). |
 | `--no-remote` / `--no-validate` | On `check`, `samples` and `build`: do not send the drafts or samples to validator.schema.org. |
-| `--from-archive DIR` | On `extract`: read every page from a page archive (as audit-seo `--save-html` writes it) instead of the site. Thin pages use the archived text files where a live run would render them, and are marked "served HTML only" without them; pages not in the archive are skipped. The plan says on top it was built from the archive of that date. `samples --live` reads the same archive. |
+| `--from-archive DIR` | On `extract`: read every page from a page archive (as audit-seo `--save-html` writes it) instead of the site; the input may be left out. Thin pages use the archived text files where a live run would render them, and are marked "served HTML only" without them; pages not in the archive are skipped. The plan says on top it was built from the archive of that date. `samples --live` reads the same archive. |
 | `--allow-live` | With `--from-archive`: fetch pages the archive does not hold from the site. |
 | `--samples` | On `build`: write `samples/` first and link it from `proposals.md`. |
 | `--live` | On `samples`: also write `<slug>.live.html`, the live page with its own JSON-LD replaced by the proposed graph and a `<base href>`, so it opens in a browser as the page would look after the work. |

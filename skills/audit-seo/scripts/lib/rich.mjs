@@ -35,6 +35,8 @@ const list = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]);
 const ARTICLE = { recommended: ['headline', 'image', 'datePublished', 'dateModified', 'author', 'author.name'] };
 const LOCAL = { required: ['name', 'address'], recommended: ['telephone', 'url', 'geo', 'openingHoursSpecification|openingHours', 'priceRange', 'image'] };
 const RATING = (node) => (has(node.ratingValue) ? [] : ['ratingValue']).concat(any(node, ['ratingCount', 'reviewCount']) ? [] : ['ratingCount|reviewCount']);
+const EVENT = { required: ['name', 'startDate', 'location'], recommended: ['description', 'endDate', 'eventStatus', 'eventAttendanceMode', 'image', 'offers', 'organizer', 'performer'] };
+const EVENT_SUBTYPES = ['BusinessEvent', 'ChildrensEvent', 'ComedyEvent', 'DanceEvent', 'DeliveryEvent', 'EducationEvent', 'EventSeries', 'ExhibitionEvent', 'Festival', 'FoodEvent', 'Hackathon', 'LiteraryEvent', 'MusicEvent', 'SaleEvent', 'ScreeningEvent', 'SocialEvent', 'SportsEvent', 'TheaterEvent', 'VisualArtsEvent'];
 const offerPrice = (o) => any(o, ['price', 'priceSpecification.price', 'lowPrice']);
 
 export const RULES = {
@@ -52,7 +54,10 @@ export const RULES = {
       return out;
     },
   },
-  Event: { required: ['name', 'startDate', 'location'], recommended: ['description', 'endDate', 'eventStatus', 'eventAttendanceMode', 'image', 'offers', 'organizer', 'performer'] },
+  Event: EVENT,
+  // schema.org's Event subtypes Google lists as events: its event rules apply to each ("ExhibitionEvent" on a
+  // museum). Broadcast, publication and course instances are left to the types that hold them.
+  ...Object.fromEntries(EVENT_SUBTYPES.map((t) => [t, EVENT])),
   FAQPage: {
     required: ['mainEntity'],
     extra: (node) => list(node.mainEntity).flatMap((q, i) => [!has(q?.name) && `mainEntity[${i}].name`, !has(get(q, 'acceptedAnswer.text')) && `mainEntity[${i}].acceptedAnswer.text`].filter(Boolean)),

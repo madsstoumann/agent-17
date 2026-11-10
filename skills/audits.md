@@ -117,7 +117,7 @@ node skills/plan-geo/scripts/plan.mjs extract <audit-seo run folder> --from-arch
 ```
 
 The archive is `index.json` plus one `<slug>.html.gz` per URL (redirects kept as served), with
-robots.txt, sitemaps and llms.txt beside the pages. Nothing in it is masked: redact secrets before you
+robots.txt, sitemaps and llms.txt beside the pages (`robots.txt.gz`, `sitemap.xml.gz`). Nothing in it is masked: redact secrets before you
 share or commit it (masked values look like `abcd…[masked <type>]`, and the skills treat them as
 placeholders). From an archive, nothing on the site is fetched unless you add `--allow-live`; only
 validator.schema.org is still called (`--no-validate` skips it). The report says on its cover that it
@@ -275,7 +275,8 @@ runner in the EU, or from your own machine.
 
 **Behind a proxy or a limited DNS resolver.** Some runners and cloud sandboxes re-sign TLS on their
 way out, or have a resolver that answers addresses only (no TXT, MX, NS or CAA). audit-infra notices
-both: its certificate rows are skipped with `tls.interception` naming the CA that re-signed them,
+both: its certificate rows are skipped with `tls.interception` naming the CA that re-signed them
+(a degraded run, not a warning or a task for the site; audit-launch does the same),
 and audit-infra and audit-launch read DNS and mail records over DNS-over-HTTPS, or skip them with
 "the local resolver returned no records" when that is blocked too. A skipped row is not a pass:
 check those rows from another network.

@@ -71,11 +71,15 @@ function* leaves(value, pathParts = [], key = '') {
 
 /**
  * verifyDraft(data, page) -> [{ path, value, reason }]: values the page does not back up.
- * `page` is an extract record (pages/<slug>.json): text, title, description, og, urls, dates, url.
+ * `page` is an extract record (pages/<slug>.json): text, title, description, og, urls, dates,
+ * dayMonths, url. An event date (startDate, endDate…) is on the page when the page shows that day
+ * and month, with or without the year; datePublished and dateModified need the full date.
  */
 export function verifyDraft(data, page) {
   const haystack = norm([page.text, page.title, page.description, ...Object.values(page.og || {}), ...(page.breadcrumbs || []).map((b) => b.name), ...(page.org?.phones || []), ...(page.org?.emails || [])].join(' \n '));
   const dates = new Set(page.dates || []);
+  // Day and month shown without a year ("torsdag den 5. november kl. 17-22"): an event's date.
+  const dayMonths = new Set(page.dayMonths || []);
   const out = [];
   for (const [p, key, raw] of leaves(data)) {
     const value = String(raw).trim();
@@ -90,7 +94,8 @@ export function verifyDraft(data, page) {
     if (DATE_KEYS.test(key)) {
       const d = value.slice(0, 10);
       const year = /^\d{4}$/.test(value);
-      if (year ? !haystack.includes(value) : !dates.has(d)) out.push({ path: p, value, reason: year ? 'year not on the page' : 'date not shown on the page' });
+      const shown = year ? haystack.includes(value) : dates.has(d) || (!PAGE_DATE_KEYS.test(key) && /^\d{4}-\d{2}-\d{2}$/.test(d) && dayMonths.has(d.slice(5)));
+      if (!shown) out.push({ path: p, value, reason: year ? 'year not on the page' : 'date not shown on the page' });
       // A publication date must be the date the page shows as its own, not a deadline in the text.
       else if (PAGE_DATE_KEYS.test(key) && !year && d !== page.leadDate) out.push({ path: p, value, reason: page.leadDate ? `the page's own date is ${page.leadDate}` : 'the page shows no date of its own near the top; this date is from the text' });
       continue;

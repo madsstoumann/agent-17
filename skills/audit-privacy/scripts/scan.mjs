@@ -9,11 +9,11 @@ import { fileURLToPath } from 'node:url';
 import { parseLevel, shows, levelNote, consoleList, scratchDir, removeScratch } from './lib/levels.mjs';
 import { launch } from './lib/cdp.mjs';
 import { openContext, choose } from './lib/visit.mjs';
-import { analyse, SECTIONS } from './lib/analyse.mjs';
+import { analyse, SECTIONS, THIN_POLICY_WORDS } from './lib/analyse.mjs';
 import { hiddenBlocks, blocksMarkdown } from './lib/rsc.mjs';
 import { countStatuses, prepareRun, finishRun, consoleItems, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, GLYPH, result } from './lib/common.mjs';
 
-export const VERSION = '2.2.3';
+export const VERSION = '2.3.0';
 
 const USAGE = `audit-privacy ${VERSION}: GDPR / ePrivacy check of cookies, trackers and the consent banner
 
@@ -90,12 +90,17 @@ export function pickPages(links, startUrl, n) {
  * A policy page's text, including what sits behind closed accordions and tabs: <details> are
  * opened first (no side effects), and on a Next.js page the text that is only in the React
  * Server Components payload (content a closed accordion has not mounted yet) is added under a
- * marker line. Nothing on the page is clicked.
+ * marker line. Nothing on the page is clicked. The consent banner, the site header, navigation
+ * and footer are left out (page.content()); `out.links` gets the content's links to more policy
+ * text, for a selector page.
  */
-export async function policyText(p) {
+export async function policyText(p, out = {}) {
   await p.openDetails().catch(() => 0);
-  const text = (await p.text()).trim();
-  const hidden = hiddenBlocks(await p.html().catch(() => ''), text);
+  const html = await p.html().catch(() => '');
+  const own = p.content ? await p.content().catch(() => null) : null;
+  const text = (own && own.text ? own.text : await p.text()).trim();
+  out.links = own?.links || [];
+  const hidden = hiddenBlocks(html, text);
   return hidden.length ? `${text}\n\n${HIDDEN_MARKER}\n\n${blocksMarkdown(hidden)}` : text;
 }
 export const HIDDEN_MARKER = '[Text from the page\'s Next.js payload: behind accordions or tabs that were closed when the page was read]';
@@ -111,6 +116,17 @@ export function pickPolicies(links, siteHost = '') {
   const all = [...new Map(links.filter((l) => /^https?:/.test(l.href)).map((l) => [l.href.split('#')[0], l])).values()];
   const pool = all.some(own) ? all.filter(own) : all;
   return [pool.find((l) => !isCookie(l)), pool.find(isCookie)].filter(Boolean);
+}
+
+const words = (t) => (String(t).match(/\S+/g) || []).length;
+
+/**
+ * Which of a thin policy page's links to read as well: pages under it first (a selector page's
+ * per-product policies), then other links named like a policy. One level, at most three.
+ */
+export function subPolicies(links = [], read = new Set()) {
+  const fresh = links.filter((l) => !read.has(l.href.split('#')[0]));
+  return [...fresh.filter((l) => l.child), ...fresh.filter((l) => !l.child)].slice(0, 3);
 }
 
 export async function run(args, { dir, browser: given } = {}) {
@@ -137,16 +153,36 @@ export async function run(args, { dir, browser: given } = {}) {
         try { await p.goto(page, { extraWait: 1500 }); data.first.pages.push({ url: page, requests: p.requests.filter((r) => r.phase === `page:${page}`) }); } catch (e) { errors.push(`page ${page}: ${e.message}`); }
       }
       if (args.policy) {
-        for (const [i, l] of pickPolicies(facts.policyLinks || [], host).entries()) {
+        let picked = pickPolicies(facts.policyLinks || [], host);
+        if (!picked.length) {
+          // No link on the start page: look in the sitemap, then at common paths.
+          p.mark('policy:find');
+          const found = await p.findPolicies();
+          picked = pickPolicies(found, host).map((l) => ({ ...l, via: found.find((f) => f.href === l.href)?.via }));
+          if (found.length) log(`  no policy link on the start page; found ${found.map((f) => f.href).join(', ')} (${found[0].via})`);
+        }
+        const read = new Set();
+        const load = async (l, file, extra = {}) => {
           log(`  policy: ${l.href}`);
-          p.mark(`policy:${i}`);
+          read.add(l.href.split('#')[0]);
+          const out = {};
           try {
             await p.goto(l.href, { extraWait: 2500 });
-            const text = await policyText(p);
-            const file = `policy-${i + 1}.txt`;
+            const text = await policyText(p, out);
             if (dir) fs.writeFileSync(path.join(dir, file), `${l.href}\n\n${text}\n`);
-            data.policies.push({ url: l.href, ok: text.length > 200, text, words: text.split(/\s+/).length, file: dir ? file : null });
-          } catch (e) { data.policies.push({ url: l.href, ok: false, error: e.message }); }
+            const more = (out.links || []).filter((x) => x.child).map((x) => x.href).slice(0, 5);
+            data.policies.push({ url: l.href, ok: text.length > 200 || (out.links || []).length > 0, text, words: words(text), file: dir ? file : null, ...(more.length ? { links: more } : {}), ...(l.via ? { via: l.via } : {}), ...extra });
+          } catch (e) { data.policies.push({ url: l.href, ok: false, error: e.message, ...(l.via ? { via: l.via } : {}), ...extra }); }
+          return out.links || [];
+        };
+        for (const [i, l] of picked.entries()) {
+          p.mark(`policy:${i}`);
+          const links = await load(l, `policy-${i + 1}.txt`);
+          const got = data.policies[data.policies.length - 1];
+          if (got.ok && got.words < THIN_POLICY_WORDS) {
+            // A thin page is often a selector: read what it links to, one level down.
+            for (const [j, s] of subPolicies(links, read).entries()) await load(s, `policy-${i + 1}-${j + 1}.txt`, { parent: l.href });
+          }
         }
       }
       data.first.cookies = await p.cookies(); // everything set while browsing without a choice

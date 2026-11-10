@@ -8,7 +8,8 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { templateKey, groupTemplates, pickSample, siteName, properTitle, pageDate, pageSlug, guessType } from '../lib/templates.mjs';
-import { toMarkdown, questionPairs, visibleDates, leadDate, breadcrumbs, organisation, extractPage, pageDigest } from '../lib/extract.mjs';
+import { toMarkdown, questionPairs, visibleDates, dayMonths, leadDate, bylines, markDated, pressDateline, breadcrumbs, organisation, extractPage, pageDigest } from '../lib/extract.mjs';
+import { richIssues } from '../lib/rich.mjs';
 import { verifyDraft, norm, onPage, knownUrl } from '../lib/verify.mjs';
 import { parseCsv, readQuestions, renderProposals } from '../lib/proposals.mjs';
 import { extractMeta } from '../lib/html.mjs';
@@ -284,12 +285,19 @@ test('checkLine: a draft named after a page reads as matched to that page, not a
   assert.doesNotMatch(line, /not the example|name the draft|would be a separate draft|rename/);
 });
 
-test('verifyDraft: event dates the page shows in Danish pass; a date without a year is flagged', () => {
-  const html = '<html lang="da"><body><main><h1>Magt og mode</h1><p>1. oktober 2026 - 29. marts 2027</p><p>Torsdag den 5. november kl. 17-22</p></main></body></html>';
+test('verifyDraft: event dates the page shows in Danish pass, also without a year; other days are flagged', () => {
+  const html = '<html lang="da"><body><main><h1>Magt og mode</h1><p>1. oktober 2026 - 29. marts 2027</p><p>Torsdag den 5. november kl. 17-22</p><p>5., 12. og 19. december 2026</p></main></body></html>';
   const p = extractPage(html, 'https://example.dk/udstillinger/magt-mode');
   assert.deepEqual(verifyDraft({ '@type': 'ExhibitionEvent', name: 'Magt og mode', startDate: '2026-10-01', endDate: '2027-03-29' }, p), []);
-  const flags = verifyDraft({ '@type': 'Event', name: 'Magt og mode', startDate: '2026-11-05T17:00:00+01:00' }, p);
+  // "Torsdag den 5. november kl. 17-22": the day the page shows, its year left to the context.
+  assert.deepEqual(verifyDraft({ '@type': 'Event', name: 'Magt og mode', startDate: '2026-11-05T17:00:00+01:00', endDate: '2026-11-05T22:00:00+01:00' }, p), []);
+  // Every day of "5., 12. og 19. december 2026", not only the last.
+  assert.deepEqual(verifyDraft({ '@type': 'Event', name: 'Magt og mode', startDate: '2026-12-05', endDate: '2026-12-12' }, p), []);
+  const flags = verifyDraft({ '@type': 'Event', name: 'Magt og mode', startDate: '2026-11-06T17:00:00+01:00' }, p);
   assert.deepEqual(flags.map((f) => [f.path, f.reason]), [['startDate', 'date not shown on the page']]);
+  // A publication date needs the full date the page shows as its own.
+  const pub = verifyDraft({ '@type': 'Article', headline: 'Magt og mode', datePublished: '2026-11-05' }, p);
+  assert.deepEqual(pub.map((f) => [f.path, f.reason]), [['datePublished', 'date not shown on the page']]);
 });
 
 // ---------------------------------------------------------------- verify
@@ -658,6 +666,143 @@ test('extract --from-archive: archived pages, archived text for thin pages, serv
     const bad = await run(['extract', seoRun, '--allow-live']);
     assert.notEqual(bad.code, 0);
     assert.match(bad.err, /--allow-live only goes with --from-archive/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------- re-audit fixes (page date, bylines, examples, events, archive)
+
+const pageOf = (main, url = 'https://example.dk/x') => extractPage(`<html lang="da"><head><title>T | Example</title></head><body><main>${main}</main></body></html>`, url);
+const filler = '<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>';
+
+test('page date: never from prose, law references, FAQ answers, event dates or Appointed/Joined labels', () => {
+  const none = {
+    'company history in the prose': '<h1>Om virksomheden</h1><p>Vi gik i luften den 13. oktober 2003.</p>',
+    'a law reference': '<h1>Persondatapolitik</h1><p>Politikken er udarbejdet efter forordningen (EU) 2016/679 af 27. april 2016, som gælder fra 25. maj 2018.</p>',
+    'a deadline in the text': '<h1>Tilvalg</h1><p>Forsikringen kan tilvælges fra 26. maj 2025 og frem.</p>',
+    'an FAQ answer': '<h1>Frequently Asked Questions</h1><h2>When is the game released?</h2><p>May 27th, 2026.</p>',
+    'an appointment label': '<h1>The board</h1><h5>Appointed: 16 September 2024 (Chair from 1 January 2025)</h5>',
+    'an event date list above the h1': '<p class="subtitle">5., 12. og 19. december 2024</p><h1>Julevæsner</h1><p>Kom og mød dem.</p>',
+    'an exhibition period above the h1': '<p>1. oktober 2024 - 29. marts 2025</p><h1>Magt og mode</h1>',
+    'an event start after "Fra"': '<h1>Palmyra</h1><p>Fra torsdag den 5. februar 2026</p>',
+    'an exhibition period on the start page': '<h1>Velkommen</h1><p>Oplev særudstillingen fra 9. oktober 2026 til 8. august 2027.</p>',
+    'a future date (an event, not a publication)': '<p>June 7, 2099</p><h1>Statement</h1>',
+    'a teaser card year with a datetime': `<h1>Case studies</h1><p>Work for clients.</p><div><a href="/c/1">Client</a><span><time datetime="2026-07-20T00:00:00.000Z">2026</time></span></div>${filler}`,
+  };
+  for (const [what, html] of Object.entries(none)) assert.equal(pageOf(html).leadDate, null, what);
+});
+
+test('page date: kickers, labels, <time> and date elements near the title, press-release datelines', () => {
+  // The case that must keep its date: a date kicker above the h1, a breadcrumb under it, older dates in the text.
+  assert.equal(pageOf('<p class="kicker">June 7, 2023</p><h1>Statement by the Board</h1><ul><li>News</li></ul><p>With reference to the announcement of 25 May 2023 under Executive Order no. 636 of 15 May 2020.</p>').leadDate, '2023-06-07');
+  assert.equal(pageOf('<p>News November 5, 2025</p><h1>Free starter pack</h1><p>Today we launch.</p>').leadDate, '2025-11-05', 'a category kicker');
+  assert.equal(pageOf('<h1>Nyhed</h1><p>Opdateret 9. november 2025</p><p>Tekst.</p>').leadDate, '2025-11-09', 'a label near the title');
+  assert.equal(pageOf('<h1>Politik</h1><p>Version 1: Redigeret 1. januar 2024</p>').leadDate, '2024-01-01');
+  assert.equal(pageOf('<h1>Article</h1><p><time datetime="2025-03-07">7 March 2025</time></p><p>Text.</p>').leadDate, '2025-03-07', 'a time element');
+  assert.equal(pageOf('<h1>Article</h1><div class="article-date">7. marts 2025</div><p>Text.</p>').leadDate, '2025-03-07', 'an element classed as a date');
+  assert.equal(pageOf('<h1>Award</h1><p>New York, London – 1 November 2024 – Example has won the award for the best platform.</p>').leadDate, '2024-11-01', 'a press dateline');
+  assert.equal(pressDateline('NASHVILLE, Tenn., February 17, 2026 - Example announced'), '2026-02-17');
+  assert.equal(pressDateline('The deadline is 1 January 2027 – apply now'), null);
+  assert.match(markDated('<time datetime="2025-03-07">7 March 2025</time>'), /⁣2025-03-07 7 March/);
+});
+
+test('bylines: byline lines, author labels and author elements; never prose, teasers, staff lists or a story\'s subject', () => {
+  assert.deepEqual(pageOf('<h1>X</h1><p>By Jane Doe, Head of Data</p>').bylines, ['Jane Doe']);
+  assert.deepEqual(pageOf('<h1>X</h1><p>Af Mette Hansen og Ole Jensen</p>').bylines, ['Mette Hansen', 'Ole Jensen']);
+  assert.deepEqual(pageOf('<h1>X</h1><h2>Authors:</h2><p>Jane Doe</p><p>Senior Principal, Example</p><p>Ole Hansen</p><p>Global Head of Consulting, Example Associates</p><p>Firms that move fastest are not looking to fix their platform, they are looking past it.</p>').bylines, ['Jane Doe', 'Ole Hansen']);
+  assert.deepEqual(pageOf('<h1>X</h1><h2>Author:</h2><p>Jane Doe Head of Innovation, Example</p>').bylines, ['Jane Doe']);
+  assert.deepEqual(pageOf('<h1>X</h1><p>Intro by Jane Doe, Programmer</p><p>Text.</p>').bylines, ['Jane Doe']);
+  assert.deepEqual(pageOf('<h1>X</h1><p class="author">Jane Doe</p>').bylines, ['Jane Doe']);
+  const none = {
+    'a teaser label': '<h1>Kimbrerne</h1><p>Den store sølvskat. Kelternes plyndring af Rom Artikel Kelterne - Europas glemte folk</p>',
+    'a staff list': '<h1>Om os</h1><ul><li>Anne Hansen Bestyrelsesformand Udpeget af Jysk Selskab Maja Horst Næstformand</li><li>Udpeget af Aarhus Universitet</li></ul>',
+    'the subject of a news story': '<h1>Prisen går til Mette Hansen</h1><p>Professor og forsker på museet, Mette Hansen, er årets modtager af prisen, som uddeles af Example Fonden.</p>',
+    'a company in the prose': '<h1>Statement</h1><p>The offer made by Example Börse AG to acquire all shares in the company was published today.</p>',
+  };
+  for (const [what, html] of Object.entries(none)) assert.deepEqual(pageOf(html).bylines, [], what);
+  assert.deepEqual(bylines('Contact\nExample Kontakt'), []);
+});
+
+test('visibleDates and dayMonths: Danish day lists, dates without a year, "kl. 17-22"', () => {
+  assert.deepEqual(visibleDates('5., 12. og 19. december 2026'), ['2026-12-05', '2026-12-12', '2026-12-19']);
+  assert.deepEqual(visibleDates('5, 12 and 19 December 2026'), ['2026-12-05', '2026-12-12', '2026-12-19']);
+  assert.deepEqual(visibleDates('Torsdag den 5. november kl. 17-22'), []);
+  assert.deepEqual(dayMonths('Torsdag den 5. november kl. 17-22'), ['11-05']);
+  assert.deepEqual(dayMonths('5., 12. og 19. december'), ['12-05', '12-12', '12-19']);
+  assert.deepEqual(dayMonths('5. november 2026'), [], 'a date with its year is not a day without one');
+  assert.deepEqual(pageOf('<h1>Aften</h1><p>Torsdag den 5. november kl. 17-22</p>').dayMonths, ['11-05']);
+});
+
+test('richIssues: Event subtypes get Google\'s event rules (ExhibitionEvent without startDate)', () => {
+  const [r] = richIssues([{ '@context': 'https://schema.org', '@type': 'ExhibitionEvent', name: 'Magt og mode', location: { '@type': 'Place', name: 'Museum' } }]);
+  assert.equal(r.type, 'ExhibitionEvent');
+  assert.deepEqual(r.required, ['startDate']);
+  assert.equal(richIssues([{ '@type': 'MusicEvent', name: 'Koncert', startDate: '2026-11-05', location: 'Hall', description: 'x', endDate: 'x', eventStatus: 'x', eventAttendanceMode: 'x', image: 'x', offers: 'x', organizer: 'x', performer: 'x' }]).length, 0);
+});
+
+test('pickSample: the canonical page, never one page twice, no legal page or listing as an example, --urls', () => {
+  const H = 'https://example.dk';
+  const pages = [
+    page(`${H}/`, { title: 'Welcome to Example', words: 589, canonical: `${H}/` }),
+    page(`${H}/?panel=game/faq`, { title: 'Welcome to Example', words: 597, canonical: `${H}/` }),
+    page(`${H}/?panel=news/x`, { title: 'Welcome to Example', words: 597, canonical: `${H}/` }),
+    page(`${H}/about`, { title: 'About | Example', words: 300 }),
+    page(`${H}/about/privacy-policy`, { title: 'Privatlivspolitik | Example', words: 5000 }),
+    page(`${H}/about/research`, { title: 'Research | Example', words: 400 }),
+    page(`${H}/about/jobs`, { title: 'Jobs | Example', words: 380 }),
+    page(`${H}/visit/food`, { title: 'Food | Example', words: 1172 }),
+    page(`${H}/visit/food/menu`, { title: 'Menu | Example', words: 300 }),
+    page(`${H}/visit/opening-hours`, { title: 'Opening hours | Example', words: 775 }),
+    page(`${H}/visit/calendar`, { title: 'Calendar | Example', words: 2000 }),
+    page(`${H}/visit/tickets`, { title: 'Tickets | Example', words: 700 }),
+  ];
+  const t = groupTemplates(pages);
+  const s = pickSample(t, pages, { max: 24 });
+  assert.equal(s[0].url, `${H}/`, 'the start page is the canonical URL, not a /?panel= variant');
+  assert.equal(s.filter((x) => x.template === 'home').length, 1, 'the variants are the same page: never picked again');
+  assert.equal(s.find((x) => x.template === 'about').url, `${H}/about/research`, 'not the privacy policy');
+  assert.equal(s.find((x) => x.template === 'visit').url, `${H}/visit/food`, 'the longest representative page, not the calendar listing');
+  assert.equal(new Set(s.map((x) => x.url)).size, s.length);
+  // A section landing page with pages under it is a fine example; a search page is not.
+  const top = [
+    page(`${H}/`, { title: 'Welcome to Example', words: 589 }),
+    page(`${H}/search`, { title: 'Search | Example', words: 900 }),
+    page(`${H}/visit`, { title: 'Visit | Example', words: 800 }),
+    page(`${H}/visit/tickets`, { title: 'Tickets | Example', words: 700 }),
+    page(`${H}/visit/food`, { title: 'Food | Example', words: 600 }),
+    page(`${H}/shop`, { title: 'Shop | Example', words: 500 }),
+    page(`${H}/shop/books`, { title: 'Books | Example', words: 400 }),
+    page(`${H}/shop/cards`, { title: 'Cards | Example', words: 400 }),
+    page(`${H}/careers`, { title: 'Careers | Example', words: 790 }),
+    page(`${H}/press`, { title: 'Press | Example', words: 780 }),
+    page(`${H}/partners`, { title: 'Partners | Example', words: 770 }),
+  ];
+  const tt = groupTemplates(top);
+  const topKey = tt.find((x) => x.urls.includes(`${H}/visit`)).key;
+  assert.equal(pickSample(tt, top).find((x) => x.template === topKey).url, `${H}/visit`, `${topKey}: the section page, not the search page`);
+  const named = pickSample(t, pages, { max: 24, urls: [`${H}/visit/tickets`] });
+  assert.deepEqual(named[0], { url: `${H}/visit/tickets`, template: 'visit', why: 'named with --urls' });
+  assert.equal(named.filter((x) => x.template === 'visit' && x.why !== 'second page of a large template').length, 1);
+});
+
+test('extract --urls and extract --from-archive without a run folder or URL', async () => {
+  const FIXTURE = path.join(HERE, 'fixtures', 'archive');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-geo-urls-'));
+  try {
+    const env = { AUDIT_OUT_DIR: path.join(tmp, 'reports'), CHROME_PATH: '/nonexistent/chrome' };
+    const out = path.join(tmp, 'plan');
+    const ex = await run(['extract', '--from-archive', FIXTURE, '--out', out, '--no-validate', '--urls', '/news/launch'], env);
+    assert.equal(ex.code, 0, ex.err);
+    assert.doesNotMatch(ex.err, /needs an audit-seo run folder/);
+    assert.match(ex.err, /running audit-seo --geo --from-archive first/);
+    const inv = JSON.parse(fs.readFileSync(path.join(out, 'inventory.json'), 'utf8'));
+    assert.equal(inv.host, 'www.example.com');
+    assert.equal(inv.archive.date, '2026-11-10');
+    assert.deepEqual(inv.options.urls, ['https://www.example.com/news/launch']);
+    assert.deepEqual(inv.sample[0], { ...inv.sample[0], url: 'https://www.example.com/news/launch', why: 'named with --urls' });
+    assert.ok(fs.existsSync(path.join(out, 'audit-seo', 'report.json')), 'audit-seo ran from the archive into the run folder');
+    assert.equal(new Set(inv.sample.map((x) => x.slug)).size, inv.sample.length, 'one file per page read');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

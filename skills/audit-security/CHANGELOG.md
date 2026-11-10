@@ -2,6 +2,15 @@
 
 All notable changes to the `audit-security` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.4.0] - 2026-11-10
+
+### Added
+- Site mode: `headers.hsts-subdomains`, an info note when HSTS has a max-age of a year or more but no includeSubDomains.
+
+### Changed
+- Site mode: frame-ancestors that lets a dev, staging or test host (`dev-`, `stage-`, `staging.`, `test.`, `uat`, `preview` and the like) frame the live site is a warning, as a public-hosting wildcard is.
+- Site mode: a missing frame-ancestors is counted once, under Clickjacking (frame-ancestors). The X-Frame-Options row becomes info and says so, and the MDN Observatory row is graded without its x-frame-options test and leaves the framing advice to the Clickjacking row.
+
 ## [2.3.1] - 2026-11-10
 
 ### Changed

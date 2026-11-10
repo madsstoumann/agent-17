@@ -87,6 +87,20 @@ export function publicWildcard(source) {
   return PUBLIC_HOSTING_SUFFIXES.find((sfx) => host === sfx) || null;
 }
 
+// Hosts that are not production: a dev, staging, test or preview deployment ("dev-site.example.io",
+// "stage.example.com"). Allowed to frame the live site, one of them is a weaker, less watched origin.
+const NON_PROD = /^(?:dev|develop|development|stage|staging|stg|test|testing|uat|qa|preview|sandbox|demo|local)$/i;
+
+/** The host of a frame-ancestors source when it is a dev, staging, test or preview host, else null. */
+export function nonProductionSource(source) {
+  const m = /^(?:[a-z][a-z0-9+.-]*:\/\/)?([^/:*]+)(?::[0-9*]+)?(?:\/.*)?$/i.exec(String(source || '').trim());
+  if (!m || String(source).startsWith("'")) return null;
+  const host = m[1].toLowerCase().replace(/\.$/, '');
+  const labels = host.split('.');
+  // The first label, or a part of it: dev.example.com, dev-site.example.io, site-stage.example.io.
+  return labels.slice(0, Math.max(1, labels.length - 2)).some((l) => l.split(/[-_]/).some((p) => NON_PROD.test(p))) ? host : null;
+}
+
 /**
  * Clickjacking: can another site frame this page? CSP frame-ancestors is the modern control and
  * wins over X-Frame-Options where both are sent; a report-only policy enforces nothing.
@@ -109,10 +123,57 @@ export function frameAncestors(headers = {}) {
         fix: `Replace ${open.join(', ')} with the exact hosts that need to frame the page (a preview or editor host), or drop ${open.length > 1 ? 'them' : 'it'}; ${keep}.`,
       });
     }
+    const dev = fa.map(nonProductionSource).filter(Boolean);
+    if (dev.length) {
+      return row('headers.frame-ancestors', 'warn', title, `frame-ancestors ${v}: ${dev.join(', ')} ${dev.length > 1 ? 'are dev, staging or test hosts' : 'is a dev, staging or test host'}, so a less protected deployment can frame the live page`, {
+        fix: `Drop ${dev.join(', ')} from the live site's frame-ancestors (send ${dev.length > 1 ? 'them' : 'it'} only from the environments that need them, such as the CMS preview); ${keep}.`,
+      });
+    }
     return row('headers.frame-ancestors', 'pass', title, `CSP frame-ancestors ${v}${xfo ? ` (X-Frame-Options ${xfo} too)` : ''}`);
   }
   if (valid) return row('headers.frame-ancestors', 'warn', title, `X-Frame-Options ${xfo} only; no CSP frame-ancestors${headers['content-security-policy-report-only'] ? ' (a report-only CSP enforces nothing)' : ''}`, { fix });
   return row('headers.frame-ancestors', 'fail', title, xfo ? `X-Frame-Options ${xfo} is not a value browsers honour, and there is no CSP frame-ancestors` : 'neither CSP frame-ancestors nor X-Frame-Options: any site can frame the page', { fix });
+}
+
+/**
+ * HSTS without includeSubDomains: an info note on a policy audit-launch passes. Subdomains (www,
+ * shop, mail web front ends) can still be reached over http, and the domain cannot be preloaded.
+ */
+export function hstsSubdomains(headers = {}) {
+  const v = String(headers['strict-transport-security'] || '');
+  const age = Number(/max-age\s*=\s*"?(\d+)/i.exec(v)?.[1] || 0);
+  if (!v || age < 31536000 || /includesubdomains/i.test(v)) return null;
+  return row('headers.hsts-subdomains', 'info', 'HSTS includeSubDomains', `Strict-Transport-Security: ${v.trim()}: no includeSubDomains, so subdomains are not covered and the domain cannot be preloaded`, {
+    fix: 'Add includeSubDomains once every subdomain answers over https (then preload if wanted): Strict-Transport-Security: max-age=31536000; includeSubDomains.',
+  });
+}
+
+const OBS_GRADES = [[100, 'A+'], [90, 'A'], [85, 'A-'], [80, 'B+'], [70, 'B'], [65, 'B-'], [60, 'C+'], [50, 'C'], [45, 'C-'], [40, 'D+'], [30, 'D'], [25, 'D-'], [0, 'F']];
+
+/**
+ * One missing frame-ancestors is one finding: the Clickjacking row says it, so audit-launch's
+ * X-Frame-Options row and the Observatory's x-frame-options test do not count it again. The
+ * X-Frame-Options row becomes info; the Observatory row is graded as if that test had passed.
+ */
+export function countFramingOnce(results) {
+  const fa = results.find((r) => r.id === 'headers.frame-ancestors');
+  if (!fa || (fa.status !== 'fail' && fa.status !== 'warn')) return results;
+  const note = 'counted once, under Clickjacking (frame-ancestors)';
+  return results.map((r) => {
+    if (r.id === 'headers.xfo' && (r.status === 'fail' || r.status === 'warn')) return { ...r, status: 'info', evidence: `${r.evidence} (${note})`, fix: '' };
+    if (r.id === 'headers.observatory' && (r.status === 'fail' || r.status === 'warn')) {
+      const failed = r.data?.failed || [];
+      const xfo = failed.find((t) => t.name === 'x-frame-options');
+      if (!xfo || !Number.isFinite(r.data?.score)) return r;
+      const score = Math.min(100, r.data.score - Math.min(0, Number(xfo.modifier) || 0));
+      const grade = OBS_GRADES.find(([min]) => score >= min)[1];
+      const status = /^A/.test(grade) ? 'pass' : /^B/.test(grade) ? 'warn' : 'fail';
+      // Its framing advice is the Clickjacking row's fix; keep the rest.
+      const fix = String(r.fix || '').split(/(?<=\.)\s+/).filter((x) => !/frame-ancestors|x-frame-options/i.test(x)).join(' ');
+      return { ...r, status, evidence: `${r.evidence} (x-frame-options ${note}; ${grade} without it)`, fix };
+    }
+    return r;
+  });
 }
 
 /** Blocklist answers -> rows. `a` holds openphish, safeBrowsing, urlhaus, virusTotal results. */
@@ -226,7 +287,13 @@ export async function runSite(args, { version, outDir, stateDir, log = () => {},
       for (const r of launch.results || []) if (groups.includes(r.group || r.id.split('.')[0])) results.push({ ...r, group: r.group || r.id.split('.')[0] });
     }
     // audit-launch reads AUDIT_HEADERS itself; this one request needs them too, or a WAF answers with its challenge page's headers.
-    if (on('headers')) results.push(frameAncestors(await (deps.pageHeaders || pageHeaders)(finalUrl, { headers: { ...envHeaders(deps.env || process.env), ...(args.headers || {}) } })));
+    if (on('headers')) {
+      const h = await (deps.pageHeaders || pageHeaders)(finalUrl, { headers: { ...envHeaders(deps.env || process.env), ...(args.headers || {}) } });
+      results.push(frameAncestors(h));
+      const sub = hstsSubdomains(h);
+      if (sub) results.push(sub);
+      results.splice(0, results.length, ...countFramingOnce(results));
+    }
   }
   if (on('blocklists')) {
     if (args.offline) results.push(row('blocklists.offline', 'skip', 'Blocklists', 'not checked: --offline'));

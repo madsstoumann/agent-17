@@ -148,6 +148,46 @@ export function lintCsp(policies, { reportOnly = false } = {}) {
   return out;
 }
 
+/**
+ * The fix for the CSP lint's warnings, built from what the policy does: a policy that is only
+ * upgrade-insecure-requests needs a script-src, not advice about 'unsafe-inline' it does not have.
+ */
+export function cspLintFix(findings = []) {
+  const codes = new Set(findings.filter((f) => f.severity === 'warn').map((f) => f.code));
+  const steps = [];
+  if (codes.has('no-csp')) steps.push("add a Content-Security-Policy that restricts scripts (script-src with nonces) and framing (frame-ancestors 'self')");
+  if (codes.has('report-only-only')) steps.push('move the report-only policy to Content-Security-Policy once its reports are clean');
+  if (codes.has('no-script-restriction')) steps.push("add a script-src (or default-src 'self') with nonces or hashes for the inline scripts the site needs");
+  if (codes.has('unsafe-inline-script')) steps.push('move inline scripts to nonces or hashes');
+  if (codes.has('unsafe-eval')) steps.push("drop 'unsafe-eval'");
+  if (codes.has('wildcard-script-src')) steps.push('replace the wildcards with the hosts the site loads from');
+  if (codes.has('known-bypass-host')) steps.push("pin the JSONP/Angular hosts to exact paths, or use a nonce with 'strict-dynamic'");
+  if (codes.has('missing-frame-ancestors')) steps.push("add frame-ancestors 'self'");
+  if (!steps.length) return '';
+  const text = steps.join('; ');
+  return `${text[0].toUpperCase()}${text.slice(1)}; add object-src 'none' and base-uri 'self'; verify in the CSP Evaluator.`;
+}
+
+// MDN Observatory reports a CSP that does not restrict scripts as "implemented with unsafe-inline"
+// and recommends removing 'unsafe-inline' the policy may not have.
+const OBS_UNSAFE = /unsafe-inline|unsafe-eval/i;
+
+/**
+ * Observatory's recommendations for the failed tests, with the CSP one rewritten when the policy has
+ * no 'unsafe-inline' or 'unsafe-eval' to remove (a policy that is only upgrade-insecure-requests).
+ */
+export function observatoryFix(failed = [], cspValue = '') {
+  const csp = String(cspValue || '').toLowerCase();
+  return failed.map((f) => {
+    if (f.name === 'content-security-policy' && OBS_UNSAFE.test(`${f.result} ${f.recommendation}`) && csp && !/'unsafe-(inline|eval)'/.test(csp)) {
+      return /script-src|default-src/.test(csp)
+        ? "Tighten script-src (or default-src): Observatory scores the policy as allowing inline script; use nonces or hashes and object-src 'none'."
+        : "Add a script-src (or default-src 'self') with nonces or hashes: the policy does not restrict scripts, which Observatory scores as unsafe-inline.";
+    }
+    return f.recommendation;
+  }).filter(Boolean).slice(0, 3).join(' ');
+}
+
 // ---------------------------------------------------------------- grade
 
 /** The referrer policy browsers apply from a comma-separated list: the last recognised token. */

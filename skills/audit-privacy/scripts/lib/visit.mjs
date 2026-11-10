@@ -1,6 +1,6 @@
 // One scenario in its own browser context: load the page as a new visitor, record every request
 // (iframes included), then optionally make a consent choice and record what follows.
-import { findBanner, clickBanner, cmpApi, pageFacts, PATTERNS, POLICY_PATTERN } from './inpage.mjs';
+import { findBanner, clickBanner, cmpApi, pageFacts, policyContent, findPolicyUrls, PATTERNS, POLICY_PATTERN, POLICY_PATHS, CONSENT_SELECTOR } from './inpage.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const call = (fn, ...args) => `(${fn.toString()})(${args.map((a) => JSON.stringify(a)).join(',')})`;
@@ -99,6 +99,8 @@ export async function openContext(b, { headers = {}, siteHosts = [], log = () =>
   const api = async (choice) => evalIn(sessionId, call(cmpApi, choice)).catch(() => null);
   const facts = async () => evalIn(sessionId, call(pageFacts, POLICY_PATTERN, PATTERNS.container), 15000);
   const text = async () => evalIn(sessionId, '(document.body && document.body.innerText || "").replace(/[ \\t]+/g, " ")', 15000);
+  const content = async () => evalIn(sessionId, call(policyContent, POLICY_PATTERN, CONSENT_SELECTOR, PATTERNS.container), 15000);
+  const findPolicies = async () => evalIn(sessionId, call(findPolicyUrls, POLICY_PATTERN, POLICY_PATHS), 90000).catch(() => []);
   const cookies = async () => (await b.send('Storage.getCookies', { browserContextId })).cookies;
   const openDetails = async () => evalIn(sessionId, '[...document.querySelectorAll("details:not([open])")].map((d) => { d.open = true; return 1; }).length', 5000);
   const html = async () => evalIn(sessionId, 'document.documentElement.outerHTML.slice(0, 2000000)');
@@ -122,7 +124,7 @@ export async function openContext(b, { headers = {}, siteHosts = [], log = () =>
     for (const off of offs) off();
     await b.send('Target.disposeBrowserContext', { browserContextId }).catch(() => {});
   }
-  return { goto, settle, banner, click, api, facts, text, openDetails, cookies, html, screenshot, reload, mark, close, requests, log };
+  return { goto, settle, banner, click, api, facts, text, content, findPolicies, openDetails, cookies, html, screenshot, reload, mark, close, requests, log };
 }
 
 /**

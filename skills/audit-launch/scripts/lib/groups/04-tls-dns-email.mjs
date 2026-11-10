@@ -53,7 +53,8 @@ export default {
             r.status = 'skip'; r.fix = ''; delete r.blocker; delete r.beforeProduction;
           }
           ctx.scoreboard.tls = null;
-          out.push(result('tls.interception', 'warn', 'TLS interception', `the certificate this machine received for ${hostname} chains to ${info.interceptedBy}, which only this machine's own CA store trusts, not the public roots. A proxy, VPN, antivirus or cloud egress gateway re-signs TLS here`, { fix: 'Run the audit from a network without TLS inspection (your own machine) to check the real certificate.', link: `https://www.ssllabs.com/ssltest/analyze.html?d=${encodeURIComponent(hostname)}&hideResults=on` }));
+          // A condition of this network, not of the site: a degraded run, never a warning or a task.
+          out.push(result('tls.interception', 'skip', 'TLS interception', `degraded run, this network and not the site: the certificate this machine received for ${hostname} chains to ${info.interceptedBy}, which only this machine's own CA store trusts, not the public roots. A proxy, VPN, antivirus or cloud egress gateway re-signs TLS here`, { fix: 'Run the audit from a network without TLS inspection (your own machine) to check the real certificate.', environment: 'degraded', link: `https://www.ssllabs.com/ssltest/analyze.html?d=${encodeURIComponent(hostname)}&hideResults=on` }));
         }
       }
     }

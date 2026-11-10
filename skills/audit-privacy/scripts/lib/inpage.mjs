@@ -135,3 +135,125 @@ export const PATTERNS = {
 };
 
 export const POLICY_PATTERN = String.raw`(privacy|privatliv|persondata|personoplysning|databeskyttelse|datenschutz|integritet|personvern|confidentialit|privacidad|cookie)`;
+
+// Consent banners by their tools' ids and classes (the same list audit-seo's text measure skips).
+export const CONSENT_SELECTOR = [
+  '[id^="onetrust" i]', '[id*="cookiebot" i]', '[id*="usercentrics" i]', '[id*="didomi" i]', '[id*="cookie-consent" i]', '[id*="cookieconsent" i]',
+  '[class*="cookie-consent" i]', '[class*="cookieconsent" i]', '[id*="cookie-banner" i]', '[class*="cookie-banner" i]', '[aria-label*="cookie" i][role="dialog"]',
+  '[aria-label*="consent" i][role="dialog"]', '[id*="cookie-information" i]', '[id^="coi-" i]', '[id^="coiOverlay" i]', '[class*="coi-banner" i]', '[class*="coi-consent" i]',
+  '[id*="cookiefirst" i]', '[id^="cky-" i]', '[class*="cky-consent" i]', '[id*="cmplz" i]', '[class*="cmplz-cookiebanner" i]', '[id^="BorlabsCookie" i]',
+  '[class*="osano-cm" i]', '[id*="truste" i]', '[id^="sp_message_container" i]', '[id^="qc-cmp2" i]', '[id*="cookiescript" i]', '[id^="axeptio" i]', '[id^="tarteaucitron" i]',
+].join(',');
+
+/**
+ * A policy page's own text: the main content without the consent banner, the site header, the
+ * navigation, sidebars and the site footer. Also the links in that content that lead to more
+ * policy text on the site (a page under this one, or a link named like a policy), so a selector
+ * page ("choose your product's privacy policy") can be followed one level.
+ */
+export function policyContent(policyPattern, consentSelector, containerPattern) {
+  const body = document.body;
+  if (!body) return { text: '', links: [] };
+  const policyRe = new RegExp(policyPattern, 'i');
+  const bannerRe = new RegExp(containerPattern, 'i');
+  const main = document.querySelector('main, [role="main"]');
+  const root = main && (main.innerText || '').trim().length > 40 ? main : body;
+  const marked = [];
+  const mark = (el) => { if (!el.hasAttribute('data-policy-skip')) { el.setAttribute('data-policy-skip', ''); marked.push(el); } };
+  // A cookie declaration the policy page embeds (Cookiebot, OneTrust, Cookie Information render one
+  // into the page) is the policy's own text, even when it carries the tool's name.
+  const DECLARATION = '[id*="declaration" i], [class*="declaration" i], #ot-sdk-cookie-policy, [id*="cookie-policy" i], [id*="cookie-list" i], [class*="cookie-table" i]';
+  const keeps = (el) => el.matches(DECLARATION) || Boolean(el.querySelector(DECLARATION));
+  for (const el of document.querySelectorAll(consentSelector)) if (!keeps(el)) mark(el);
+  for (const el of root.querySelectorAll('nav, aside, dialog, [role="navigation"], [role="banner"], [role="contentinfo"], [role="complementary"], [role="dialog"], [role="alertdialog"], [aria-modal="true"], [role="search"]')) mark(el);
+  // The page's own header and footer, not an article's.
+  for (const el of root.querySelectorAll('header, footer')) if (!el.parentElement.closest('article, section, main, [role="main"], aside, nav')) mark(el);
+  // A fixed or sticky box named like a consent tool.
+  for (const el of root.querySelectorAll('div, section, aside, form')) {
+    if (!bannerRe.test(`${el.id || ''} ${typeof el.className === 'string' ? el.className : ''}`)) continue;
+    const p = getComputedStyle(el).position;
+    if (p === 'fixed' || p === 'sticky') mark(el);
+  }
+  const style = document.createElement('style');
+  style.textContent = '[data-policy-skip]{display:none!important}';
+  document.head.appendChild(style);
+  let text = '';
+  try { text = (root.innerText || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim(); } finally {
+    style.remove();
+    for (const el of marked) el.removeAttribute('data-policy-skip');
+  }
+  const here = location.href.split('#')[0].replace(/\/$/, '');
+  const base = location.pathname.replace(/\/$/, '');
+  const links = [];
+  const seen = new Set();
+  for (const a of root.querySelectorAll('a[href]')) {
+    if (a.closest('nav, header, footer, aside, [role="navigation"]') && !a.closest('article')) continue;
+    if (a.matches(consentSelector) || a.closest(consentSelector)) continue;
+    let u;
+    try { u = new URL(a.href); } catch { continue; }
+    const href = u.href.split('#')[0];
+    if (u.origin !== location.origin || href.replace(/\/$/, '') === here || seen.has(href)) continue;
+    if (/\.(pdf|jpe?g|png|zip|docx?)$/i.test(u.pathname)) continue;
+    const label = `${a.innerText || ''} ${a.getAttribute('aria-label') || ''} ${a.title || ''}`.replace(/\s+/g, ' ').trim();
+    const child = base.length > 1 && u.pathname.startsWith(`${base}/`);
+    if (!child && !policyRe.test(`${label} ${u.pathname.split('/').filter(Boolean).pop() || ''}`)) continue;
+    seen.add(href);
+    links.push({ text: label.slice(0, 80), href, child });
+  }
+  return { text, links: links.slice(0, 20) };
+}
+
+/**
+ * Policy pages the site has but does not link from the start page: URLs in the sitemaps (from
+ * robots.txt, else /sitemap.xml, one index level deep) named like a policy, then common paths.
+ * Same-origin requests from the page, so a WAF header rule and cookies apply as for the site.
+ */
+export async function findPolicyUrls(policyPattern, paths) {
+  const policyRe = new RegExp(policyPattern, 'i');
+  const get = async (u, ms = 8000) => {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), ms);
+    try { const r = await fetch(u, { signal: c.signal, redirect: 'follow', credentials: 'include' }); return r; } catch { return null; } finally { clearTimeout(t); }
+  };
+  const locs = (xml) => [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => m[1].replace(/&amp;/g, '&'));
+  const found = [];
+  let maps = [];
+  const robots = await get('/robots.txt');
+  if (robots && robots.ok) maps = [...(await robots.text()).matchAll(/^\s*sitemap:\s*(\S+)/gim)].map((m) => m[1]);
+  // The www and bare host are the same site (robots.txt often names the other one); a fetch
+  // across them would be cross-origin, so ask this origin for the same path.
+  const bare = (h) => h.replace(/^www\./, '');
+  const own = (m) => { try { const u = new URL(m, location.origin); if (u.protocol !== location.protocol || bare(u.hostname) !== bare(location.hostname)) return null; return `${location.origin}${u.pathname}${u.search}`; } catch { return null; } };
+  const same = (m) => own(m) !== null;
+  const queue = [...new Set([...maps.map(own).filter(Boolean), `${location.origin}/sitemap.xml`, `${location.origin}/sitemap_index.xml`])].slice(0, 6);
+  let fetched = 0;
+  while (queue.length && fetched < 12 && found.length < 5) {
+    const r = await get(queue.shift());
+    fetched += 1;
+    if (!r || !r.ok) continue;
+    const xml = await r.text();
+    const list = locs(xml);
+    if (/<sitemapindex/i.test(xml)) { if (fetched <= 6) queue.push(...list.map(own).filter((m) => m && !queue.includes(m)).slice(0, 10)); continue; }
+    for (const u of list) {
+      try {
+        if (!same(u)) continue;
+        const x = new URL(own(u));
+        if (policyRe.test(x.pathname.split('/').filter(Boolean).pop() || '') && !found.some((f) => f.href === x.href)) found.push({ text: '', href: x.href, via: 'sitemap' });
+      } catch { /* not a URL */ }
+    }
+  }
+  if (!found.length) {
+    for (const p of paths) {
+      const r = await get(p, 6000);
+      if (!r || !r.ok || !/html/i.test(r.headers.get('content-type') || '')) continue;
+      const u = new URL(r.url);
+      if (u.pathname === '/' || !policyRe.test(u.pathname)) continue; // redirected home or elsewhere
+      if (!found.some((f) => f.href === u.href)) found.push({ text: '', href: u.href, via: 'path' });
+      if (found.length >= 2) break;
+    }
+  }
+  return found;
+}
+
+/** Paths tried when neither the start page nor the sitemap leads to a policy. */
+export const POLICY_PATHS = ['/privatlivspolitik', '/privacy-policy', '/privacy', '/privatliv', '/persondatapolitik', '/cookiepolitik', '/cookie-policy', '/cookies', '/datenschutz', '/integritetspolicy', '/personvern'];

@@ -11,7 +11,7 @@ import { SECTIONS, domainChecks, emailChecks, tlsChecks, edgeChecks, ctChecks } 
 import { DKIM_SELECTORS } from './lib/email.mjs';
 import { result, countStatuses, prepareRun, finishRun, consoleItems, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, settle, GLYPH } from './lib/common.mjs';
 
-export const VERSION = '2.4.5';
+export const VERSION = '2.5.0';
 const UA = `Mozilla/5.0 (compatible; audit-infra/${VERSION})`;
 
 const USAGE = `audit-infra ${VERSION}: domain, DNS, email, TLS and subdomain audit
@@ -159,9 +159,20 @@ export function markBlindResolver(results, why) {
   return results;
 }
 
-/** With TLS inspection on the network, certificate rows describe the proxy: turn them into skips. */
+/**
+ * With TLS inspection on the network, certificate rows describe the proxy: turn them into skips.
+ * The interception row itself is a condition of this network, not of the site: it is reported
+ * as a degraded run (status skip, `environment: 'degraded'`), never as a warning or a task.
+ */
 export function markIntercepted(results) {
   if (!results.some((r) => r.id === 'tls.interception')) return results;
+  for (const r of results.filter((x) => x.id === 'tls.interception')) {
+    r.status = 'skip';
+    r.environment = 'degraded';
+    r.evidence = `degraded run, this network and not the site: ${r.evidence}`;
+    delete r.blocker;
+    delete r.severity;
+  }
   for (const r of results) {
     if (!/^tls\.(chain|expiry|consistency|san|key|protocol|alpn|ocsp-stapling|legacy|caa-match)$|^ct\.certificates$/.test(r.id) || r.status === 'skip') continue;
     r.evidence = `not checked from this network (TLS is re-signed on the way, see "TLS interception"); seen: ${r.evidence}`;
@@ -181,6 +192,8 @@ export function renderMarkdown(report, { levels } = {}) {
   if (t.platform) out.push(`> **Not the site's own domain.** ${t.host} is a ${t.platform} address, so only TLS and the edge were checked. Run audit-infra again on the live domain.`, '');
   out.push(`**Site:** ${t.url}  ·  **Domain:** ${t.platform ? `${t.platform} (hosting platform, not checked)` : t.apex}${t.emailDomain !== t.apex ? `  ·  **Mail domain:** ${t.emailDomain}` : ''}  ·  **Date:** ${report.generatedAt.slice(0, 16).replace('T', ' ')} UTC  ·  **Tool:** audit-infra ${report.version}`, '');
   out.push(resultLine(counts), '');
+  const env = report.results.filter((r) => r.environment === 'degraded');
+  if (env.length) out.push(`> **Degraded run.** ${env.map((r) => r.title).join(', ')}: a condition of the network this ran from, not of the site, so it is not a task. The rows it affects are skipped. ${env[0].fix || ''}`.trim(), '');
   if (filtered) out.push(levelNote(levels, { hidden: report.results.length - results.length }), '');
   out.push(...fixFirst(results));
   const warns = results.filter((r) => r.status === 'warn');

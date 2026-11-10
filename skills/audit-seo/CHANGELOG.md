@@ -2,6 +2,14 @@
 
 All notable changes to the `audit-seo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.7.0] - 2026-11-10
+
+### Changed
+- "Text without JavaScript" compares the served text with the rendered page's visible text only: consent banners (Cookie Information, Cookiebot, OneTrust, Usercentrics and other common tools) and hidden text (`display: none`, `visibility: hidden`, closed `<details>`, the `hidden` attribute) are no longer counted, and only visible headings are.
+- `--save-html`: the page that answers 200 gets the plain slug and a redirect stub of the same address gets the `-x` slug, not the other way round. robots.txt, the sitemaps and llms.txt are saved as `<name>.gz` (`robots.txt.gz`, `sitemap.xml.gz`), not `<name>.html.gz`. `--from-archive` reads both namings.
+- `--from-archive`: the orphan pages row is listed as skipped (an archive crawl is not limited like a live one, so pages look orphaned that are linked from pages outside the archive). The broken internal links row says a broken link to a page the archive does not hold is not counted, and the archive cover note lists link targets not archived apart from other URLs.
+- `rich.mjs`: Event subtypes (ExhibitionEvent, MusicEvent, TheaterEvent, Festival, EventSeries and the rest of schema.org's list) get Google's Event rules, as Event does.
+
 ## [2.6.2] - 2026-11-10
 
 ### Fixed

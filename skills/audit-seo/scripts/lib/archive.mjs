@@ -7,11 +7,14 @@
  *   index.json  { host, date, source, redaction, count, pages: [{ url, status, content_type,
  *                 fetched_at, bytes, sha256, title, files: [...], redactions, location? }] }
  *   <slug>.html.gz         the body as served, redirects not followed (a 301's body too)
+ *   <file>.gz              robots.txt, llms.txt, ai.txt and sitemaps as served (robots.txt.gz,
+ *                          sitemap.xml.gz): the file's own name, gzipped
  *   <slug>.txt.gz          visible text, where plan-geo or audit-privacy read the page
  *   <slug>.hidden.txt.gz   accordion and payload text, where plan-geo read it
  *
  * The slug is the path with `/` written as `--` (`home` for the root), a `--<sha1 of the query>`
- * suffix when there is a query, and `-x` added until it is unique. Secrets may be masked as
+ * suffix when there is a query, and `-x` added until it is unique; a page that answered 200 takes
+ * the plain slug before a redirect to it (/page before /page/ when /page/ is the page). Secrets may be masked as
  * `abcd…[masked <type>]` (or `abcd…[masked]`): those are placeholders, never real values.
  *
  * Identical copy in audit-seo and plan-geo (a test in each checks it). Zero dependencies. Node >= 22.
@@ -70,7 +73,13 @@ export function archiveSlug(url, used = null) {
   return slug;
 }
 
-const fileOf = (files, kind) => (files || []).find((f) => (kind === 'hidden' ? /\.hidden\.txt\.gz$/ : kind === 'txt' ? /(?<!\.hidden)\.txt\.gz$/ : /\.html\.gz$/).test(f)) || null;
+/** The entry's file of a kind: the body (`html`), the visible text (`txt`) or the hidden text (`hidden`). */
+const fileOf = (entry, kind) => {
+  const files = entry?.files || [];
+  // robots.txt, sitemaps and llms.txt are kept under their own name (robots.txt.gz): the body only.
+  if (isSiteFile(entry?.url)) return kind === 'html' ? files.find((f) => /\.html\.gz$/.test(f)) || files.find((f) => /\.gz$/.test(f) && !/\.hidden\.txt\.gz$/.test(f)) || null : null;
+  return files.find((f) => (kind === 'hidden' ? /\.hidden\.txt\.gz$/ : kind === 'txt' ? /(?<!\.hidden)\.txt\.gz$/ : /\.html\.gz$/).test(f)) || null;
+};
 
 /**
  * openArchive(dir) -> archive. Throws when there is no readable index.json.
@@ -95,7 +104,7 @@ export function openArchive(dir) {
   for (const p of list) if (p && p.url) { const k = archiveKey(p.url); if (!map.has(k)) map.set(k, p); }
   const date = index.date || (list.map((p) => String(p.fetched_at || '').slice(0, 10)).filter(Boolean).sort()[0]) || path.basename(abs);
   const read = (entry, kind) => {
-    const f = entry && fileOf(entry.files, kind);
+    const f = entry && fileOf(entry, kind);
     if (!f) return null;
     try { return zlib.gunzipSync(fs.readFileSync(path.join(abs, f))); } catch { return null; }
   };
@@ -179,8 +188,10 @@ export function archiveCover(archive) {
 
 /**
  * createArchiveWriter(dir, { host, source }) -> { add(page), finish() -> { dir, count } }
- * add({ url, status, contentType, location, body, title, fetchedAt }) writes <slug>.html.gz and
- * keeps the index entry; finish() writes index.json. Nothing is masked: redact before sharing.
+ * add({ url, status, contentType, location, body, title, fetchedAt }) writes <slug>.html.gz (a site
+ * file such as robots.txt: <slug>.gz, robots.txt.gz) and keeps the index entry; finish() writes
+ * index.json. Nothing is masked: redact before sharing. Add 200 pages before redirects, so a page
+ * gets the plain slug and a redirect to it the `-x` one.
  */
 export function createArchiveWriter(dir, { host = null, source = '', date = new Date().toISOString().slice(0, 10) } = {}) {
   const abs = path.resolve(dir);
@@ -196,7 +207,7 @@ export function createArchiveWriter(dir, { host = null, source = '', date = new 
       seen.add(key);
       const buf = Buffer.isBuffer(body) ? body : Buffer.from(body || '', 'utf8');
       const slug = archiveSlug(url, used);
-      const file = `${slug}.html.gz`;
+      const file = isSiteFile(key) ? `${slug}.gz` : `${slug}.html.gz`;
       fs.writeFileSync(path.join(abs, file), zlib.gzipSync(buf));
       const entry = {
         url: key, status, content_type: contentType || '', fetched_at: new Date(fetchedAt).toISOString().replace(/\.\d{3}Z$/, 'Z'),

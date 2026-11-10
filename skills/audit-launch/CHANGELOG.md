@@ -2,6 +2,13 @@
 
 All notable changes to the `audit-launch` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.5.3] - 2026-11-10
+
+### Fixed
+- The CSP fix text is built from the lint findings: a policy that is only `upgrade-insecure-requests` is told to add a script-src and frame-ancestors, not to drop an `'unsafe-inline'` or `'unsafe-eval'` it does not have.
+- The MDN Observatory fix text no longer asks to remove `'unsafe-inline'` when the policy has none (Observatory scores a policy that does not restrict scripts as unsafe-inline). The Observatory row keeps the failed tests in its data.
+- `tls.interception` is a degraded run (skipped, a condition of the network the audit ran from), not a warning or a task.
+
 ## [2.5.2] - 2026-11-10
 
 ### Fixed

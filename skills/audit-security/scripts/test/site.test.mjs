@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { siteUrl, envHeaders, launchArgs, frameAncestors, publicWildcard, blocklistRows, diffRows, runSite, renderSiteMarkdown, SITE_GROUPS, LAUNCH_SCRIPT } from '../lib/site.mjs';
+import { siteUrl, envHeaders, launchArgs, frameAncestors, publicWildcard, nonProductionSource, hstsSubdomains, countFramingOnce, blocklistRows, diffRows, runSite, renderSiteMarkdown, SITE_GROUPS, LAUNCH_SCRIPT } from '../lib/site.mjs';
 import { parseArgs, resolveSiteStateDir, resolveSiteBaseline } from '../scan.mjs';
 import { parseLevel } from '../lib/levels.mjs';
 
@@ -162,4 +162,41 @@ test('envHeaders: AUDIT_HEADERS reach the clickjacking request too', async () =>
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'sec-site-'));
   await runSite({ root: 'https://www.example.com/', only: ['headers'], skip: [], headers: { 'X-Flag': '2' } }, { version: '2.2.1', outDir: out, stateDir: out, deps: { env: { AUDIT_HEADERS: 'x-audit-bypass: abc' }, runLaunch: () => ({ ok: true, report: LAUNCH }), pageHeaders: async (u, o) => { sent = o.headers; return {}; } } });
   assert.deepEqual(sent, { 'x-audit-bypass': 'abc', 'X-Flag': '2' });
+});
+
+test('frameAncestors: a dev, staging or test host allowed to frame the live site is a warning, like a public wildcard', () => {
+  const fa = (v) => frameAncestors({ 'content-security-policy': `frame-ancestors ${v}` });
+  const r = fa("'self' https://dev-site.cms.example.io https://stage-site.cms.example.io https://site.cms.example.io");
+  assert.equal(r.status, 'warn');
+  assert.match(r.evidence, /dev-site\.cms\.example\.io, stage-site\.cms\.example\.io are dev, staging or test hosts/);
+  assert.match(r.fix, /^Drop dev-site\.cms\.example\.io, stage-site\.cms\.example\.io from the live site's frame-ancestors/);
+  assert.equal(fa("'self' https://site.cms.example.io https://www.example.com").status, 'pass', 'production hosts pass');
+  assert.equal(fa("'self' https://staging.example.com").status, 'warn');
+  assert.equal(nonProductionSource('https://www.devon.example.com'), null, 'a word that only starts like "dev" is not one');
+  assert.equal(nonProductionSource("'self'"), null);
+});
+
+test('hstsSubdomains: a long max-age without includeSubDomains gets an info note', () => {
+  const r = hstsSubdomains({ 'strict-transport-security': 'max-age=63072000' });
+  assert.equal(r.status, 'info');
+  assert.match(r.evidence, /no includeSubDomains/);
+  assert.equal(hstsSubdomains({ 'strict-transport-security': 'max-age=31536000; includeSubDomains; preload' }), null);
+  assert.equal(hstsSubdomains({ 'strict-transport-security': 'max-age=15552000' }), null, 'a short max-age is audit-launch\'s warning already');
+  assert.equal(hstsSubdomains({}), null);
+});
+
+test('countFramingOnce: a missing frame-ancestors is one finding, not three (X-Frame-Options, Observatory, Clickjacking)', () => {
+  const rows = [
+    { id: 'headers.xfo', group: 'headers', status: 'fail', title: 'X-Frame-Options', evidence: 'missing', fix: 'X-Frame-Options: DENY' },
+    { id: 'headers.observatory', group: 'headers', status: 'fail', title: 'MDN HTTP Observatory', evidence: 'C+ (60/100)', fix: 'Add a script-src with nonces or hashes. Implement frame-ancestors CSP.', data: { score: 60, failed: [{ name: 'content-security-policy', result: 'csp-implemented-with-unsafe-inline', modifier: -20 }, { name: 'x-frame-options', result: 'x-frame-options-not-implemented', modifier: -20 }] } },
+    frameAncestors({ 'content-security-policy': 'upgrade-insecure-requests' }),
+  ];
+  const out = countFramingOnce(rows);
+  assert.deepEqual(out.map((r) => r.status), ['info', 'warn', 'fail']);
+  assert.match(out[0].evidence, /counted once, under Clickjacking/);
+  assert.match(out[1].evidence, /x-frame-options counted once, under Clickjacking \(frame-ancestors\); B\+ without it/);
+  assert.equal(out[1].fix, 'Add a script-src with nonces or hashes.', 'the framing advice is the Clickjacking row\'s');
+  // With frame-ancestors in place nothing changes.
+  const ok = [rows[0], frameAncestors({ 'content-security-policy': "frame-ancestors 'self'" })];
+  assert.equal(countFramingOnce(ok)[0].status, 'fail');
 });

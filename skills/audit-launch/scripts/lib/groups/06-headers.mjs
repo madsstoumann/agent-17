@@ -4,7 +4,7 @@
  * grade itself when we can get it (scrape or paid API), never invented.
  */
 import { result } from '../registry.mjs';
-import { gradeSecurityHeaders, parseCsp, lintCsp, parseSetCookie, lintCookies, infoLeakHeaders, hstsVerdict, corsVerdict, crossOriginPolicies, GRADE_NOTE } from '../headers.mjs';
+import { gradeSecurityHeaders, parseCsp, lintCsp, parseSetCookie, lintCookies, infoLeakHeaders, hstsVerdict, corsVerdict, cspLintFix, observatoryFix, crossOriginPolicies, GRADE_NOTE } from '../headers.mjs';
 import { observatoryScan, securityHeadersScrape, securityHeadersApi } from '../services.mjs';
 
 const HEADER_FIX = {
@@ -53,7 +53,7 @@ export default {
     if (cspValue) {
       const findings = lintCsp(parseCsp(cspValue), { reportOnly: !h['content-security-policy'] });
       const warns = findings.filter((f) => f.severity === 'warn');
-      out.push(result('headers.csp-lint', warns.length ? 'warn' : 'pass', 'CSP lint', warns.length ? warns.map((f) => f.text).join(' · ') : `no bypass found${findings.length ? ` (${findings.map((f) => f.code).join(', ')})` : ''}`, { fix: warns.length ? 'Move inline scripts to nonces or hashes, drop unsafe-eval and wildcards, add object-src \'none\' and base-uri; verify in the CSP Evaluator.' : '', link: 'https://csp-evaluator.withgoogle.com/', data: { findings } }));
+      out.push(result('headers.csp-lint', warns.length ? 'warn' : 'pass', 'CSP lint', warns.length ? warns.map((f) => f.text).join(' · ') : `no bypass found${findings.length ? ` (${findings.map((f) => f.code).join(', ')})` : ''}`, { fix: cspLintFix(findings), link: 'https://csp-evaluator.withgoogle.com/', data: { findings } }));
     }
 
     const leaks = infoLeakHeaders(h);
@@ -80,7 +80,7 @@ export default {
         const st = /^A/.test(obs.grade) ? 'pass' : /^B/.test(obs.grade) ? 'warn' : 'fail';
         ctx.scoreboard.observatory = { grade: obs.grade, score: obs.score, passed: obs.testsPassed, total: obs.testsQuantity, link: obs.detailsUrl };
         await ctx.saveRaw('observatory.json', obs.raw);
-        out.push(result('headers.observatory', st, 'MDN HTTP Observatory', `${obs.grade} (${obs.score}/100), ${obs.testsPassed}/${obs.testsQuantity} tests passed${obs.failed.length ? ` — failed: ${obs.failed.map((f) => `${f.name} (${f.result}, ${f.modifier})`).join('; ')}` : ''}`, { fix: obs.failed.length ? obs.failed.map((f) => f.recommendation).filter(Boolean).slice(0, 3).join(' ') : '', link: obs.detailsUrl }));
+        out.push(result('headers.observatory', st, 'MDN HTTP Observatory', `${obs.grade} (${obs.score}/100), ${obs.testsPassed}/${obs.testsQuantity} tests passed${obs.failed.length ? ` — failed: ${obs.failed.map((f) => `${f.name} (${f.result}, ${f.modifier})`).join('; ')}` : ''}`, { fix: obs.failed.length ? observatoryFix(obs.failed, h['content-security-policy']) : '', link: obs.detailsUrl, data: { failed: obs.failed.map(({ name, result: res, modifier }) => ({ name, result: res, modifier })), score: obs.score } }));
       } else {
         ctx.scoreboard.observatory = { grade: null, error: obs.error };
         out.push(result('headers.observatory', 'skip', 'MDN HTTP Observatory', `not scanned: ${obs.error}`, { link: `https://developer.mozilla.org/en-US/observatory/analyze?host=${encodeURIComponent(hostname)}` }));

@@ -4,7 +4,7 @@ description: Use when someone wants a GDPR, ePrivacy or cookie compliance check 
 argument-hint: "<url> [--pages N] [--only first,reject,accept] [--lang L] [--header NAME:VALUE] [--out DIR] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, Write, Edit, WebFetch
 metadata:
-  version: "2.2.3"
+  version: "2.3.0"
 ---
 
 # Privacy audit
@@ -80,7 +80,7 @@ instead of adding it to `report.md`. With a level, write the policy review at th
 | After reject | `reject.works` (no tracker and no tracking cookie after reject and reload), `reject.method`, `reject.prechecked` |
 | After accept | `accept.inventory`: vendors and cookies that accepting turns on |
 | Transfers | `transfer.third-countries` (vendors outside the EU/EEA, warn when contacted before consent), `transfer.hosts` (every third-party host, unrecognised ones listed) |
-| Policy & forms | `policy.privacy` (linked from the start page, loads), `policy.cookie-declaration` (every cookie seen after accepting is named in the policy pages or the banner's details), `policy.forms` (personal-data forms over http, to third parties, or with a pre-ticked marketing box) |
+| Policy & forms | `policy.privacy` (linked from the start page, loads; without a link the policy is looked for in the sitemap and at common paths and read, and the row still fails), `policy.thin` (under 400 words of the policy's own text warns; a selector page's policies one level down are read as `policy-1-1.txt`…), `policy.cookie-declaration` (every cookie seen after accepting is named in the policy pages or the banner's details), `policy.forms` (personal-data forms over http, to third parties, or with a pre-ticked marketing box) |
 
 Classification is a static list of about 60 vendors and 45 cookie families. A miss is
 "unclassified", never "fine": look up unrecognised hosts and cookies yourself (WebFetch the vendor's
@@ -91,7 +91,7 @@ site) before calling them harmless.
 1. **Look at `banner.png`** (Read it). Confirm the banner and check what the numbers cannot: is
    reject as visible as accept (colour, contrast, wording), is the text clear about purposes, is
    there a link to the policy, are there dark patterns ("Accept and continue" with a tiny "settings")?
-2. **Read the `policy-*.txt` files** and check the privacy policy against GDPR Art. 13: controller
+2. **Read the `policy-*.txt` files** (the policy's own text: banner, header, navigation and footer are left out) and check the privacy policy against GDPR Art. 13: controller
    name and contact (and CVR for Danish companies), DPO if any, purposes with legal basis, recipients
    and processors, transfers to third countries and their safeguard, retention periods, the data
    subject's rights, the right to withdraw consent, the right to complain to Datatilsynet (or the

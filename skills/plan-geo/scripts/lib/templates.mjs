@@ -136,28 +136,74 @@ export function pageDate(p) {
   return y ? `${y}-00-00` : '';
 }
 
+// Legal pages inside another section (/about/privacy-policy) are never that section's example.
+const LEGAL_LEAF = /^(privacy|privacy-policy|privacy-notice|privatlivspolitik|persondatapolitik|privatlivserklaering|privatlivserklæring|cookies?|cookie-policy|cookiepolitik|terms|terms-of-use|terms-and-conditions|handelsbetingelser|vilkaar|vilkår|betingelser|legal|imprint|impressum|datenschutz|disclaimer|accessibility-statement|tilgaengelighedserklaering|was|whistleblower)$/i;
+
+// A listing or search page (calendar, archive, search) inside a section lists the section's pages:
+// it stands for none of them.
+const LISTING_LEAF = /^(kalender|calendar|events?|arrangementer|veranstaltungen|agenda|program|arkiv|archive|search|soeg|sog|søg|sok|sök|suche|zoeken|recherche|buscar)$/i;
+
+/** The URL's path segments with a locale prefix left out, lowercased (as templateKey() reads them). */
+function segments(url) {
+  let segs;
+  try { segs = new URL(url).pathname.split('/').filter(Boolean).map((x) => { try { return decodeURIComponent(x).toLowerCase(); } catch { return x.toLowerCase(); } }); } catch { return []; }
+  if (segs.length && LOCALE.test(segs[0]) && !/^(faq|api|app|blog|news|jobs|shop|help|cases)$/i.test(segs[0])) segs = segs.slice(1);
+  return segs;
+}
+
+/** A URL without its hash and trailing slash, lowercased: for "the same page". */
+export const sameKey = (u) => { try { const x = new URL(u); x.hash = ''; return x.toString().replace(/\/(?=$|\?)/, '').toLowerCase(); } catch { return String(u || '').toLowerCase(); } };
+
+/** The page's canonical URL when it names another page on the same site, else null. */
+function otherCanonical(p) {
+  if (!p?.canonical) return null;
+  try {
+    const c = new URL(p.canonical, p.url);
+    if (c.host.toLowerCase() !== new URL(p.url).host.toLowerCase()) return null;
+    return sameKey(c.toString()) === sameKey(p.url) ? null : c.toString();
+  } catch { return null; }
+}
+
 /**
- * pickSample(templates, pages, { max }) -> [{ url, template, why }]
- * The start page, then one example page per template, then a second page for the biggest
- * templates, then pages with three or more question headings, until `max`.
+ * pickSample(templates, pages, { max, urls }) -> [{ url, template, why }]
+ * The pages named with `urls` (--urls), each the example of its template, then the start page,
+ * then one example page per other template, then a second page for the biggest templates, then
+ * pages with three or more question headings, until `max`. No page is read twice: a URL whose
+ * canonical names a page already picked, or that differs from one only by a trailing slash, is
+ * the same page.
  *
- * The example is a representative page, not simply the longest: one without a query string, with a
- * title of its own (not just the site name), not thin for its template (at least half the median
- * word count), the most recent in a template named as news, articles or case studies, then the
- * longest. The longest page of a news section was often a statement titled only with the site name.
+ * The example is a representative page, not simply the longest: its own canonical (not a variant
+ * whose canonical points elsewhere, such as /?panel=…), without a query string, with a title of its
+ * own (not just the site name), not a legal page that sits in another section (/about/privacy),
+ * not thin for its template (at least half the median word count), not the landing page of a
+ * sub-section that is a template of its own, the most recent in a template named as news,
+ * articles or case studies, then the longest. The longest page of a news section was often a
+ * statement titled only with the site name.
  */
-export function pickSample(templates, pages, { max = 24 } = {}) {
+export function pickSample(templates, pages, { max = 24, urls = [] } = {}) {
   const byUrl = new Map(pages.map((p) => [p.url, p]));
   const brand = siteName(pages);
   const out = [];
   const taken = new Set();
-  const add = (url, template, why) => { if (out.length < max && url && !taken.has(url)) { taken.add(url); out.push({ url, template, why }); } };
+  const named = new Set();
+  const add = (url, template, why) => {
+    if (out.length >= max || !url) return false;
+    const p = byUrl.get(url);
+    const ids = [sameKey(url), ...(otherCanonical(p) ? [sameKey(otherCanonical(p))] : [])];
+    if (ids.some((id) => taken.has(id))) return false;
+    for (const id of ids) taken.add(id);
+    out.push({ url, template, why });
+    return true;
+  };
   const ranked = (t) => {
     const ps = t.urls.map((u) => byUrl.get(u)).filter(Boolean);
     const words = ps.map((p) => p.words || 0).sort((a, b) => a - b);
     const median = words[Math.floor(words.length / 2)] || 0;
-    // A URL with a query string (a filtered or paged listing) is a variant, not the template's page.
-    const key = (p) => [(properTitle(p.title, brand) ? 0 : 1) + (/\?/.test(p.url) ? 2 : 0), (p.words || 0) >= median / 2 ? 0 : 1];
+    const legalLeaf = (p) => t.type !== 'legal' && LEGAL_LEAF.test(segments(p.url).at(-1) || '');
+    const listing = (p) => { const s = segments(p.url); return s.length > 0 && LISTING_LEAF.test(s.at(-1)) && s.join('/') !== t.key; };
+    // A URL with a query string (a filtered or paged listing) or a canonical elsewhere is a variant,
+    // not the template's page.
+    const key = (p) => [(properTitle(p.title, brand) ? 0 : 1) + (/\?/.test(p.url) ? 2 : 0) + (otherCanonical(p) ? 2 : 0) + (legalLeaf(p) ? 4 : 0), ((p.words || 0) >= median / 2 ? 0 : 2) + (listing(p) ? 1 : 0)];
     // Recency counts where pages are dated publications (news, articles, case studies); on other
     // templates a date on the page is an event or a deadline, not the page's age.
     // Only a template named as one (/news/, /blog/, /cases/): a mixed section that is mostly dated
@@ -169,9 +215,19 @@ export function pickSample(templates, pages, { max = 24 } = {}) {
         || (b.words || 0) - (a.words || 0) || pathOf(a.url).length - pathOf(b.url).length;
     });
   };
+  for (const u of urls) {
+    const key = templateKey(u);
+    if (add(u, key, 'named with --urls')) named.add(key);
+  }
   const skip = (t) => t.type === 'legal';
-  for (const t of templates) if (!skip(t)) add(ranked(t)[0]?.url, t.key, t.key === 'home' ? 'start page' : 'representative page of the template');
-  for (const t of templates.filter((x) => !skip(x) && x.pages >= 5)) add(ranked(t)[1]?.url, t.key, 'second page of a large template');
+  for (const t of templates) {
+    if (skip(t) || named.has(t.key)) continue;
+    // The first of the ranked pages that is not a page already picked.
+    for (const p of ranked(t)) if (add(p.url, t.key, t.key === 'home' ? 'start page' : 'representative page of the template')) break;
+  }
+  for (const t of templates.filter((x) => !skip(x) && x.pages >= 5)) {
+    for (const p of ranked(t).slice(1)) if (add(p.url, t.key, 'second page of a large template')) break;
+  }
   const qs = pages.filter(indexable).filter((p) => (p.sig?.questionHeadings || 0) >= 3).sort((a, b) => b.sig.questionHeadings - a.sig.questionHeadings);
   for (const p of qs) add(p.url, templateKey(p.url), `${p.sig.questionHeadings} question headings`);
   return out;

@@ -4,7 +4,7 @@ description: Use when someone wants the infrastructure or domain hygiene of a si
 argument-hint: "<url or domain> [--email-domain D] [--dkim-selector S] [--no-ct] [--max-subdomains N] [--only domain,email,tls,edge,ct] [--out DIR] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
-  version: "2.4.5"
+  version: "2.5.0"
 ---
 
 # Infrastructure audit
@@ -72,8 +72,9 @@ the report as well, and so does `--console --out DIR` (the run's files go to tha
 only this machine's own CA store trusts the chain, or the certificate it receives is not in the CT
 logs, something on the network re-signs TLS (corporate proxy, VPN, antivirus, a cloud sandbox's
 egress proxy). The script then marks the certificate rows as skipped instead of reporting the
-proxy's certificate. Tell the user to run
-it from another network for those rows.
+proxy's certificate, and `tls.interception` itself is a degraded run: skipped, not a warning, never
+a task, and named on top of `report.md` as a condition of the network, not of the site. Tell the
+user to run it from another network for those rows.
 
 DNS is read over DNS-over-HTTPS (Cloudflare, then Google), with the system resolver as the fallback.
 When neither DoH provider answers and the system resolver returns no NS records for the domain (a
