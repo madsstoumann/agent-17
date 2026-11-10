@@ -7,7 +7,7 @@ All notable changes to the `plan-geo` skill. Format follows [Keep a Changelog](h
 ### Added
 - `extract --from-archive DIR`: reads every page from a page archive (`index.json` plus `<slug>.html.gz`, as audit-seo `--save-html` writes it) instead of the site, and never starts Chrome. A thin page a live run would render uses the archived `<slug>.hidden.txt.gz` and `<slug>.txt.gz` for its text, hidden text and dates ("served HTML + archived text"; outline, questions and word count stay from the served HTML); without them it is read from its served HTML and marked "served HTML only". A page the archive does not hold is listed as not archived and skipped; `--allow-live` fetches it. `inventory.md`, `inventory.json` (`archive`) and `proposals.md` say on top that the plan was built from the archive of that date, not the live site, and list the degraded and missing pages. `samples --live` reads the same archive. With no earlier audit-seo run, audit-seo runs with `--from-archive` too.
 - Masked secrets from an archive (`abcd…[masked <type>]`) are left out of the pages read, and `check` flags a draft value that holds one as "masked placeholder from the page archive, not a real value".
-- `--no-validate`: the same as `--no-remote`.
+- `--no-validate`: the same as `--no-remote`. On `extract`, either is passed on to audit-seo when it has to run first.
 
 ## [1.3.0] - 2026-11-10
 
