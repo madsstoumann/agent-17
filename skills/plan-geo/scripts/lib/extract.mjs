@@ -156,7 +156,20 @@ export function leadDate(markdown) {
     if (!/^(#|- )/.test(l)) words += l.split(/\s+/).length;
     if (words > 120) break;
   }
-  return visibleDates(head.join('\n'))[0] || null;
+  // The first date in reading order, not the earliest: a news item dated above its h1 often cites
+  // older dates (an earlier announcement, a law) in its first paragraph.
+  for (const l of head) {
+    const d = visibleDates(l)[0];
+    if (d) return d;
+  }
+  return null;
+}
+
+/** article:published_time (or og:published_time) from the head, as YYYY-MM-DD, or null. */
+export function publishedMeta(html) {
+  const m = /<meta\b[^>]*(?:property|name)\s*=\s*["'](?:article|og):published_time["'][^>]*>/i.exec(String(html || ''));
+  const c = m && /\bcontent\s*=\s*["']\s*(\d{4}-\d{2}-\d{2})/i.exec(m[0]);
+  return c ? c[1] : null;
 }
 
 /** "By Jane Doe", "Author: Jane Doe", "Written by …": the names a byline shows. */
@@ -241,6 +254,8 @@ export function extractPage(html, url) {
   const hiddenMd = blocksMarkdown(hidden);
   const hiddenText = hidden.filter((b) => !b.shown).map((b) => b.text).join(' ');
   const fullText = hiddenText ? `${shownText} ${hiddenText}` : shownText;
+  const dates = visibleDates(fullText);
+  const published = publishedMeta(html);
   return {
     url,
     title: meta.title,
@@ -253,8 +268,10 @@ export function extractPage(html, url) {
     outline: outline(mainMd),
     questions: mergeQuestions(questionPairs(mainMd), hidden.length ? questionPairs(hiddenMd) : []),
     tables: mainMd.split('\n').filter((l) => l.startsWith('| ')).length,
-    dates: visibleDates(fullText),
-    leadDate: leadDate(mainMd),
+    dates,
+    // The date shown at the top; without one, article:published_time when the page shows that date too.
+    leadDate: leadDate(mainMd) || (dates.includes(published) ? published : null),
+    publishedMeta: published,
     bylines: bylines(fullText),
     breadcrumbs: breadcrumbs(body, url),
     org: organisation(html, url, meta),
@@ -284,7 +301,7 @@ export function pageDigest(p, { maxChars = 14000 } = {}) {
   if (p.description) lines.push(`Meta description: ${p.description}`);
   if (p.lang) lines.push(`Language: ${p.lang}`);
   lines.push(`Words in main content: ${p.words} · question headings: ${p.questions.length} · table rows: ${p.tables}${p.hidden ? ` · words only in the Next.js payload: ${p.hidden.words}` : ''}`);
-  lines.push(`Page date: ${p.leadDate || 'none shown near the top'}${p.dates.length ? ` · other dates in the text: ${p.dates.filter((d) => d !== p.leadDate).join(', ') || 'none'}` : ''}`);
+  lines.push(`Page date: ${p.leadDate || 'none shown near the top'}${p.publishedMeta ? ` · article:published_time ${p.publishedMeta}${p.dates.includes(p.publishedMeta) ? '' : ' (not shown on the page)'}` : ''}${p.dates.length ? ` · other dates in the text: ${p.dates.filter((d) => d !== p.leadDate).join(', ') || 'none'}` : ''}`);
   if (p.bylines.length) lines.push(`Bylines: ${p.bylines.join(', ')}`);
   if (p.breadcrumbs.length) lines.push(`Breadcrumb: ${p.breadcrumbs.map((b) => b.name).join(' › ')}`);
   const o = p.org;

@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-launch` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.5.0] - 2026-11-10
+
+### Changed
+- `headers.hsts` warns when `max-age` is under one year (31536000, the hstspreload.org minimum) instead of under 180 days, and says when `includeSubDomains` is missing too. The estimated securityheaders.com grade keeps that site's own 180-day rule. New `hstsVerdict()` in `lib/headers.mjs`, tested.
+
 ## [2.4.4] - 2026-11-09
 
 ### Fixed

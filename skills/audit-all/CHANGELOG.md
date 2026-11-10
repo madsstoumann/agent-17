@@ -2,6 +2,14 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.18.0] - 2026-11-10
+
+### Added
+- `combine.mjs --expect LIST` (the audits that were run, the `--only` keys): an audit that left no folder, or a folder without `report.md`, gets a "Failed" row in the at-a-glance table of report.md and report.html, a `FAILED:` line on stdout and a log line, with the last lines of its stderr from `<run>/logs/<folder>.stderr`. A chained run once lost audit-eco this way with nothing to show why.
+
+### Changed
+- Step 3 keeps every sub-audit's stderr in `<run>/logs/<folder>.stderr` (never `/dev/null`), checks each audit's folder after it runs and re-runs a missing one once; step 6 passes `--expect`.
+
 ## [1.17.0] - 2026-11-09
 
 ### Added

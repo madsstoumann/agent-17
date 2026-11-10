@@ -111,8 +111,12 @@ export async function focusSnapshot() {
   };
   const focused = look(el);
   const outline = cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0;
-  let changes = outline;
-  if (!outline) {
+  // Native controls on video and audio sit in the element's shadow DOM: Tab moves through them
+  // while document.activeElement stays on the element. Blurring and refocusing it would send focus
+  // back to the first control on every press, so leave it; the browser draws their focus ring.
+  const mediaControls = (el.localName === 'video' || el.localName === 'audio') && el.controls;
+  let changes = outline || mediaControls;
+  if (!changes) {
     const keep = el;
     keep.blur();
     const blurred = look(keep);
@@ -146,6 +150,7 @@ export async function focusSnapshot() {
     x: Math.round(r.left + scrollX), y: Math.round(r.top + scrollY), w: Math.round(r.width), h: Math.round(r.height),
     visible,
     customControl,
+    mediaControls,
     indicator: changes,
     obscuredBy,
     inDialog: dialog ? window.__a11yPath(dialog) : null,

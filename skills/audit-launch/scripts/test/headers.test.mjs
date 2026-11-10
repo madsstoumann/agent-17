@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   parseCsp, lintCsp, gradeSecurityHeaders, GRADE_TABLE, GRADE_NOTE,
   parseSetCookie, lintCookies, infoLeakHeaders, parseCacheControl, lintAssetCaching,
-  parseHsts, corsVerdict, crossOriginPolicies,
+  parseHsts, hstsVerdict, corsVerdict, crossOriginPolicies,
 } from '../lib/headers.mjs';
 
 const fixture = (p) => readFileSync(new URL(`./fixtures/${p}`, import.meta.url), 'utf8');
@@ -366,6 +366,16 @@ test('lintAssetCaching: uncompressed text is an issue, an uncompressed image is 
 });
 
 // ---------------------------------------------------------------- hsts, cors, cross-origin
+
+test('hstsVerdict: under one year warns, naming a missing includeSubDomains', () => {
+  assert.deepEqual(hstsVerdict('max-age=31536000; includeSubDomains'), { status: 'pass', note: '' });
+  assert.equal(hstsVerdict('max-age=63072000').status, 'pass');
+  const half = hstsVerdict('max-age=15552000');
+  assert.equal(half.status, 'warn', '180 days is below the one-year minimum');
+  assert.match(half.note, /15552000 \(180 days\) is under one year, and there is no includeSubDomains/);
+  assert.doesNotMatch(hstsVerdict('max-age=15552000; includeSubDomains').note, /includeSubDomains/);
+  assert.equal(hstsVerdict('max-age=abc').status, 'warn');
+});
 
 test('parseHsts', () => {
   assert.deepEqual(parseHsts(BS['strict-transport-security']), { maxAge: 31536000, includeSubDomains: true, preload: true });

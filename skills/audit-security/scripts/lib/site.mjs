@@ -67,6 +67,26 @@ function cspDirectives(value) {
   return out;
 }
 
+// Hosting suffixes where anyone can publish a site for free: a wildcard on one of them lets any
+// stranger's deployment frame the page. Public suffixes, not a vendor's own subdomains.
+export const PUBLIC_HOSTING_SUFFIXES = [
+  'vercel.app', 'now.sh', 'netlify.app', 'netlify.com', 'github.io', 'gitlab.io', 'pages.dev', 'workers.dev',
+  'azurewebsites.net', 'azurestaticapps.net', 'cloudapp.net', 'blob.core.windows.net', 'web.core.windows.net',
+  'herokuapp.com', 'herokudns.com', 'web.app', 'firebaseapp.com', 'appspot.com', 'run.app', 'cloudfront.net',
+  's3.amazonaws.com', 'amplifyapp.com', 'onrender.com', 'fly.dev', 'railway.app', 'surge.sh', 'glitch.me',
+  'repl.co', 'replit.app', 'ngrok.io', 'ngrok-free.app', 'ngrok.app', 'trycloudflare.com', 'deno.dev',
+  'netlify.live', 'webflow.io', 'framer.app', 'framer.website', 'wixsite.com', 'squarespace.com', 'wordpress.com',
+  'blogspot.com', 'codepen.io', 'stackblitz.io', 'csb.app', 'loca.lt',
+];
+
+/** The public hosting suffix a frame-ancestors source wildcards, or null: 'https://*.vercel.app' -> 'vercel.app'. */
+export function publicWildcard(source) {
+  const m = /^(?:[a-z][a-z0-9+.-]*:\/\/)?\*\.([^/:]+)(?::[0-9*]+)?(?:\/.*)?$/i.exec(String(source || '').trim());
+  if (!m) return null;
+  const host = m[1].toLowerCase().replace(/\.$/, '');
+  return PUBLIC_HOSTING_SUFFIXES.find((sfx) => host === sfx) || null;
+}
+
 /**
  * Clickjacking: can another site frame this page? CSP frame-ancestors is the modern control and
  * wins over X-Frame-Options where both are sent; a report-only policy enforces nothing.
@@ -75,14 +95,23 @@ export function frameAncestors(headers = {}) {
   const csp = headers['content-security-policy'];
   const fa = csp ? cspDirectives(csp)['frame-ancestors'] : null;
   const xfo = String(headers['x-frame-options'] || '').trim().toUpperCase();
+  const valid = xfo === 'DENY' || xfo === 'SAMEORIGIN';
   const title = 'Clickjacking (frame-ancestors)';
-  const fix = "Content-Security-Policy: frame-ancestors 'self' (or 'none'); keep X-Frame-Options: SAMEORIGIN for old browsers.";
+  // Keep what the site sends; suggest SAMEORIGIN only when it sends nothing browsers honour.
+  const keep = valid ? `keep X-Frame-Options: ${xfo} for old browsers` : 'add X-Frame-Options: SAMEORIGIN for old browsers';
+  const fix = `Content-Security-Policy: frame-ancestors 'self' (or 'none'); ${keep}.`;
   if (fa) {
     const v = fa.join(' ');
     if (fa.some((s) => s === '*' || /^https?:$/i.test(s))) return row('headers.frame-ancestors', 'fail', title, `frame-ancestors ${v} lets any site frame the page`, { fix });
+    const open = fa.filter(publicWildcard);
+    if (open.length) {
+      return row('headers.frame-ancestors', 'warn', title, `frame-ancestors ${v}: ${open.join(', ')} ${open.length > 1 ? 'are public hosting suffixes' : 'is a public hosting suffix'}, so anyone's deployment there can frame the page`, {
+        fix: `Replace ${open.join(', ')} with the exact hosts that need to frame the page (a preview or editor host), or drop ${open.length > 1 ? 'them' : 'it'}; ${keep}.`,
+      });
+    }
     return row('headers.frame-ancestors', 'pass', title, `CSP frame-ancestors ${v}${xfo ? ` (X-Frame-Options ${xfo} too)` : ''}`);
   }
-  if (xfo === 'DENY' || xfo === 'SAMEORIGIN') return row('headers.frame-ancestors', 'warn', title, `X-Frame-Options ${xfo} only; no CSP frame-ancestors${headers['content-security-policy-report-only'] ? ' (a report-only CSP enforces nothing)' : ''}`, { fix });
+  if (valid) return row('headers.frame-ancestors', 'warn', title, `X-Frame-Options ${xfo} only; no CSP frame-ancestors${headers['content-security-policy-report-only'] ? ' (a report-only CSP enforces nothing)' : ''}`, { fix });
   return row('headers.frame-ancestors', 'fail', title, xfo ? `X-Frame-Options ${xfo} is not a value browsers honour, and there is no CSP frame-ancestors` : 'neither CSP frame-ancestors nor X-Frame-Options: any site can frame the page', { fix });
 }
 

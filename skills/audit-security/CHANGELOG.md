@@ -2,6 +2,15 @@
 
 All notable changes to the `audit-security` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.3.0] - 2026-11-10
+
+### Changed
+- Site mode's clickjacking row warns when `frame-ancestors` allows a wildcard on a public hosting suffix (`https://*.vercel.app`, `*.netlify.app`, `*.github.io`, `*.azurewebsites.net`, `*.pages.dev` and others in `PUBLIC_HOSTING_SUFFIXES`): anyone can deploy there and frame the page. It passed before. A site's own wildcard (`https://*.cms.example.com`) still passes.
+- The HSTS row (from audit-launch 2.5.0) warns below one year, `max-age=31536000`, instead of below 180 days.
+
+### Fixed
+- The clickjacking fix text said to keep `X-Frame-Options: SAMEORIGIN` also when the site sends `DENY`. It now says to keep the value the site sends, and to add `SAMEORIGIN` only when it sends none (or one browsers ignore).
+
 ## [2.2.1] - 2026-11-09
 
 ### Fixed

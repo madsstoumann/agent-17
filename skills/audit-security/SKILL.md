@@ -4,7 +4,7 @@ description: Use when someone wants a security review, code security audit, vuln
 argument-hint: "[path | url] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline] [--visibility public|private|internal] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(git log:*), Bash(git show:*), Bash(gh repo view:*), Read, Grep, Glob, WebFetch
 metadata:
-  version: "2.2.1"
+  version: "2.3.0"
 ---
 
 # Security audit
@@ -222,7 +222,7 @@ owner has not asked for. Only scan sites the user owns or is engaged on.
 
 | Group | What it checks |
 |---|---|
-| `headers` | The six graded headers (HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy), CSP lint, clickjacking (CSP `frame-ancestors` against X-Frame-Options), version disclosure, cookie flags (Secure, HttpOnly, SameSite) on the first response, CORS, COOP/COEP/CORP, MDN Observatory and the securityheaders.com grade |
+| `headers` | The six graded headers (HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy), CSP lint, clickjacking (CSP `frame-ancestors` against X-Frame-Options; a wildcard on a public hosting suffix such as `*.vercel.app` warns), HSTS under one year (31536000) warns, version disclosure, cookie flags (Secure, HttpOnly, SameSite) on the first response, CORS, COOP/COEP/CORP, MDN Observatory and the securityheaders.com grade |
 | `redirects` | HTTP to HTTPS, www/apex, redirect chains and status codes, HSTS on the https hops |
 | `exposed` | Secret files (`.git`, `.env`, `appsettings.json`, `web.config`, …), dependency manifests, CMS backoffice and admin paths, `security.txt` (RFC 9116) |
 | `blocklists` | OpenPhish (no key), plus Google Safe Browsing, URLhaus and VirusTotal when `GOOGLE_SAFE_BROWSING_KEY`, `URLHAUS_AUTH_KEY` or `VIRUSTOTAL_API_KEY` is set; a missing key is a skipped row, never a pass |

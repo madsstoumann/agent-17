@@ -212,3 +212,39 @@ test('run: finds the trap, missing focus style, contrast, alt and reflow on the 
     fs.rmSync(out, { recursive: true, force: true });
   }
 });
+
+// Native video and audio controls are shadow-DOM buttons: focus stays on the element for several
+// presses, then moves on. That is not a trap; a script that holds Tab on the video still is.
+test('run: native media controls are not a keyboard trap, a script holding Tab on a video is', { timeout: 180000 }, async (t) => {
+  if (!findChrome()) return t.skip('no browser');
+  try { await loadEngine('axe'); await loadEngine('htmlcs'); } catch { return t.skip('engines not cached and no network'); }
+  const html = fs.readFileSync(path.join(HERE, 'fixtures', 'media.html'));
+  const n = 8000; const wav = Buffer.alloc(44 + n);
+  wav.write('RIFF', 0); wav.writeUInt32LE(36 + n, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(8000, 28); wav.writeUInt16LE(1, 32); wav.writeUInt16LE(8, 34); wav.write('data', 36); wav.writeUInt32LE(n, 40); wav.fill(128, 44);
+  const server = http.createServer((q, s) => {
+    if (q.url === '/tone.wav') { s.writeHead(200, { 'content-type': 'audio/wav' }); return s.end(wav); }
+    s.writeHead(['/', '/trap'].includes(q.url) ? 200 : 404, { 'content-type': 'text/html' }); s.end(html);
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'a11y-media-'));
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const urls = path.join(out, 'urls.txt');
+    fs.writeFileSync(urls, `${base}/\n${base}/trap\n`);
+    process.env.AUDIT_OUT_DIR = out;
+    const { dir } = await run(parseCli([`${base}/`, '--urls', urls, '--pages', '2', '--keyboard', '2', '--out', path.join(out, 'run'), '--no-baseline'], {}), { log: () => {} });
+    const { pages } = JSON.parse(fs.readFileSync(path.join(dir, 'report.json'), 'utf8'));
+    const kb = (p) => pages.find((x) => x.url === p)?.keyboard;
+    const free = kb(`${base}/`);
+    assert.ok(free, 'keyboard walk on the media page');
+    assert.equal(free.trap, null, `no trap on native controls: ${JSON.stringify(free.trap)}`);
+    assert.equal(free.ended, 'left-document');
+    assert.ok(free.count >= 4, 'focus reaches the link after the media');
+    assert.equal(kb(`${base}/trap`)?.trap?.verdict, 'trap', 'a script holding Tab on the video is still a trap');
+  } finally {
+    delete process.env.AUDIT_OUT_DIR;
+    server.close();
+    fs.rmSync(out, { recursive: true, force: true });
+  }
+});

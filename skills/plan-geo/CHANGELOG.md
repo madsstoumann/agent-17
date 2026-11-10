@@ -2,6 +2,16 @@
 
 All notable changes to the `plan-geo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.3.0] - 2026-11-10
+
+### Changed
+- The example page of each template is a representative page, not the longest: one with a title of its own (not only the site name), not thin for its template, the most recent where pages are dated (published date, the date it shows, or a year in its path) in a template named as news, articles or case studies, then the longest; a URL with a query string is not picked. The longest page of a news section was often a legal statement titled only with the site name. The sample's reason reads "representative page of the template".
+- The `check` note for a draft named after a page (when a template has the same name) says the page match is intended and the file name should stay; a draft for every page of that template is mentioned only as an optional second draft.
+
+### Fixed
+- `build --samples` posted every draft to validator.schema.org again right after the samples, hit HTTP 429 and showed "not reached". Samples now run first and `check` reuses their answers (each sample holds the draft), and every answer is kept for the run in `markup/validator.json` by the hash of what was posted, so `check`, `samples` and `build` never post the same draft or sample twice. After a 429 that outlasts the retries, `check` stops posting too.
+- The page date (`Page date:` in `pages/*.md`, which `check` compares `datePublished` with) was the earliest date near the top, not the first: a news item dated above its h1 that cites an older order in its first paragraph got the older date. It is now the first date in reading order. `article:published_time` is read too: it is shown next to the page date, and used as the page date when the page shows no date near the top but does show that one.
+
 ## [1.2.2] - 2026-11-09
 
 ### Fixed

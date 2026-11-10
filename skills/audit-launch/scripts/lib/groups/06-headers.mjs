@@ -4,7 +4,7 @@
  * grade itself when we can get it (scrape or paid API), never invented.
  */
 import { result } from '../registry.mjs';
-import { gradeSecurityHeaders, parseCsp, lintCsp, parseSetCookie, lintCookies, infoLeakHeaders, parseHsts, corsVerdict, crossOriginPolicies, GRADE_NOTE } from '../headers.mjs';
+import { gradeSecurityHeaders, parseCsp, lintCsp, parseSetCookie, lintCookies, infoLeakHeaders, hstsVerdict, corsVerdict, crossOriginPolicies, GRADE_NOTE } from '../headers.mjs';
 import { observatoryScan, securityHeadersScrape, securityHeadersApi } from '../services.mjs';
 
 const HEADER_FIX = {
@@ -41,8 +41,8 @@ export default {
       let status = present ? 'pass' : 'fail';
       let evidence = present ? (viaCsp ? 'satisfied by CSP frame-ancestors' : String(value).slice(0, 200)) : 'missing';
       if (name === 'strict-transport-security' && present) {
-        const p = parseHsts(value);
-        if (p && p.maxAge < 15552000) { status = 'warn'; evidence += ` — max-age ${p.maxAge} is under 6 months`; }
+        const v = hstsVerdict(value);
+        if (v.status !== 'pass') { status = v.status; evidence += ` — ${v.note}`; }
       }
       if (name === 'x-content-type-options' && value && !/nosniff/i.test(value)) { status = 'fail'; evidence = `${value} (must be nosniff)`; }
       if (name === 'content-security-policy' && !present && h['content-security-policy-report-only']) { status = 'warn'; evidence = 'report-only policy only — nothing is enforced'; }

@@ -10,6 +10,8 @@
  * Zero dependencies. Node >= 22. Pure.
  */
 
+import { visibleDates } from './extract.mjs';
+
 const LOCALE = /^[a-z]{2}(?:[-_][a-z]{2,4})?$/i;
 
 /** Indexable HTML pages in an audit-seo report. */
@@ -101,19 +103,74 @@ export function groupTemplates(pages) {
   return out.sort((a, b) => (a.key === 'home' ? -1 : b.key === 'home' ? 1 : b.pages - a.pages || a.key.localeCompare(b.key)));
 }
 
+// Separators between a page's own title and the site name: "Annual pass | Example Museum".
+const TITLE_SEP = /\s+[|–—·-]\s+|\s*\|\s*/;
+
+/** The site name most titles end with ("Example Museum"), or the start page's title. */
+export function siteName(pages) {
+  const counts = new Map();
+  const titled = pages.filter((p) => p?.title);
+  for (const p of titled) {
+    const parts = p.title.split(TITLE_SEP).map((x) => x.trim()).filter(Boolean);
+    if (parts.length > 1) counts.set(parts.at(-1).toLowerCase(), (counts.get(parts.at(-1).toLowerCase()) || 0) + 1);
+  }
+  const [top, n] = [...counts].sort((a, b) => b[1] - a[1])[0] || [];
+  if (top && n >= titled.length * 0.3) return top;
+  const home = titled.find((p) => pathOf(p.url) === '/');
+  return home ? home.title.split(TITLE_SEP)[0].trim().toLowerCase() : null;
+}
+
+/** A title of its own: not empty and not just the site name ("Example" on a news item). */
+export function properTitle(title, brand) {
+  const own = String(title || '').split(TITLE_SEP).map((x) => x.trim()).filter((x) => x && x.toLowerCase() !== brand);
+  return own.length > 0;
+}
+
+const DATED_TYPES = new Set(['news', 'article', 'case-study']);
+
+/** The page's date for "most recent": its published date, the date it shows, or a year in its path. */
+export function pageDate(p) {
+  const d = /^\d{4}-\d{2}-\d{2}/.exec(String(p?.sig?.published || ''))?.[0] || visibleDates(String(p?.sig?.visibleDate || ''))[0];
+  if (d) return d;
+  const y = /\/((?:19|20)\d{2})\//.exec(pathOf(p?.url || ''))?.[1];
+  return y ? `${y}-00-00` : '';
+}
+
 /**
  * pickSample(templates, pages, { max }) -> [{ url, template, why }]
- * The start page, then one page per template (the one with most words), then a second page for
- * the biggest templates, then pages with three or more question headings, until `max`.
+ * The start page, then one example page per template, then a second page for the biggest
+ * templates, then pages with three or more question headings, until `max`.
+ *
+ * The example is a representative page, not simply the longest: one without a query string, with a
+ * title of its own (not just the site name), not thin for its template (at least half the median
+ * word count), the most recent in a template named as news, articles or case studies, then the
+ * longest. The longest page of a news section was often a statement titled only with the site name.
  */
 export function pickSample(templates, pages, { max = 24 } = {}) {
   const byUrl = new Map(pages.map((p) => [p.url, p]));
+  const brand = siteName(pages);
   const out = [];
   const taken = new Set();
   const add = (url, template, why) => { if (out.length < max && url && !taken.has(url)) { taken.add(url); out.push({ url, template, why }); } };
-  const ranked = (t) => t.urls.map((u) => byUrl.get(u)).filter(Boolean).sort((a, b) => (b.words || 0) - (a.words || 0) || pathOf(a.url).length - pathOf(b.url).length);
+  const ranked = (t) => {
+    const ps = t.urls.map((u) => byUrl.get(u)).filter(Boolean);
+    const words = ps.map((p) => p.words || 0).sort((a, b) => a - b);
+    const median = words[Math.floor(words.length / 2)] || 0;
+    // A URL with a query string (a filtered or paged listing) is a variant, not the template's page.
+    const key = (p) => [(properTitle(p.title, brand) ? 0 : 1) + (/\?/.test(p.url) ? 2 : 0), (p.words || 0) >= median / 2 ? 0 : 1];
+    // Recency counts where pages are dated publications (news, articles, case studies); on other
+    // templates a date on the page is an event or a deadline, not the page's age.
+    // Only a template named as one (/news/, /blog/, /cases/): a mixed section that is mostly dated
+    // pages is guessed as articles too, but its newest page says nothing about the section.
+    const dated = DATED_TYPES.has(PAGE_TYPES.find((x) => x.test(t.key))?.type) ? pageDate : () => '';
+    return ps.sort((a, b) => {
+      const [ka, kb] = [key(a), key(b)];
+      return ka[0] - kb[0] || ka[1] - kb[1] || dated(b).localeCompare(dated(a))
+        || (b.words || 0) - (a.words || 0) || pathOf(a.url).length - pathOf(b.url).length;
+    });
+  };
   const skip = (t) => t.type === 'legal';
-  for (const t of templates) if (!skip(t)) add(ranked(t)[0]?.url, t.key, t.key === 'home' ? 'start page' : 'longest page in the template');
+  for (const t of templates) if (!skip(t)) add(ranked(t)[0]?.url, t.key, t.key === 'home' ? 'start page' : 'representative page of the template');
   for (const t of templates.filter((x) => !skip(x) && x.pages >= 5)) add(ranked(t)[1]?.url, t.key, 'second page of a large template');
   const qs = pages.filter(indexable).filter((p) => (p.sig?.questionHeadings || 0) >= 3).sort((a, b) => b.sig.questionHeadings - a.sig.questionHeadings);
   for (const p of qs) add(p.url, templateKey(p.url), `${p.sig.questionHeadings} question headings`);

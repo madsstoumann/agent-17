@@ -4,7 +4,7 @@ description: Use when someone wants an accessibility audit, WCAG 2.2 or 2.1 AA c
 argument-hint: "<url> [--pages N] [--from audit-launch/report.json] [--urls FILE] [--keyboard N] [--wcag A|AA|AAA] [--repo NAME[=PATH]] [--out DIR] [--state DIR] [--baseline FILE] [--no-baseline] [--header NAME:VALUE] [--insecure] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read, WebFetch
 metadata:
-  version: "2.1.3"
+  version: "2.1.4"
 ---
 
 # Accessibility audit
