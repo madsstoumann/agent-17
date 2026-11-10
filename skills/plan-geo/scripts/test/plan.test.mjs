@@ -577,6 +577,9 @@ test('build --samples reuses the run\'s validator answers instead of posting eve
     assert.ok(ck.drafts.every((d) => d.validator && !d.validator.error && d.validator.errors === 0));
   } finally {
     server.close(); validator.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
 
 // ---------------------------------------------------------------- archive mode
 
