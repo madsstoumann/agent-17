@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-seo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.6.2] - 2026-11-10
+
+### Fixed
+- Archive mode: the skipped `llms-full.txt` and `ai.txt` rows now name their own file instead of saying "llms.txt is not in the archive". Tested in `archive.test.mjs`.
+
 ## [2.6.1] - 2026-11-10
 
 ### Changed

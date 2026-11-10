@@ -4,7 +4,7 @@ description: Use when someone wants an SEO, content or GEO (AI search) audit of 
 argument-hint: "<url | file.html> [--geo] [--schema-only] [--pages N] [--sitemap-sample N] [--external-links N] [--internal-links N] [--schema-pages N] [--render-pages N] [--bot-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console] [--from-archive DIR [--allow-live]] [--save-html DIR] [--no-validate]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "2.6.1"
+  version: "2.6.2"
 ---
 
 # SEO audit

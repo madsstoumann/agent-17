@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-launch` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.5.2] - 2026-11-10
+
+### Fixed
+- A site whose own domain name is a staging word (`dev.<tld>`, `www.demo.<tld>`) is no longer taken for a staging host: links to it stopped showing up in `crawl.staging-refs`, and auditing it no longer guesses `--env staging`. `dev.example.com` and `demo-shop.<tld>` still count as staging. Tested in `cli.test.mjs`.
+
 ## [2.5.1] - 2026-11-10
 
 ### Changed

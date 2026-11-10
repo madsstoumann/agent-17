@@ -157,6 +157,8 @@ test('applyArchiveMode: network rows skipped, file rows skipped only when the fi
   assert.equal(by('seo.title-missing').evidence, 'all 5 pages have a title', 'HTML checks are untouched');
   for (const id of Object.keys(ARCHIVE_SKIPPED)) assert.equal(by(id)?.status, 'skip', `${id} is named as skipped`);
   assert.ok(a.skipped.some((s) => s.id === 'seo.llms-txt'));
+  assert.match(a.skipped.find((s) => s.id === 'seo.ai-txt').why, /^ai\.txt is not in the archive/, 'each file row names its own file');
+  assert.match(a.skipped.find((s) => s.id === 'seo.llms-full').why, /^llms-full\.txt is not/);
   assert.deepEqual(a.degraded.map((d) => d.id), ['seo.broken-internal']);
 });
 

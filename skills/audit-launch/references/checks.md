@@ -23,7 +23,7 @@ On **dev/staging** (`--env dev|staging`, or guessed from the hostname), findings
 | `crawl.charset` | Charset declared | missing warn; not UTF-8 info | `<meta charset="utf-8">` first in head. |
 | `crawl.h1` | H1 count on the start page | 0 warn; > 1 info | One h1. |
 | `crawl.llms-txt` | `/llms.txt` | info only | Optional (llmstxt.org); Lighthouse "Agentic browsing" scores it. |
-| `crawl.staging-refs` | dev/stage hostnames in links, assets, CSP, canonical, og, sitemap. An Umbraco Cloud live host (`example-live.euwest01.umbraco.io`) is the live environment, not staging; its `dev-…` and `stage-…` hosts are | any → warn *(before production)* | Replace before the staging host disappears. |
+| `crawl.staging-refs` | dev/stage hostnames in links, assets, CSP, canonical, og, sitemap. An Umbraco Cloud live host (`example-live.euwest01.umbraco.io`) is the live environment, not staging; its `dev-…` and `stage-…` hosts are. A site whose own domain name is the word (`dev.<tld>`, `www.demo.<tld>`) is a live site, not staging | any → warn *(before production)* | Replace before the staging host disappears. |
 
 ## 2. redirects
 
