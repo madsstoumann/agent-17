@@ -1,5 +1,6 @@
 // Functions that run inside the page (serialised with toString). They must not reference
-// anything outside their own body.
+// anything outside their own body; CONSENT_SELECTOR is passed in as an argument.
+import { CONSENT_SELECTOR } from './consent.mjs';
 
 /**
  * Find the consent banner's buttons in this frame, open shadow roots included. Keeps element
@@ -136,14 +137,8 @@ export const PATTERNS = {
 
 export const POLICY_PATTERN = String.raw`(privacy|privatliv|persondata|personoplysning|databeskyttelse|datenschutz|integritet|personvern|confidentialit|privacidad|cookie)`;
 
-// Consent banners by their tools' ids and classes (the same list audit-seo's text measure skips).
-export const CONSENT_SELECTOR = [
-  '[id^="onetrust" i]', '[id*="cookiebot" i]', '[id*="usercentrics" i]', '[id*="didomi" i]', '[id*="cookie-consent" i]', '[id*="cookieconsent" i]',
-  '[class*="cookie-consent" i]', '[class*="cookieconsent" i]', '[id*="cookie-banner" i]', '[class*="cookie-banner" i]', '[aria-label*="cookie" i][role="dialog"]',
-  '[aria-label*="consent" i][role="dialog"]', '[id*="cookie-information" i]', '[id^="coi-" i]', '[id^="coiOverlay" i]', '[class*="coi-banner" i]', '[class*="coi-consent" i]',
-  '[id*="cookiefirst" i]', '[id^="cky-" i]', '[class*="cky-consent" i]', '[id*="cmplz" i]', '[class*="cmplz-cookiebanner" i]', '[id^="BorlabsCookie" i]',
-  '[class*="osano-cm" i]', '[id*="truste" i]', '[id^="sp_message_container" i]', '[id^="qc-cmp2" i]', '[id*="cookiescript" i]', '[id^="axeptio" i]', '[id^="tarteaucitron" i]',
-].join(',');
+// Consent banners by their tools' ids and classes: lib/consent.mjs, shared with audit-seo, plan-geo and audit-a11y.
+export { CONSENT_SELECTOR };
 
 /**
  * A policy page's own text: the main content without the consent banner, the site header, the

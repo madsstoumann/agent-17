@@ -11,6 +11,7 @@
  */
 import { decodeEntities, extractMeta, tokenize } from './html.mjs';
 import { hiddenBlocks, blocksMarkdown, blockWords } from './rsc.mjs';
+import { dropConsentHtml } from './consent.mjs';
 
 /**
  * Month names by number, in the languages sites are most often written in here: English, Danish,
@@ -47,8 +48,8 @@ function bodyHtml(html) {
     .replace(/<(script|style|svg|noscript|template|iframe)\b[\s\S]*?<\/\1\s*>/gi, ' ');
 }
 
-/** Cookie banners and dialogs say nothing about the page. */
-const dropConsent = (html) => html.replace(/<(div|section|aside)\b[^>]*(?:id|class)\s*=\s*["'][^"']*(?:onetrust|cookiebot|usercentrics|didomi|cookie-?consent|cookie-?banner|cookie-information|coi-banner|coioverlay)[^"']*["'][^>]*>[\s\S]*?<\/\1\s*>/gi, ' ');
+/** Cookie banners and dialogs say nothing about the page (the tools are listed in lib/consent.mjs). */
+const dropConsent = dropConsentHtml;
 
 /** The main content: <main> when there is one, else the body without nav, header, footer and aside. */
 function mainHtml(body) {
