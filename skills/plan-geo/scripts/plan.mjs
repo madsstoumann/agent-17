@@ -23,8 +23,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 
-import { extractPage, pageDigest, visibleDates, bylines } from './lib/extract.mjs';
-import { groupTemplates, pickSample, pageSlug, indexable } from './lib/templates.mjs';
+import { extractPage, pageDigest, visibleDates, dayMonths } from './lib/extract.mjs';
+import { groupTemplates, pickSample, pageSlug, indexable, sameKey } from './lib/templates.mjs';
 import { verifyDraft, typesIn } from './lib/verify.mjs';
 import { readQuestions, renderProposals, QUESTION_COLUMNS } from './lib/proposals.mjs';
 import { richIssues, prop } from './lib/rich.mjs';
@@ -35,7 +35,7 @@ import { writeFixPlan, validateTasks } from './lib/tasks.mjs';
 import { mergeGraph, sampleHtml, injectLive, samplesReadme } from './lib/samples.mjs';
 import { openArchive, archiveHttp, hasMask, stripMasks, countMasks } from './lib/archive.mjs';
 
-export const VERSION = '1.4.1';
+export const VERSION = '1.5.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const log = (...a) => process.stderr.write(`${a.join(' ')}\n`);
@@ -43,7 +43,7 @@ const log = (...a) => process.stderr.write(`${a.join(' ')}\n`);
 const HELP = `plan-geo ${VERSION}
 
 Usage:
-  plan.mjs extract <input> [--pages N] [--out DIR] [--header "Name: value"] [--no-render] [--insecure]
+  plan.mjs extract <input> [--pages N] [--urls a,b] [--out DIR] [--header "Name: value"] [--no-render] [--insecure]
                    [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content]
                    [--from-archive DIR [--allow-live]] [--no-validate]
   plan.mjs check <run folder> [--no-remote | --no-validate]
@@ -51,10 +51,13 @@ Usage:
   plan.mjs build <run folder> [--no-remote | --no-validate] [--samples [--live]]
 
 <input> is an audit-seo run folder, an audit-all run folder, an audit-seo report.json, or a URL
-(then the host's last audit-seo run is used, and audit-seo is run first when there is none).
+(then the host's last audit-seo run is used, and audit-seo is run first when there is none). With
+--from-archive the input may be left out: audit-seo then runs from the archive first.
 
   --pages N        Pages read in full (default 24): the start page, one per template, a second
                    page for large templates, then pages with three or more question headings.
+  --urls a,b       Example pages to use: each named URL (or path) is read first and is the example of
+                   its template, in place of the one extract would pick.
   --out DIR        Run folder (default <reports>/plan-geo/<host>/runs/<stamp>/, or
                    <audit-all run>/plan-geo/ when the input is an audit-all run).
   --header         Extra request header for the site's host (a WAF bypass rule). Also AUDIT_HEADERS.
@@ -80,11 +83,12 @@ Usage:
 // ---------------------------------------------------------------- small helpers
 
 function parseArgs(argv) {
-  const o = { _: [], pages: 24, headers: {}, render: true, remote: true, insecure: false, out: null, queries: null, competitors: [], repo: null, only: null, samples: false, live: false, archive: null, allowLive: false };
+  const o = { _: [], pages: 24, urls: [], headers: {}, render: true, remote: true, insecure: false, out: null, queries: null, competitors: [], repo: null, only: null, samples: false, live: false, archive: null, allowLive: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => { if (i + 1 >= argv.length) throw new Error(`${a} needs a value`); return argv[++i]; };
     if (a === '--pages') o.pages = Math.max(1, parseInt(next(), 10) || 24);
+    else if (a === '--urls') o.urls.push(...next().split(',').map((x) => x.trim()).filter(Boolean));
     else if (a === '--out') o.out = path.resolve(next());
     else if (a === '--header') addHeader(o.headers, next());
     else if (a === '--queries') o.queries = path.resolve(next());
@@ -233,11 +237,22 @@ function runAuditSeo(url, outDir, opts) {
   return { report: j, source: path.join(outDir, 'report.json') };
 }
 
+/** The site an archive holds, as a start URL: index.json's host, else the first page's origin. */
+function archiveStart(archive) {
+  if (archive.host) return `https://${archive.host}/`;
+  const first = archive.urls().find((u) => /^https?:/i.test(u));
+  if (!first) throw new Error(`--from-archive: ${archive.dir} names no host and holds no page`);
+  return `${new URL(first).origin}/`;
+}
+
 async function extract(opts) {
-  const input = opts._[1];
-  if (!input) throw new Error('extract needs an audit-seo run folder, report.json or URL');
+  let input = opts._[1];
+  // With --from-archive alone, the site is the archive's and audit-seo runs from the archive first.
+  const fromArchiveOnly = !input && opts.archive;
+  if (fromArchiveOnly) input = archiveStart(openArchive(opts.archive));
+  if (!input) throw new Error('extract needs an audit-seo run folder, report.json or URL (or --from-archive DIR)');
   const reports = reportsRoot();
-  let found = findReport(input, { reports });
+  let found = fromArchiveOnly ? { report: null, url: input } : findReport(input, { reports });
   if (found.error) throw new Error(found.error);
 
   const host = (found.report?.site?.host || found.host || new URL(found.url).host).toLowerCase();
@@ -250,7 +265,9 @@ async function extract(opts) {
   const report = found.report;
   const pages = report.pages || [];
   const templates = groupTemplates(pages);
-  const sample = pickSample(templates, pages, { max: opts.pages });
+  const origin = report.site?.finalUrl || report.site?.url || `https://${host}/`;
+  const named = opts.urls.map((u) => { try { return new URL(u, origin).toString(); } catch { throw new Error(`--urls: ${u} is not a URL or path`); } });
+  const sample = pickSample(templates, pages, { max: Math.max(opts.pages, named.length), urls: named });
   log(`${templates.length} templates over ${pages.filter(indexable).length} indexable pages; reading ${sample.length} pages`);
 
   // Archive mode never starts Chrome: what a render would add comes from the archived text files.
@@ -264,8 +281,13 @@ async function extract(opts) {
   const pagesDir = path.join(run, 'pages');
   fs.mkdirSync(pagesDir, { recursive: true });
   const read = [];
+  const readKeys = new Map(); // sameKey of each URL read (and where it landed) -> the URL
+  const slugs = new Set();
   for (const s of sample) {
     let res = await fetchPage(s.url);
+    // The same page under another URL (a redirect to a page already read): read once.
+    const landed = res.finalUrl && sameKey(res.finalUrl) !== sameKey(s.url) ? readKeys.get(sameKey(res.finalUrl)) : null;
+    if (landed) { log(`skip ${s.url}: the same page as ${landed}`); continue; }
     let rec = res.ok && res.body ? extractPage(res.body, res.finalUrl || s.url) : null;
     let how = 'served HTML';
     if (archive && rec && rec.words < 80 && opts.render) {
@@ -278,9 +300,10 @@ async function extract(opts) {
         if (hiddenTxt && !rec.hidden) rec.hidden = { source: 'page archive', words: countWords(hiddenTxt), markdown: hiddenTxt };
         if (fullTxt && countWords(fullTxt) > countWords(rec.text)) rec.text = fullTxt;
         else if (hiddenTxt && !rec.text.includes(hiddenTxt.slice(0, 60))) rec.text = `${rec.text} ${hiddenTxt}`;
-        // Dates and bylines are read from the text, so they follow it; the outline does not.
+        // Dates are read from the text, so they follow it; the outline, the page's own date and the
+        // bylines (read from the page's lines and elements) do not.
         rec.dates = visibleDates(rec.text);
-        rec.bylines = bylines(rec.text);
+        rec.dayMonths = dayMonths(rec.text);
         how = 'served HTML + archived text';
         degraded.push({ url: s.url, slug: pageSlug(s.url), why: 'text and dates from the archive; outline, questions, word count and links from the served HTML (a live run renders the page)', partial: true });
       } else {
@@ -304,7 +327,12 @@ async function extract(opts) {
       if (clean.masked) { rec = clean.rec; maskedValues += clean.masked; how += ` (${clean.masked} masked value${clean.masked === 1 ? '' : 's'} left out)`; }
     }
     if (rec.hidden) how += ` + ${rec.hidden.words} words only in the ${rec.hidden.source === 'page archive' ? 'archived hidden text' : 'Next.js payload'}`;
-    const slug = pageSlug(s.url);
+    let slug = pageSlug(s.url);
+    // Two URLs that flatten to one file name (/?panel=x and /) keep a file each.
+    for (let n = 2; slugs.has(slug); n++) slug = `${pageSlug(s.url)}-${n}`;
+    slugs.add(slug);
+    readKeys.set(sameKey(s.url), s.url);
+    if (res.finalUrl) readKeys.set(sameKey(res.finalUrl), s.url);
     writeJson(path.join(pagesDir, `${slug}.json`), { ...rec, template: s.template, why: s.why, how });
     fs.writeFileSync(path.join(pagesDir, `${slug}.md`), pageDigest(rec));
     read.push({ url: s.url, slug, template: s.template, why: s.why, how, words: rec.words, questions: rec.questions.length, tables: rec.tables, dates: rec.dates.length, jsonLd: [...typesIn(rec.jsonLd)] });
@@ -325,7 +353,7 @@ async function extract(opts) {
     tool: 'plan-geo', version: VERSION, host, url: report.site?.url || `https://${host}/`, date: new Date().toISOString(),
     source: found.source, lang: homeRec?.lang || null, crawled: pages.length, indexable: pages.filter(indexable).length,
     truncated: !!report.crawl?.truncated || !!report.truncated, target, profile: path.join(target, 'site-profile.md'),
-    options: { only: opts.only, queries, competitors: opts.competitors, repo: opts.repo },
+    options: { only: opts.only, queries, competitors: opts.competitors, repo: opts.repo, ...(named.length ? { urls: named } : {}) },
     ...(archive ? { archive: { dir: archive.dir, date: archive.date, allowLive: opts.allowLive, live: [...archive.live], notArchived, degraded, masked: maskedValues } } : {}),
     templates, sample: read,
   };

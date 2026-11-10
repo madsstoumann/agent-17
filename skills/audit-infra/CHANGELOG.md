@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-infra` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.5.0] - 2026-11-10
+
+### Changed
+- `tls.interception` is a degraded run, not a warning: the row is skipped with `environment: "degraded"`, is never a task in `report.json`, and `report.md` says on top that it is a condition of the network the audit ran from, not of the site.
+
 ## [2.4.5] - 2026-11-10
 
 ### Changed

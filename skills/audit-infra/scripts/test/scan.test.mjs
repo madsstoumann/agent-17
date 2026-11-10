@@ -10,7 +10,7 @@ import { detectCdn, domainChecks, emailChecks, tlsChecks } from '../lib/checks.m
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
-import { reportsRoot, prepareRun, finishRun, diffRows, carryOverSections, taskCandidates, result } from '../lib/common.mjs';
+import { reportsRoot, prepareRun, finishRun, diffRows, carryOverSections, taskCandidates, countStatuses, result } from '../lib/common.mjs';
 import { parseArgs, parseTarget, siblingOf, markIntercepted, renderMarkdown, run, platformOf } from '../scan.mjs';
 
 /** A resolver over a fixed zone: { 'name TYPE': [data] }, NXDOMAIN for names not in it. */
@@ -246,7 +246,19 @@ test('parseArgs and parseTarget', () => {
 
 test('markIntercepted turns certificate rows into skips', () => {
   const rows = markIntercepted([result('tls.expiry', 'warn', 'Expiry', '29 days'), result('tls.interception', 'warn', 'CT', 'x'), result('dns.caa', 'warn', 'CAA', 'none')]);
-  assert.deepEqual(rows.map((r) => r.status), ['skip', 'warn', 'warn']);
+  assert.deepEqual(rows.map((r) => r.status), ['skip', 'skip', 'warn']);
+});
+
+test('TLS interception is a degraded run, not a warning or a task', () => {
+  const rows = markIntercepted([result('tls.interception', 'warn', 'TLS interception', 'the certificate chains to Egress Gateway CA', { fix: 'Run audit-infra from a network without TLS inspection.' }), result('dns.caa', 'warn', 'CAA', 'none')]);
+  const hit = rows[0];
+  assert.equal(hit.status, 'skip');
+  assert.equal(hit.environment, 'degraded');
+  assert.match(hit.evidence, /^degraded run, this network and not the site: /);
+  assert.deepEqual(taskCandidates(rows, { source: 'infra', ref: 'r' }).map((t) => t.check), ['dns.caa']);
+  const md = renderMarkdown({ target: { host: 'example.dk', url: 'https://example.dk/', apex: 'example.dk', emailDomain: 'example.dk' }, version: '1', generatedAt: '2026-11-10T10:00:00Z', counts: countStatuses(rows), results: rows });
+  assert.match(md, /> \*\*Degraded run\.\*\* TLS interception: a condition of the network this ran from, not of the site/);
+  assert.doesNotMatch((md.split('## Should fix')[1] || '').split('\n## ')[0], /TLS interception/);
 });
 
 test('report folder root: AUDIT_OUT_DIR, Downloads, ~/audit-reports', () => {

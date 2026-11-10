@@ -1,10 +1,10 @@
 ---
 name: plan-geo
 description: Use when someone wants to know what structured data and what content a website should add to be understood and quoted by AI answer engines (ChatGPT, Perplexity, Gemini, Google AI Overviews) — the follow-up to a GEO audit. Reads the site's pages, works out what each page template is, drafts JSON-LD from the pages' own text (Organization, WebSite, Article, Product or SoftwareApplication, Service, Event, FAQPage, BreadcrumbList…) and checks every value is on the page, then maps the questions people ask in the site's field to the pages that answer them and writes content briefs for the gaps (FAQ blocks, comparison tables, glossary, "what is" pages). Also for the "technical GEO implementation" and "AI content framework" phases of a client proposal, and for sample pages with the proposed JSON-LD to show a client in Google's Rich Results Test or validator.schema.org. Proposes work; it gives no verdict.
-argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--insecure] [--no-remote | --no-validate] [--samples] [--live] [--from-archive DIR [--allow-live]]"
+argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--insecure] [--no-remote | --no-validate] [--samples] [--live] [--from-archive DIR [--allow-live]] [--urls a,b]"
 allowed-tools: Bash(node:*), Read, Write
 metadata:
-  version: "1.4.1"
+  version: "1.5.0"
 ---
 
 # GEO plan
@@ -25,7 +25,7 @@ Two parts, both by default: **markup** (Phase 2 of a GEO proposal: technical imp
 ## 1. Extract
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/scripts/plan.mjs" extract <input> [--pages N] [--out DIR] [--header "Name: value"]
+node "${CLAUDE_SKILL_DIR}/scripts/plan.mjs" extract <input> [--pages N] [--urls a,b] [--out DIR] [--header "Name: value"]
 ```
 
 `${CLAUDE_SKILL_DIR}` is this skill's folder. If it is not filled in, use the folder this
@@ -37,7 +37,11 @@ with none, audit-seo runs first with `--geo`, a minute or two). `--queries`, `--
 are recorded in `inventory.json` for the later steps (a queries file is copied into the run
 folder as `input-queries.<ext>`). Default `--pages 24`: the start
 page, a representative page of each template (a title of its own, not thin, the most recent in news and article sections), a second page of each large template, then pages with
-three or more question headings. Pages whose served HTML is thin are rendered in Chrome
+three or more question headings. The example page is the canonical URL (a page whose canonical
+points elsewhere, or with a query string, is not picked) and no URL is picked twice; a legal page
+(privacy, cookies, terms) is the example only when the template has nothing else, and a calendar,
+archive or search listing comes after the section's other pages. `--urls a,b` names pages to read
+first, as full URLs or paths, when the user wants a particular page as an example. Pages whose served HTML is thin are rendered in Chrome
 (`--no-render` turns that off). `--header` is the WAF bypass header, as for the audit skills
 (also `AUDIT_HEADERS`), and `--insecure` accepts a self-signed certificate on a local or staging site.
 
@@ -55,8 +59,18 @@ It writes into the run folder:
   so say so in the plan when FAQ answers or key facts are only there.
 
 Dates are read in English, Danish, Norwegian, Swedish, German, Dutch, French and Spanish
-("1. oktober 2026 – 29. marts 2027" is two dates). A date shown without a year ("torsdag den 5.
-november") is not a full date: check flags a draft that uses it, which is a finding for the site.
+("1. oktober 2026 – 29. marts 2027" is two dates, "5., 12. og 19. december 2026" three). An event
+date shown without a year ("torsdag den 5. november kl. 17-22") matches a draft's startDate of
+that day; datePublished and dateModified need the full date on the page.
+
+The **page date** (`Page date:`, which check compares `datePublished` with) comes only from where a
+page states its own date: a `<time>` element or an element classed as a date or byline near the
+h1, a label such as "Opdateret 3. maj 2026" / "Published 3 May 2026" near the title, a date line
+right above or below the h1, or a press release dateline ("Copenhagen, 3 May 2026 –"). Dates in
+the text, law references, FAQ answers, event and exhibition dates, deadlines and
+"Appointed/Joined/Born" labels are never the page date, and a page that shows none has none.
+**Bylines** are names after a "By/Af/Authors:" label or in an element classed as an author: a
+teaser label, a list of staff or the person a story is about is not an author.
 
 **From a page archive** (`--from-archive DIR`, when the user has the site's pages saved, as
 audit-seo `--save-html` writes them or under `reports/<host>/pages/<date>/`): every page is read
@@ -69,7 +83,8 @@ the archive does not hold is "not archived" and skipped (`--allow-live` fetches 
 (`abcd…[masked <type>]`) are left out of the pages, and check flags any draft value that holds one.
 `inventory.md` and `proposals.md` say on top that the plan was built from the archive of that
 date, not the live site, and list the degraded and missing pages; say so to the user too.
-`samples --live` reads the same archive.
+`samples --live` reads the same archive. `extract --from-archive DIR` needs no other input: the
+site is the one the archive holds, and audit-seo runs on the archive first.
 
 Read `inventory.md`, then every `pages/*.md`. Stdout ends with the run folder and the path of the
 site profile.

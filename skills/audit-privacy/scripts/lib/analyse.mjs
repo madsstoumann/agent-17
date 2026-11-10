@@ -67,6 +67,9 @@ export function buttonParity(accept, reject) {
  * analyse(data) -> results. data: { url, host, first: { requests, cookies, facts, banner, html, pages: [{ url, requests }] },
  *   reject: { requests, cookies, facts, choice }, accept: { requests, cookies, facts, choice }, policies: [{ url, text, status }] }
  */
+/** Fewer words than this (banner, navigation and footer left out) is a thin privacy policy. */
+export const THIN_POLICY_WORDS = 400;
+
 export function analyse(d) {
   const out = [];
   const host = d.host;
@@ -171,9 +174,29 @@ export function analyse(d) {
   // -------------------------------------------------------------- policy and forms
   const policies = (d.policies || []).filter((p) => p.ok);
   const links = first.facts?.policyLinks || [];
-  if (!links.length) out.push(result('policy.privacy', 'fail', 'Privacy policy link', 'no link to a privacy or cookie policy on the start page', { fix: 'Link the privacy policy from every page (usually the footer); GDPR Art. 12–13 requires the information to be easy to reach.' }));
-  else if (!policies.length) out.push(result('policy.privacy', 'warn', 'Privacy policy link', `links found (${links.map((l) => l.text || l.href).slice(0, 3).join(', ')}) but none could be loaded: ${(d.policies || []).map((p) => `${p.url} ${p.error || p.status}`).join('; ')}`, { fix: 'Fix the link target.' }));
-  else out.push(result('policy.privacy', 'pass', 'Privacy policy link', policies.map((p) => `${p.url} (${plural(p.words, 'word')}${p.file ? `, saved as ${p.file}` : ''})`).join('; ')));
+  const LINK_FIX = 'Link the privacy policy from every page (usually the footer); GDPR Art. 12–13 requires the information to be easy to reach.';
+  const read = (list) => list.map((p) => `${p.url} (${plural(p.words, 'word')}${p.file ? `, saved as ${p.file}` : ''})`).join('; ');
+  const found = (d.policies || []).filter((p) => p.via && !p.parent);
+  if (!links.length) {
+    const via = found.length ? `; found ${found.map((p) => p.url).join(', ')} through the ${found[0].via === 'sitemap' ? 'sitemap' : 'common policy paths'}${policies.length ? ' and read it' : ' but could not load it'}` : '';
+    out.push(result('policy.privacy', 'fail', 'Privacy policy link', `no link to a privacy or cookie policy on the start page${via}`, { fix: LINK_FIX }));
+  } else if (!policies.length) out.push(result('policy.privacy', 'warn', 'Privacy policy link', `links found (${links.map((l) => l.text || l.href).slice(0, 3).join(', ')}) but none could be loaded: ${(d.policies || []).map((p) => `${p.url} ${p.error || p.status}`).join('; ')}`, { fix: 'Fix the link target.' }));
+  else out.push(result('policy.privacy', 'pass', 'Privacy policy link', read(policies)));
+  // A privacy policy (not the cookie page) too short to hold Art. 13's information, unless the
+  // pages it links to were read instead (a selector page with one policy per product).
+  const thin = policies.filter((p) => !p.parent && !/cookie/i.test(new URL(p.url).pathname.split('/').filter(Boolean).pop() || '') && p.words < THIN_POLICY_WORDS);
+  for (const p of thin.slice(0, 1)) {
+    const subs = policies.filter((s) => s.parent === p.url);
+    const full = subs.filter((s) => s.words >= THIN_POLICY_WORDS);
+    const deeper = subs.flatMap((s) => s.links || []);
+    out.push(full.length
+      ? result('policy.thin', 'info', 'Policy selector page', `${p.url} has ${plural(p.words, 'word')} of its own and links to the policies; read ${read(subs)}`)
+      : result('policy.thin', 'warn', 'Thin privacy policy', subs.length
+        ? `${p.url} has ${plural(p.words, 'word')} and the pages it links to are short too (${read(subs)}): the policy text itself was not reached${deeper.length ? `; it may be under ${deeper.slice(0, 3).join(', ')}` : ''}`
+        : `${p.url} has ${plural(p.words, 'word')} once the consent banner, navigation and footer are left out`, { fix: subs.length
+        ? 'Make the policy reachable in one step from the link on every page, or check that the pages further down hold what GDPR Art. 13 asks for.'
+        : 'Give the privacy policy what GDPR Art. 13 asks for on the page itself: controller and contact, purposes and legal basis per purpose, recipients, transfers outside the EU/EEA, retention and the visitor\'s rights.' }));
+  }
   if (policies.length && d.accept?.choice?.method) {
     const text = [...policies.map((p) => p.text), b.declaration || ''].join('\n').toLowerCase();
     const stem = (n) => n.toLowerCase().replace(/_[a-z0-9]{6,}$/i, '').replace(/[._-]\d+$/, '');

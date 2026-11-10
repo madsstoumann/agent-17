@@ -2,6 +2,23 @@
 
 All notable changes to the `plan-geo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.5.0] - 2026-11-10
+
+### Added
+- `extract --urls a,b`: pages to read first and use as examples, as full URLs or paths.
+- `extract --from-archive DIR` with no run folder or URL: the site is the one the archive holds, and audit-seo runs on the archive first. It stopped with "no input" before.
+
+### Changed
+- The page date comes only from where a page states its own date: a `<time>` element (its `datetime` only when the element shows a day) or an element classed as a date or byline within a few lines of the h1, an "opdateret / publiceret / updated / published" label (and the same in the other languages read) with a date, a date line right above or below the h1, or a press release dateline. Dates in body text, law references, FAQ answers, event and exhibition dates, deadlines, "Appointed / Joined / Born" labels, listing teasers and dates after today are never the page date; a page that shows none of the above has none.
+- Bylines are names after a "By / Af / Authors:" label (also on the lines after a label line of its own) or in an element classed as an author. Teaser labels, staff lists, all-caps headings and the subject of a news story are no longer taken as authors.
+- The example page of a template is its canonical URL: a page whose canonical points to another URL is ranked like one with a query string, a URL (or its canonical, or the target it redirects to) is never picked twice, a legal page (privacy, cookies, terms, accessibility) is the example only when the template has nothing else, and a calendar, archive or search listing is ranked after the section's other pages.
+- `rich.mjs`: Event subtypes (ExhibitionEvent, MusicEvent, TheaterEvent, Festival, EventSeries and the rest of schema.org's list) get Google's Event rules in `check` and `samples`, as Event does.
+- The consent-banner filter on page text also covers Cookie Information's wrapper and overlay.
+
+### Fixed
+- A date list ("5., 12. og 19. december 2026", "5, 12 and 19 December 2026") gave only the last day; every day is read now.
+- A draft's event date without a year on the page ("Torsdag den 5. november kl. 17-22" for a startDate of 5 November at 17:00) was flagged as not on the page. A day and month shown without a year now match a startDate, endDate or other event date of that day; datePublished and dateModified still need the full date.
+
 ## [1.4.1] - 2026-11-10
 
 ### Changed

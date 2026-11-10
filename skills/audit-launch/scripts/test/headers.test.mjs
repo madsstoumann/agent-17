@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   parseCsp, lintCsp, gradeSecurityHeaders, GRADE_TABLE, GRADE_NOTE,
   parseSetCookie, lintCookies, infoLeakHeaders, parseCacheControl, lintAssetCaching,
-  parseHsts, hstsVerdict, corsVerdict, crossOriginPolicies,
+  parseHsts, hstsVerdict, corsVerdict, crossOriginPolicies, cspLintFix, observatoryFix,
 } from '../lib/headers.mjs';
 
 const fixture = (p) => readFileSync(new URL(`./fixtures/${p}`, import.meta.url), 'utf8');
@@ -400,4 +400,25 @@ test('crossOriginPolicies', () => {
   assert.deepEqual(crossOriginPolicies({
     'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'require-corp', 'cross-origin-resource-policy': 'same-site',
   }), { coop: 'same-origin', coep: 'require-corp', corp: 'same-site' });
+});
+
+test('cspLintFix: a policy that is only upgrade-insecure-requests gets no unsafe-inline/unsafe-eval advice', () => {
+  const fix = cspLintFix(lintCsp(parseCsp('upgrade-insecure-requests'), { reportOnly: false }));
+  assert.match(fix, /add a script-src/i);
+  assert.match(fix, /frame-ancestors 'self'/);
+  assert.doesNotMatch(fix, /unsafe-inline|unsafe-eval/);
+  assert.match(cspLintFix([{ severity: 'warn', code: 'unsafe-inline-script' }, { severity: 'warn', code: 'unsafe-eval' }]), /nonces or hashes; drop 'unsafe-eval'/);
+  assert.equal(cspLintFix([]), '');
+});
+
+test('observatoryFix: the CSP recommendation does not ask to remove unsafe-inline the policy does not have', () => {
+  const failed = [
+    { name: 'content-security-policy', result: 'csp-implemented-with-unsafe-inline', recommendation: "Remove 'unsafe-inline' from script-src." },
+    { name: 'x-frame-options', result: 'x-frame-options-not-implemented', recommendation: 'Add X-Frame-Options or frame-ancestors.' },
+  ];
+  const only = observatoryFix(failed, 'upgrade-insecure-requests');
+  assert.doesNotMatch(only, /unsafe-inline'/);
+  assert.match(only, /does not restrict scripts/);
+  assert.match(only, /X-Frame-Options/);
+  assert.match(observatoryFix(failed, "script-src 'self' 'unsafe-inline'"), /Remove 'unsafe-inline'/, 'a real unsafe-inline keeps the advice');
 });

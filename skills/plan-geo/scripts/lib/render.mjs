@@ -124,14 +124,40 @@ const hostOf = (u) => { try { return new URL(u).host.toLowerCase(); } catch { re
 const LD_COUNT = 'document.querySelectorAll(\'script[type="application/ld+json" i]\').length';
 const DOM = '(document.doctype ? new XMLSerializer().serializeToString(document.doctype) + "\\n" : "") + document.documentElement.outerHTML';
 
-// Runs in the page: the words and headings a reader sees once JavaScript has run, with consent
-// banners left out (they are added by script on almost every site and say nothing about the page).
+// Consent banners and the policy pages a consent manager mounts with them (Cookie Information
+// keeps its whole cookie policy in #cookie-information-template-wrapper): added by script on almost
+// every site, and they say nothing about the page.
+export const CONSENT_SELECTOR = [
+  '[id^="onetrust" i]', '[id*="cookiebot" i]', '[id*="usercentrics" i]', '[id*="didomi" i]', '[id*="cookie-consent" i]', '[id*="cookieconsent" i]',
+  '[class*="cookie-consent" i]', '[class*="cookieconsent" i]', '[id*="cookie-banner" i]', '[class*="cookie-banner" i]', '[aria-label*="cookie" i][role="dialog"]',
+  '[aria-label*="consent" i][role="dialog"]', '[id*="cookie-information" i]', '[id^="coi-" i]', '[id^="coiOverlay" i]', '[class*="coi-banner" i]', '[class*="coi-consent" i]',
+  '[id*="cookiefirst" i]', '[id^="cky-" i]', '[class*="cky-consent" i]', '[id*="cmplz" i]', '[class*="cmplz-cookiebanner" i]', '[id^="BorlabsCookie" i]',
+  '[class*="osano-cm" i]', '[id*="truste" i]', '[id^="sp_message_container" i]', '[id^="qc-cmp2" i]', '[id*="cookiescript" i]', '[id^="axeptio" i]', '[id^="tarteaucitron" i]',
+].join(',');
+
+// Runs in the page: the words and headings a reader sees once JavaScript has run. Consent banners
+// (CONSENT_SELECTOR) and hidden text (display: none, visibility: hidden, closed <details>, the
+// hidden attribute) are left out: a crawler's reader never sees them either.
 export const TEXT_MEASURE = `(() => {
-  const b = document.body ? document.body.cloneNode(true) : null;
-  if (!b) return { words: 0, headings: 0 };
-  b.querySelectorAll('script,style,noscript,template,svg,[id^="onetrust" i],[id*="cookiebot" i],[id*="usercentrics" i],[id*="didomi" i],[id*="cookie-consent" i],[id*="cookieconsent" i],[class*="cookie-consent" i],[class*="cookieconsent" i],[id*="cookie-banner" i],[class*="cookie-banner" i],[aria-label*="cookie" i][role="dialog"]').forEach((e) => e.remove());
-  const t = (b.textContent || '').replace(/\\s+/g, ' ').trim();
-  return { words: t ? t.split(' ').filter((w) => /[\\p{L}\\p{N}]/u.test(w)).length : 0, headings: b.querySelectorAll('h1,h2,h3,h4,h5,h6').length };
+  const body = document.body;
+  if (!body) return { words: 0, headings: 0 };
+  const skip = new Set(body.querySelectorAll('script,style,noscript,template,svg,' + ${JSON.stringify(CONSENT_SELECTOR)}));
+  const memo = new Map();
+  const out = (el) => {
+    if (!el || el === body || el === document.documentElement) return false;
+    if (memo.has(el)) return memo.get(el);
+    const hidden = skip.has(el) || (el.checkVisibility ? !el.checkVisibility({ visibilityProperty: true }) : el.hidden) || out(el.parentElement);
+    memo.set(el, hidden);
+    return hidden;
+  };
+  let words = 0;
+  const walk = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    if (!n.nodeValue.trim() || out(n.parentElement)) continue;
+    words += n.nodeValue.split(/\\s+/).filter((w) => /[\\p{L}\\p{N}]/u.test(w)).length;
+  }
+  const headings = [...body.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter((h) => !out(h)).length;
+  return { words, headings };
 })()`;
 
 /**

@@ -4,7 +4,7 @@ description: Use when someone wants an SEO, content or GEO (AI search) audit of 
 argument-hint: "<url | file.html> [--geo] [--schema-only] [--pages N] [--sitemap-sample N] [--external-links N] [--internal-links N] [--schema-pages N] [--render-pages N] [--bot-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console] [--from-archive DIR [--allow-live]] [--save-html DIR] [--no-validate]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "2.6.2"
+  version: "2.7.0"
 ---
 
 # SEO audit
@@ -91,7 +91,9 @@ the fix text for the final word; Search Console's enhancement reports show what 
 A page archive is a folder with `index.json` (url, status, content_type, fetched_at, bytes, sha256,
 title, files and location for redirects) and one `<slug>.html.gz` per URL: the body as served,
 redirects not followed. The slug is the path with `/` as `--` (`home` for the root), a
-`--<sha1 of the query, 8 hex>` suffix for a query, and `-x` until it is unique. plan-geo and
+`--<sha1 of the query, 8 hex>` suffix for a query, and `-x` until it is unique (pages that answer
+200 are named first, so `/a/` keeps `a` and its redirect stub `/a` is `a-x`). robots.txt, sitemaps
+and llms.txt are `<name>.gz` (`robots.txt.gz`). plan-geo and
 audit-privacy may add `<slug>.txt.gz` (visible text) and `<slug>.hidden.txt.gz` (accordion and
 payload text). `--save-html DIR` writes one; masking secrets before the archive is shared is up to
 the user (masked values look like `abcd…[masked <type>]`).

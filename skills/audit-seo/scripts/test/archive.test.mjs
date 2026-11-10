@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { openArchive, archiveHttp, archiveSlug, hasMask, countMasks, stripMasks, createArchiveWriter } from '../lib/archive.mjs';
-import { applyArchiveMode, ARCHIVE_SKIPPED } from '../lib/offline.mjs';
+import { applyArchiveMode, ARCHIVE_SKIPPED, archiveCoverLines } from '../lib/offline.mjs';
 import { result } from '../lib/checks.mjs';
 import { parseCli } from '../lib/cli.mjs';
 
@@ -162,6 +162,21 @@ test('applyArchiveMode: network rows skipped, file rows skipped only when the fi
   assert.deepEqual(a.degraded.map((d) => d.id), ['seo.broken-internal']);
 });
 
+test('archive mode: orphan pages are skipped, and link targets that are not archived are named as such', () => {
+  const rows = [
+    result('seo.sitemap', 'pass', 'XML sitemap', '10 URLs'),
+    result('seo.orphans', 'warn', 'Orphan pages', '97 sitemap URLs that no crawled page links to'),
+    result('seo.broken-internal', 'pass', 'Broken internal links', 'every internal link answers'),
+  ];
+  const a = applyArchiveMode(rows, { robots: true, sitemap: true, llms: true, notArchivedLinks: 3 });
+  const orphans = a.rows.find((r) => r.id === 'seo.orphans');
+  assert.equal(orphans.status, 'skip');
+  assert.match(orphans.evidence, /only the pages one crawl reached/);
+  assert.match(a.rows.find((r) => r.id === 'seo.broken-internal').evidence, /3 link targets the archive does not hold are not checked, so a broken link among them is not counted here \(a live run checks/);
+  const cover = archiveCoverLines({ date: '2026-11-10', dir: '/a', notArchived: ['x', 'y', 'z', 'sitemap'], notArchivedLinks: 3 }).join('\n');
+  assert.match(cover, /\*\*Not archived:\*\* 4 URLs are not in the archive and were not fetched: 3 are link targets on archived pages: a live run checks those for a status, so a broken link among them \(a 404\) is reported live but not counted here; 1 is a URL the run asked for/);
+});
+
 test('cli: --from-archive without a URL, --allow-live and --save-html combinations, --no-validate', () => {
   const p = parseCli(['--from-archive', FIXTURE]);
   assert.equal(p.ok, true, p.error);
@@ -205,7 +220,9 @@ test('seo.mjs --from-archive: pages from the archive only, skipped and degraded 
 
 test('seo.mjs --save-html then --from-archive: same pages, same HTML checks, site files archived too', async () => {
   const pages = {
-    '/': { status: 200, type: 'text/html', body: '<!doctype html><html lang="en"><head><title>Example home page</title><meta name="description" content="The example home page for the save-html round trip test."><link rel="canonical" href="/"></head><body><main><h1>Home</h1><p>Welcome. <a href="/a">A</a> <a href="/old">Old</a> <a href="/gone">Gone</a></p></main></body></html>' },
+    '/': { status: 200, type: 'text/html', body: '<!doctype html><html lang="en"><head><title>Example home page</title><meta name="description" content="The example home page for the save-html round trip test."><link rel="canonical" href="/"></head><body><main><h1>Home</h1><p>Welcome. <a href="/a">A</a> <a href="/old">Old</a> <a href="/gone">Gone</a> <a href="/b">B</a></p></main></body></html>' },
+    '/b': { status: 301, type: 'text/html', body: '<html><body>Moved</body></html>', location: '/b/' },
+    '/b/': { status: 200, type: 'text/html', body: '<!doctype html><html lang="en"><head><title>Page B of the example</title><meta name="description" content="Page B of the example site, served with a trailing slash."></head><body><main><h1>B</h1><p>Text.</p></main></body></html>' },
     '/a': { status: 200, type: 'text/html; charset=utf-8', body: '<!doctype html><html lang="en"><head><title>Page A of the example</title><meta name="description" content="Page A of the example site for the save-html round trip test."></head><body><main><h1>A</h1><p>Text.</p></main></body></html>' },
     '/old': { status: 301, type: 'text/plain', body: 'Moved', location: '/a' },
     '/gone': { status: 404, type: 'text/html', body: '<html><head><title>Not found</title></head><body>404</body></html>' },
@@ -232,6 +249,14 @@ test('seo.mjs --save-html then --from-archive: same pages, same HTML checks, sit
     assert.equal(idx.pages.find((p) => p.url === `${base}/`).title, 'Example home page');
     assert.equal(idx.pages.find((p) => p.url === `${base}/gone`).status, 404);
     assert.match(idx.redaction, /not masked/);
+    // The page that answers 200 takes the plain slug; its redirect stub gets -x. Site files keep their own name.
+    const fileFor = (u) => idx.pages.find((p) => p.url === `${base}${u}`).files[0];
+    assert.equal(fileFor('/b/'), 'b.html.gz');
+    assert.equal(fileFor('/b'), 'b-x.html.gz');
+    assert.equal(fileFor('/robots.txt'), 'robots.txt.gz');
+    assert.equal(fileFor('/sitemap.xml'), 'sitemap.xml.gz');
+    assert.equal(openArchive(path.join(dir, 'archive')).body(`${base}/robots.txt`), 'User-agent: *\nAllow: /\n');
+    assert.equal(openArchive(path.join(dir, 'archive')).text(`${base}/robots.txt`), null, 'robots.txt.gz is the body, not a page\'s text file');
 
     const off = await run([...quick, '--from-archive', path.join(dir, 'archive'), '--out', path.join(dir, 'off')], { AUDIT_OUT_DIR: dir });
     assert.equal(off.code, 0, off.err);
