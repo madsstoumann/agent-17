@@ -1,10 +1,10 @@
 ---
 name: plan-geo
 description: Use when someone wants to know what structured data and what content a website should add to be understood and quoted by AI answer engines (ChatGPT, Perplexity, Gemini, Google AI Overviews) — the follow-up to a GEO audit. Reads the site's pages, works out what each page template is, drafts JSON-LD from the pages' own text (Organization, WebSite, Article, Product or SoftwareApplication, Service, Event, FAQPage, BreadcrumbList…) and checks every value is on the page, then maps the questions people ask in the site's field to the pages that answer them and writes content briefs for the gaps (FAQ blocks, comparison tables, glossary, "what is" pages). Also for the "technical GEO implementation" and "AI content framework" phases of a client proposal, and for sample pages with the proposed JSON-LD to show a client in Google's Rich Results Test or validator.schema.org. Proposes work; it gives no verdict.
-argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--no-remote] [--samples] [--live]"
+argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--no-remote | --no-validate] [--samples] [--live] [--from-archive DIR [--allow-live]]"
 allowed-tools: Bash(node:*), Read, Write
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # GEO plan
@@ -56,6 +56,19 @@ It writes into the run folder:
 Dates are read in English, Danish, Norwegian, Swedish, German, Dutch, French and Spanish
 ("1. oktober 2026 – 29. marts 2027" is two dates). A date shown without a year ("torsdag den 5.
 november") is not a full date: check flags a draft that uses it, which is a finding for the site.
+
+**From a page archive** (`--from-archive DIR`, when the user has the site's pages saved, as
+audit-seo `--save-html` writes them or under `reports/<host>/pages/<date>/`): every page is read
+from the archive instead of the site, and Chrome is never started. Where a live run would render a
+thin page, the archived `<slug>.hidden.txt.gz` (accordion and payload text) and `<slug>.txt.gz`
+(the rendered page's text) are used: the check step compares drafts with that text and its dates,
+but the outline, questions and word count come from the served HTML ("served HTML + archived
+text"). Without them the page is read from its served HTML and marked "served HTML only". A page
+the archive does not hold is "not archived" and skipped (`--allow-live` fetches it). Masked secrets
+(`abcd…[masked <type>]`) are left out of the pages, and check flags any draft value that holds one.
+`inventory.md` and `proposals.md` say on top that the plan was built from the archive of that
+date, not the live site, and list the degraded and missing pages; say so to the user too.
+`samples --live` reads the same archive.
 
 Read `inventory.md`, then every `pages/*.md`. Stdout ends with the run folder and the path of the
 site profile.
@@ -121,7 +134,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/plan.mjs" check <run folder>
 ```
 
 It parses each draft, applies Google's required and recommended properties (the same rules as
-audit-seo), posts it to validator.schema.org (`--no-remote` skips that) and lists every value
+audit-seo), posts it to validator.schema.org (`--no-remote` or `--no-validate` skips that) and lists every value
 the page does not show. Fix the drafts until each line is OK or the remaining notes are
 deliberate (say why in the draft's `.md`): a value flagged "not on the page" is removed, or the
 `.md` says the page must show it first.
@@ -246,6 +259,7 @@ Draft JSON-LD for each page template of https://www.example.dk   (--only markup)
 Which questions in our industry do we not answer yet? https://www.example.com   (--only content)
 Content gaps for https://www.example.com using our Search Console export   (--queries queries.csv)
 Sample pages with the proposed JSON-LD to show the client in the Rich Results Test <run folder>   (samples --live)
+GEO plan for https://www.example.com from the saved pages in ./pages/2026-11-10   (extract --from-archive)
 ```
 
 ## Files
@@ -257,7 +271,7 @@ Sample pages with the proposed JSON-LD to show the client in the Rich Results Te
 - `scripts/lib/verify.mjs`: the "is every value on the page" check.
 - `scripts/lib/proposals.mjs`: questions.csv and proposals.md.
 - `scripts/lib/samples.mjs`: the merged graph, the sample page, the live copy and samples/README.md.
-- Copies kept identical by tests: `html.mjs`, `render.mjs`, `rich.mjs`, `schema.mjs` (audit-seo),
+- Copies kept identical by tests: `html.mjs`, `render.mjs`, `rich.mjs`, `schema.mjs`, `archive.mjs` (page archives and masked placeholders) (audit-seo),
   `tasks.mjs`, `levels.mjs` (audit-all), `target-state.mjs` (the audit skills).
 - `references/page-types.md`: page type → schema.org types, properties, modules.
 - `references/brief.md`: the brief format and a tasks.json example.

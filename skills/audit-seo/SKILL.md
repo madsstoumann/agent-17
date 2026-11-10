@@ -1,10 +1,10 @@
 ---
 name: audit-seo
-description: Use when someone wants an SEO, content or GEO (AI search) audit of a whole website, not just the start page. Titles and descriptions, Open Graph, structured data (JSON-LD that does not parse, validator.schema.org errors, Google rich-result properties, JSON-LD only JavaScript adds), sitemap and robots.txt consistency, canonical and hreflang, broken links and redirect chains. GEO with a readiness score covers AI crawler rules in robots.txt and whether the CDN or WAF lets OAI-SearchBot, Claude-SearchBot or PerplexityBot in, text only JavaScript builds, llms.txt, entity markup, dates and authors, sitemap lastmod, answer structure, missing markup, Bing. Also for a client's technical GEO audit (`--geo`), validating one URL's or a local HTML file's JSON-LD (`--schema-only`), "why is this page not indexed", or re-checking after fixes. Any stack, public or local URLs.
-argument-hint: "<url | file.html> [--geo] [--schema-only] [--pages N] [--sitemap-sample N] [--external-links N] [--internal-links N] [--schema-pages N] [--render-pages N] [--bot-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
+description: Use when someone wants an SEO, content or GEO (AI search) audit of a whole website, not just the start page. Titles and descriptions, Open Graph, structured data (JSON-LD that does not parse, validator.schema.org errors, Google rich-result properties, JSON-LD only JavaScript adds), sitemap and robots.txt consistency, canonical and hreflang, broken links and redirect chains. GEO with a readiness score covers AI crawler rules in robots.txt and whether the CDN or WAF lets OAI-SearchBot, Claude-SearchBot or PerplexityBot in, text only JavaScript builds, llms.txt, entity markup, dates and authors, sitemap lastmod, answer structure, missing markup, Bing. Also for a client's technical GEO audit (`--geo`), validating one URL's or a local HTML file's JSON-LD (`--schema-only`), "why is this page not indexed", re-checking after fixes, or re-running the HTML checks offline from a saved page archive (`--from-archive`). Any stack, public or local URLs.
+argument-hint: "<url | file.html> [--geo] [--schema-only] [--pages N] [--sitemap-sample N] [--external-links N] [--internal-links N] [--schema-pages N] [--render-pages N] [--bot-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console] [--from-archive DIR [--allow-live]] [--save-html DIR] [--no-validate]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "2.5.3"
+  version: "2.6.0"
 ---
 
 # SEO audit
@@ -51,6 +51,10 @@ the findings; non-zero means the script failed (read the last stderr lines).
 | `--insecure` | localhost or a self-signed certificate. |
 | `--out DIR` | The user names a folder for this run (audit-all does this). |
 | `--state DIR`, `--baseline FILE`, `--no-baseline` | See "Folders and re-runs". |
+| `--no-validate` | Skip validator.schema.org (the same as `--no-remote`). |
+| `--save-html DIR` | The user keeps a page archive, or another skill (plan-geo) will read the same pages: also writes every page the crawl fetched, as served (redirects not followed), plus robots.txt, sitemaps and llms.txt, as a page archive in `DIR` (see "Page archives"). Secrets are not masked. |
+| `--from-archive DIR` | The user wants the audit from a saved page archive, not the live site ("re-run from the archive", "offline"). See "Page archives". The URL may be left out. |
+| `--allow-live` | With `--from-archive`: fetch what the archive does not hold from the site. |
 
 ### Levels and the console list
 
@@ -81,6 +85,37 @@ checked locally (`lib/rich.mjs`) for Product, Offer prices, Review, AggregateRat
 BreadcrumbList, Event, FAQPage, JobPosting, LocalBusiness, Organization, Recipe,
 SoftwareApplication, VideoObject and Course. Say so, and point to the Rich Results Test link in
 the fix text for the final word; Search Console's enhancement reports show what Google picked up.
+
+## Page archives
+
+A page archive is a folder with `index.json` (url, status, content_type, fetched_at, bytes, sha256,
+title, files and location for redirects) and one `<slug>.html.gz` per URL: the body as served,
+redirects not followed. The slug is the path with `/` as `--` (`home` for the root), a
+`--<sha1 of the query, 8 hex>` suffix for a query, and `-x` until it is unique. plan-geo and
+audit-privacy may add `<slug>.txt.gz` (visible text) and `<slug>.hidden.txt.gz` (accordion and
+payload text). `--save-html DIR` writes one; masking secrets before the archive is shared is up to
+the user (masked values look like `abcd…[masked <type>]`).
+
+`--from-archive DIR` reads every page from the archive instead of the network. The crawl follows
+links between archived pages, then reads every archived page the links did not reach. A URL the
+archive does not hold is listed as "not archived" and not fetched (unless `--allow-live`). Only
+validator.schema.org is still called, with the archived HTML (each distinct page once per run;
+`--no-validate` skips it). The report's cover says it was built from the archive of that date, not
+the live site, and names:
+
+- **Skipped** (`skipped: archive mode`): external links, og:image, links to redirects, redirect
+  chains and temporary redirects, AI crawlers at the edge, the Chrome renders (JSON-LD added by
+  JavaScript, text without JavaScript), and the robots.txt, sitemap and llms.txt rows when the
+  archive does not hold those files.
+- **Degraded**: broken internal links (statuses as archived; link targets not in the archive are not
+  checked), noindex and the start page (X-Robots-Tag headers are not archived), structured data
+  coverage, parse errors, rich results and entity markup (served HTML only), the validator (archived
+  HTML posted), llms.txt (its links are not checked).
+- **Masked secrets** in the pages are placeholders: never findings, and a URL holding one is never fetched.
+
+An archive run keeps its own baseline (`last-archive-report.json`), so it never becomes the live
+run's "Since last run". Say "from the archive of <date>" whenever you quote its results, and name the
+skipped checks as not checked.
 
 ## Folders and re-runs
 
@@ -182,6 +217,8 @@ GEO audit of https://www.example.dk for the client proposal   (--geo)
 Do Cloudflare or our WAF block ChatGPT or Perplexity from https://www.example.dk?
 Crawl 500 pages of https://www.example.dk and give me the duplicate titles as a spreadsheet   (pages.csv)
 Run the SEO audit again after the fixes
+Re-run the SEO audit from the page archive in ./pages/2026-11-10   (--from-archive)
+SEO audit of https://www.example.dk and keep the pages for plan-geo   (--save-html DIR)
 ```
 
 ## Files
@@ -196,6 +233,9 @@ Run the SEO audit again after the fixes
   text without JavaScript, dates and authors, sitemap lastmod, answer structure, structured data
   opportunities, Bing, and the GEO readiness score; `lib/content.mjs` — the per-page signals those
   rows read (dates, author, headings, lists, tables, paragraph length).
+- `scripts/lib/archive.mjs` — page archives: read (`--from-archive`), write (`--save-html`),
+  masked placeholders (identical copy in plan-geo; a test checks it); `lib/offline.mjs` — which
+  rows archive mode skips or marks degraded, and the cover lines.
 - `scripts/lib/http.mjs`, `html.mjs`, `robots.mjs`, `redirects.mjs` — copies of audit-launch's;
   `target-state.mjs` — the shared target-folder layout; keep the copies in step.
 - Tests: `cd scripts && node --test test/*.test.mjs`.

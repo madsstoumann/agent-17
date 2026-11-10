@@ -4,8 +4,12 @@
  * must be one the page shows. Anything else is reported as "not on the page", the guard against a
  * draft that invents a founding year, an award or an author.
  *
+ * A masked secret from a page archive (`abcd…[masked <type>]`) is a placeholder, never a value:
+ * a draft that carries one is flagged, whatever the page shows.
+ *
  * Zero dependencies. Node >= 22. Pure.
  */
+import { hasMask } from './archive.mjs';
 
 // Keys whose values are vocabulary, identifiers or settings rather than claims about the page.
 const SKIP_KEYS = new Set(['@context', '@type', '@id', '@language', 'inLanguage', 'encodingFormat', 'availability', 'itemCondition', 'eventStatus', 'eventAttendanceMode', 'employmentType', 'priceCurrency', 'applicationCategory', 'operatingSystem', 'contactType', 'areaServed', 'addressCountry', 'position', 'width', 'height', 'ratingValue', 'bestRating', 'worstRating']);
@@ -77,6 +81,7 @@ export function verifyDraft(data, page) {
     const value = String(raw).trim();
     if (!value) continue;
     if (typeof raw === 'number') continue;
+    if (hasMask(value)) { out.push({ path: p, value: value.length > 90 ? `${value.slice(0, 87)}…` : value, reason: 'masked placeholder from the page archive, not a real value' }); continue; }
     if (/^https?:\/\//i.test(value)) {
       if (!knownUrl(value, page)) out.push({ path: p, value, reason: 'URL not linked from the page' });
       continue;

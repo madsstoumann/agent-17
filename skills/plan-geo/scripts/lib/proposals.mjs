@@ -70,6 +70,15 @@ export function renderProposals({ inventory, check = null, questions = [], brief
   out.push(`# GEO plan: ${host}`, '');
   out.push(`${date.toISOString().slice(0, 10)} · plan-geo ${version} · from an audit-seo crawl of ${plural(inventory.crawled, 'page')} (${inventory.indexable} indexable${inventory.truncated ? ', capped' : ''}) · ${plural(inventory.templates.length, 'template')} · ${plural(inventory.sample.length, 'page')} read in full`, '');
   out.push('A plan, not an audit: it proposes markup and content. It does not measure whether AI engines cite the site.', '');
+  const arc = inventory.archive;
+  if (arc) {
+    out.push(`> **Built from the archive of ${arc.date}, not the live site.** The pages were read from a saved copy, so markup and text added since then are not in this plan.`, '');
+    const only = (arc.degraded || []).filter((d) => !d.partial);
+    const partial = (arc.degraded || []).filter((d) => d.partial);
+    if (only.length) out.push(`> **Degraded, served HTML only:** ${only.map((d) => d.url).join(', ')}. A live run renders ${only.length === 1 ? 'this page' : 'these pages'} in Chrome and the archive has no text for ${only.length === 1 ? 'it' : 'them'}, so accordion, tab and JavaScript text is missing.`, '');
+    if (partial.length) out.push(`> **Degraded, served HTML + archived text:** ${partial.map((d) => d.url).join(', ')}. The text and dates come from the archive; the outline, questions, word count and links from the served HTML, where a live run renders the page.`, '');
+    if (arc.notArchived?.length) out.push(`> **Not archived:** ${arc.notArchived.length} page${arc.notArchived.length === 1 ? '' : 's'} the plan would have read ${arc.notArchived.length === 1 ? 'is' : 'are'} not in the archive and ${arc.notArchived.length === 1 ? 'was' : 'were'} skipped.`, '');
+  }
   if (summary.trim()) out.push(summary.trim().replace(/^# .*\n+/, ''), '');
 
   if (profile.trim()) out.push('## About the site', '', profile.trim().replace(/^# .*\n+/, '').replace(/^(#{2,5}) /gm, '#$1 '), '');
