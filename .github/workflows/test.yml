@@ -1,0 +1,55 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.dir }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        dir:
+          - skills/audit-a11y/scripts
+          - skills/audit-all/scripts
+          - skills/audit-eco/scripts
+          - skills/audit-infra/scripts
+          - skills/audit-launch/scripts
+          - skills/audit-privacy/scripts
+          - skills/audit-security/scripts
+          - skills/audit-seo/scripts
+          - skills/audit-solution-health/scripts
+          - skills/check-tech-stack/scripts
+          - skills/is-website-safe/scripts
+          - skills/plan-geo/scripts
+          - memory/enable-memory-management/scripts
+          - tools/corpus
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: node --test
+        working-directory: ${{ matrix.dir }}
+        run: node --test test/*.test.mjs
+
+  matrix-complete:
+    name: every test folder is in the matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: compare
+        run: |
+          found=$(find skills memory tools -type d -name test -not -path '*/fixtures/*' | sed 's#/test$##' | sort)
+          listed=$(grep -E '^\s+- (skills|memory|tools)/' .github/workflows/test.yml | sed -E 's/^\s+- //' | sort)
+          if [ "$found" != "$listed" ]; then
+            echo "Test folders and the workflow matrix differ:"; diff <(echo "$listed") <(echo "$found"); exit 1
+          fi
