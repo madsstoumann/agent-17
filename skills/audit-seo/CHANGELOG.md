@@ -2,6 +2,17 @@
 
 All notable changes to the `audit-seo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.6.0] - 2026-11-10
+
+### Added
+- `--from-archive DIR`: the audit from a page archive (`index.json` plus `<slug>.html.gz`, as served, redirects not followed) instead of the live site. Links are followed between archived pages, then every archived page the links did not reach is read. A URL the archive does not hold is listed as not archived and not fetched; `--allow-live` fetches it. The HTML checks run as usual (titles, descriptions, headings, canonicals, hreflang, internal links, structured data, word counts). Checks that need the network, timing or headers are listed as `skipped: archive mode` (external links, og:image, redirect rows, AI crawlers at the edge, the Chrome renders, and robots.txt, sitemap and llms.txt rows when the archive lacks those files); broken internal links, noindex, structured data rows and the validator say what they cannot see ("degraded"). The cover of report.md, the stdout summary and `report.json` (`archive`) say the report was built from the archive of that date, not the live site. An archive run keeps its own baseline, `last-archive-report.json`. The URL may be left out (the archive's start page).
+- Masked secrets in an archive (`abcd…[masked <type>]`, `abcd…[masked]`) are placeholders: never findings, and a URL that holds one is never fetched, live or not.
+- `--save-html DIR`: writes every page the crawl fetched, plus robots.txt, sitemaps and llms.txt, as a page archive in that format, so plan-geo and later `--from-archive` runs read the same pages instead of fetching them again. Nothing is masked: redact before sharing.
+- `--no-validate`: skip validator.schema.org (the same as `--no-remote`).
+
+### Changed
+- validator.schema.org is asked once per distinct page or HTML in a run.
+
 ## [2.5.3] - 2026-11-09
 
 ### Fixed

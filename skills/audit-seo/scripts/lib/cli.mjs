@@ -41,6 +41,10 @@ export function parseCli(argv, env = process.env, { cwd = process.cwd() } = {}) 
         timeout: { type: 'string' },
         insecure: { type: 'boolean' },
         'no-remote': { type: 'boolean' },
+        'no-validate': { type: 'boolean' },
+        'from-archive': { type: 'string' },
+        'allow-live': { type: 'boolean' },
+        'save-html': { type: 'string' },
         'ignore-robots': { type: 'boolean' },
         level: { type: 'string' },
         console: { type: 'boolean' },
@@ -55,6 +59,15 @@ export function parseCli(argv, env = process.env, { cwd = process.cwd() } = {}) 
   }
   if (values.help) return { ok: true, help: true };
   if (values.version) return { ok: true, version: true };
+  const fromArchive = values['from-archive'] ? path.resolve(cwd, expandHome(values['from-archive'], os.homedir())) : null;
+  if (values['allow-live'] && !fromArchive) return { ok: false, error: '--allow-live only goes with --from-archive' };
+  if (values['save-html'] && fromArchive) return { ok: false, error: '--save-html writes an archive from the live site; it does not go with --from-archive' };
+  // --from-archive without a URL: the archive's start page.
+  if (!positionals.length && fromArchive) {
+    const start = archiveStart(fromArchive);
+    if (!start) return { ok: false, error: `--from-archive: no index.json with a host in ${fromArchive}; give the site URL too` };
+    positionals = [start];
+  }
   if (positionals.length !== 1) return { ok: false, error: positionals.length ? `One URL or file only (got ${positionals.join(' ')})` : 'Give the site URL (or a local HTML file).' };
   // A local HTML file (a path that exists, or file://): structured data only, nothing crawled.
   const file = localFile(positionals[0], cwd);
@@ -90,7 +103,10 @@ export function parseCli(argv, env = process.env, { cwd = process.cwd() } = {}) 
       noBaseline: Boolean(values['no-baseline']),
       headers: parseHeaderLines([...(values.header || []), ...String(env.AUDIT_HEADERS || '').split('\n').filter((l) => l.trim())]),
       insecure: Boolean(values.insecure),
-      noRemote: Boolean(values['no-remote']),
+      noRemote: Boolean(values['no-remote'] || values['no-validate']),
+      fromArchive,
+      allowLive: Boolean(values['allow-live']),
+      saveHtml: values['save-html'] ? path.resolve(cwd, expandHome(values['save-html'], os.homedir())) : null,
       ignoreRobots: Boolean(values['ignore-robots']),
       levels: parseLevel(values.level),
       console: Boolean(values.console),
@@ -101,6 +117,17 @@ export function parseCli(argv, env = process.env, { cwd = process.cwd() } = {}) 
   } catch (e) {
     return { ok: false, error: e.message };
   }
+}
+
+/** The start URL of an archive: its host's root page (https first) when archived, else https://<host>/. */
+export function archiveStart(dir) {
+  try {
+    const index = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'));
+    const pages = Array.isArray(index) ? index : index.pages || [];
+    const root = (u) => { try { const x = new URL(u); return x.host === index.host && x.pathname === '/' && !x.search; } catch { return false; } };
+    const homes = pages.map((p) => p.url).filter(root);
+    return homes.find((u) => u.startsWith('https:')) || homes[0] || (index.host ? `https://${index.host}/` : pages[0]?.url || null);
+  } catch { return null; }
 }
 
 /** The absolute path when `arg` names an existing file (or is a file:// URL), else null. */
@@ -188,6 +215,15 @@ Usage: node seo.mjs <url> [flags]
   --header "Name: value" Sent to the audited host only, for a WAF bypass rule (repeatable; also AUDIT_HEADERS).
   --insecure             Accept a self-signed certificate (localhost, dev).
   --no-remote            Skip validator.schema.org.
+  --no-validate          The same: skip validator.schema.org (in archive mode too).
+  --from-archive DIR     Read every page from a page archive (DIR/index.json and <slug>.html.gz) instead of the
+                         site: the HTML checks run, checks that need the network are listed as skipped. The URL
+                         may be left out (the archive's start page). URLs the archive does not hold are not fetched.
+  --allow-live           With --from-archive: fetch what the archive does not hold (robots.txt, sitemaps,
+                         llms.txt, link targets past the archive) from the live site.
+  --save-html DIR        Also write every page this run fetched as a page archive in DIR (index.json and
+                         <slug>.html.gz, plus robots.txt, sitemaps and llms.txt), for a later --from-archive run
+                         or plan-geo. Secrets are not masked: redact before sharing.
                          Chrome: found automatically, or set CHROME_PATH.
   --ignore-robots        Crawl paths robots.txt disallows (they are still reported).
   --concurrency N        Parallel requests (default ${DEFAULTS.concurrency}).

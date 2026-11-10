@@ -99,8 +99,10 @@ function rawCanonical(html) {
  *   -> { pages, inlinks: Map<url, Set<from>>, external: Map<url, Set<from>>, blocked: Map<url, Set<from>>, truncated,
  *        sitemapMissing, sitemapSampled, locales: { <locale or ''>: pages fetched } }
  * `hosts` are the hosts that count as this site (the start host and its www/apex sibling).
+ * `known(url)`, when given, says whether a URL may be fetched at all (archive mode: only archived
+ * URLs); the others are never queued and never use the budget.
  */
-export async function crawlSite(http, { startUrl, hosts, sitemapUrls = [], robots = null, maxPages = 150, sitemapSample = 50, ignoreRobots = false, concurrency = 6, retryDelay = 500, log = () => {} } = {}) {
+export async function crawlSite(http, { startUrl, hosts, sitemapUrls = [], robots = null, maxPages = 150, sitemapSample = 50, ignoreRobots = false, concurrency = 6, retryDelay = 500, known = null, log = () => {} } = {}) {
   const own = new Set(hosts && hosts.length ? hosts : [hostOf(startUrl)]);
   const pages = new Map();
   const inlinks = new Map();
@@ -128,7 +130,8 @@ export async function crawlSite(http, { startUrl, hosts, sitemapUrls = [], robot
   const perLocale = new Map();
   const WAVE = Math.max(concurrency * 4, 24);
   const allowed = (n) => n && !seen.has(n) && own.has(hostOf(n)) && crawlable(n)
-    && (ignoreRobots || !robots || isAllowed(robots, new URL(n).pathname + new URL(n).search));
+    && (ignoreRobots || !robots || isAllowed(robots, new URL(n).pathname + new URL(n).search))
+    && (!known || known(n));
   const take = (n) => { seen.add(n); queue.push(n); const l = localeOf(n); perLocale.set(l, (perLocale.get(l) || 0) + 1); };
   const enqueue = (u, { budget = true } = {}) => {
     const n = normalise(u);

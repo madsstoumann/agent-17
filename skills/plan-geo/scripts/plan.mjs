@@ -23,7 +23,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 
-import { extractPage, pageDigest } from './lib/extract.mjs';
+import { extractPage, pageDigest, visibleDates, bylines } from './lib/extract.mjs';
 import { groupTemplates, pickSample, pageSlug, indexable } from './lib/templates.mjs';
 import { verifyDraft, typesIn } from './lib/verify.mjs';
 import { readQuestions, renderProposals, QUESTION_COLUMNS } from './lib/proposals.mjs';
@@ -33,8 +33,9 @@ import { launch, render, findChrome } from './lib/render.mjs';
 import { targetDir, claimTarget, newRun, markRun, RUN_MARKER } from './lib/target-state.mjs';
 import { writeFixPlan, validateTasks } from './lib/tasks.mjs';
 import { mergeGraph, sampleHtml, injectLive, samplesReadme } from './lib/samples.mjs';
+import { openArchive, archiveHttp, hasMask, stripMasks, countMasks } from './lib/archive.mjs';
 
-export const VERSION = '1.3.0';
+export const VERSION = '1.4.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const log = (...a) => process.stderr.write(`${a.join(' ')}\n`);
@@ -44,9 +45,10 @@ const HELP = `plan-geo ${VERSION}
 Usage:
   plan.mjs extract <input> [--pages N] [--out DIR] [--header "Name: value"] [--no-render] [--insecure]
                    [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content]
-  plan.mjs check <run folder> [--no-remote]
-  plan.mjs samples <run folder> [--live] [--header "Name: value"] [--no-remote]
-  plan.mjs build <run folder> [--no-remote] [--samples [--live]]
+                   [--from-archive DIR [--allow-live]] [--no-validate]
+  plan.mjs check <run folder> [--no-remote | --no-validate]
+  plan.mjs samples <run folder> [--live] [--header "Name: value"] [--no-remote | --no-validate]
+  plan.mjs build <run folder> [--no-remote | --no-validate] [--samples [--live]]
 
 <input> is an audit-seo run folder, an audit-all run folder, an audit-seo report.json, or a URL
 (then the host's last audit-seo run is used, and audit-seo is run first when there is none).
@@ -63,6 +65,13 @@ Usage:
   --no-render      Never use Chrome (pages whose served HTML is thin are then read as served).
   --insecure       Accept self-signed certificates (local and staging sites).
   --no-remote      Do not send drafts or samples to validator.schema.org.
+  --no-validate    The same as --no-remote.
+  --from-archive DIR  extract: read every page from a page archive (DIR/index.json, <slug>.html.gz) instead of
+                   the site. Where a thin page would be rendered in Chrome, the archived <slug>.hidden.txt.gz and
+                   <slug>.txt.gz are used; without them the page is read from its served HTML and marked
+                   "served HTML only". Pages the archive does not hold are listed as not archived. samples --live
+                   uses the same archive.
+  --allow-live     With --from-archive: fetch pages the archive does not hold from the site.
   --samples        build: write samples/ first (as "plan.mjs samples") and link it from proposals.md.
   --live           samples: also fetch each draft's page and write <slug>.live.html, the live page with
                    its own JSON-LD replaced by the sample's (and a <base href> so it still loads).
@@ -71,7 +80,7 @@ Usage:
 // ---------------------------------------------------------------- small helpers
 
 function parseArgs(argv) {
-  const o = { _: [], pages: 24, headers: {}, render: true, remote: true, insecure: false, out: null, queries: null, competitors: [], repo: null, only: null, samples: false, live: false };
+  const o = { _: [], pages: 24, headers: {}, render: true, remote: true, insecure: false, out: null, queries: null, competitors: [], repo: null, only: null, samples: false, live: false, archive: null, allowLive: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => { if (i + 1 >= argv.length) throw new Error(`${a} needs a value`); return argv[++i]; };
@@ -83,7 +92,9 @@ function parseArgs(argv) {
     else if (a === '--repo') o.repo = path.resolve(next());
     else if (a === '--only') { o.only = next().toLowerCase(); if (!['markup', 'content'].includes(o.only)) throw new Error('--only must be markup or content'); }
     else if (a === '--no-render') o.render = false;
-    else if (a === '--no-remote') o.remote = false;
+    else if (a === '--no-remote' || a === '--no-validate') o.remote = false;
+    else if (a === '--from-archive') o.archive = path.resolve(next());
+    else if (a === '--allow-live') o.allowLive = true;
     else if (a === '--insecure') o.insecure = true;
     else if (a === '--samples') o.samples = true;
     else if (a === '--live') o.live = true;
@@ -92,6 +103,7 @@ function parseArgs(argv) {
     else o._.push(a);
   }
   for (const line of String(process.env.AUDIT_HEADERS || '').split(/\n|;;/)) if (line.trim()) addHeader(o.headers, line);
+  if (o.allowLive && !o.archive) throw new Error('--allow-live only goes with --from-archive');
   return o;
 }
 
@@ -145,6 +157,43 @@ const http = {
   },
 };
 
+/**
+ * The page fetch for extract and samples --live: the site, or with an archive the archived page
+ * (redirects followed inside the archive). A page the archive does not hold answers
+ * `error: 'not archived'` unless --allow-live. -> async (url) => get()'s shape
+ */
+function pageGetter(opts, archive = null) {
+  if (!archive) return (url) => get(url, { headers: opts.headers });
+  const live = { request: async (url) => { const r = await get(url, { headers: opts.headers }); return { ...r, url, headers: {}, contentType: '' }; } };
+  const ah = archiveHttp(archive, { live, allowLive: opts.allowLive });
+  return async (url) => {
+    const r = await ah.get(url, { redirect: 'follow' });
+    const html = /html|xml|text/i.test(r.contentType || '') || !r.archived;
+    return { ok: r.ok, status: r.status, finalUrl: r.finalUrl || url, body: html ? (r.body || '') : '', ...(r.error ? { error: r.error } : {}) };
+  };
+}
+
+/**
+ * A page record read from an archive with its masked secrets (`abcd…[masked]`) taken out: a URL
+ * that holds one is dropped, other text loses the placeholder. -> { rec, masked }
+ */
+function withoutMasks(rec) {
+  let masked = 0;
+  const walk = (v) => {
+    if (typeof v === 'string') {
+      if (!hasMask(v)) return v;
+      masked += countMasks(v);
+      return /^https?:\/\//i.test(v.trim()) ? undefined : stripMasks(v);
+    }
+    if (Array.isArray(v)) return v.map(walk).filter((x) => x !== undefined);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]).filter(([, x]) => x !== undefined));
+    return v;
+  };
+  return { rec: walk(rec), masked };
+}
+
+const countWords = (s) => String(s || '').split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+
 // ---------------------------------------------------------------- extract
 
 /** Find the audit-seo report for an input. -> { report, source, auditAllRun } or { error } */
@@ -175,8 +224,9 @@ function findReport(input, { reports }) {
 function runAuditSeo(url, outDir, opts) {
   const seo = path.resolve(HERE, '..', '..', 'audit-seo', 'scripts', 'seo.mjs');
   if (!fs.existsSync(seo)) return { error: 'no earlier audit-seo run for this site, and the audit-seo skill is not installed next to plan-geo: run audit-seo on the site first' };
-  log(`no earlier audit-seo run for ${url}: running audit-seo --geo first (a minute or two)`);
-  const args = [seo, url, '--geo', '--external-links', '0', '--out', outDir, ...Object.entries(opts.headers).flatMap(([k, v]) => ['--header', `${k}: ${v}`]), ...(opts.insecure ? ['--insecure'] : [])];
+  log(`no earlier audit-seo run for ${url}: running audit-seo --geo${opts.archive ? ' --from-archive' : ''} first (a minute or two)`);
+  const args = [seo, url, '--geo', '--external-links', '0', '--out', outDir, ...Object.entries(opts.headers).flatMap(([k, v]) => ['--header', `${k}: ${v}`]), ...(opts.insecure ? ['--insecure'] : []),
+    ...(opts.archive ? ['--from-archive', opts.archive, ...(opts.allowLive ? ['--allow-live'] : [])] : []), ...(opts.remote ? [] : ['--no-validate'])];
   const r = spawnSync(process.execPath, args, { stdio: ['ignore', 'ignore', 'inherit'], timeout: 900000 });
   const j = readJson(path.join(outDir, 'report.json'));
   if (r.status !== 0 || !isSeoReport(j)) return { error: `audit-seo failed (exit ${r.status}); run it on its own to see why` };
@@ -203,25 +253,57 @@ async function extract(opts) {
   const sample = pickSample(templates, pages, { max: opts.pages });
   log(`${templates.length} templates over ${pages.filter(indexable).length} indexable pages; reading ${sample.length} pages`);
 
-  const chrome = opts.render ? findChrome() : null;
+  // Archive mode never starts Chrome: what a render would add comes from the archived text files.
+  let archive = null;
+  if (opts.archive) archive = openArchive(opts.archive);
+  const fetchPage = pageGetter(opts, archive);
+  const notArchived = []; const degraded = []; let maskedValues = 0;
+  const chrome = opts.render && !archive ? findChrome() : null;
   let browser = null;
   const siteHosts = [host, host.replace(/^www\./, ''), `www.${host.replace(/^www\./, '')}`];
   const pagesDir = path.join(run, 'pages');
   fs.mkdirSync(pagesDir, { recursive: true });
   const read = [];
   for (const s of sample) {
-    let res = await get(s.url, { headers: opts.headers });
+    let res = await fetchPage(s.url);
     let rec = res.ok && res.body ? extractPage(res.body, res.finalUrl || s.url) : null;
     let how = 'served HTML';
-    if ((!rec || rec.words < 80) && chrome) {
+    if (archive && rec && rec.words < 80 && opts.render) {
+      // A live run renders this page in Chrome. The archive keeps what that read found: the
+      // accordion and payload text (<slug>.hidden.txt.gz) and the page's full text (<slug>.txt.gz).
+      const at = res.finalUrl || s.url;
+      const hiddenTxt = archive.hidden(at) ?? archive.hidden(s.url);
+      const fullTxt = archive.text(at) ?? archive.text(s.url);
+      if (hiddenTxt || fullTxt) {
+        if (hiddenTxt && !rec.hidden) rec.hidden = { source: 'page archive', words: countWords(hiddenTxt), markdown: hiddenTxt };
+        if (fullTxt && countWords(fullTxt) > countWords(rec.text)) rec.text = fullTxt;
+        else if (hiddenTxt && !rec.text.includes(hiddenTxt.slice(0, 60))) rec.text = `${rec.text} ${hiddenTxt}`;
+        // Dates and bylines are read from the text, so they follow it; the outline does not.
+        rec.dates = visibleDates(rec.text);
+        rec.bylines = bylines(rec.text);
+        how = 'served HTML + archived text';
+        degraded.push({ url: s.url, slug: pageSlug(s.url), why: 'text and dates from the archive; outline, questions, word count and links from the served HTML (a live run renders the page)', partial: true });
+      } else {
+        how = 'served HTML only';
+        degraded.push({ url: s.url, slug: pageSlug(s.url), why: 'thin served HTML and no archived text: what a Chrome render adds (accordions, tabs, JavaScript text) is missing' });
+      }
+    } else if ((!rec || rec.words < 80) && chrome) {
       try {
         browser ||= await launch({ chromePath: chrome, insecure: opts.insecure });
         const r = await render(browser, s.url, { headers: opts.headers, hosts: siteHosts });
         if (r.ok) { const rr = extractPage(r.html, r.finalUrl || s.url); if (!rec || rr.words > rec.words) { rec = rr; how = 'rendered in Chrome'; } }
       } catch (e) { log(`Chrome: ${e.message}`); }
     }
-    if (!rec) { log(`skip ${s.url}: ${res.error || `HTTP ${res.status}`}`); continue; }
-    if (rec.hidden) how += ` + ${rec.hidden.words} words only in the Next.js payload`;
+    if (!rec) {
+      log(`skip ${s.url}: ${res.error || `HTTP ${res.status}`}`);
+      if (res.error === 'not archived' || res.error === 'masked placeholder') notArchived.push(s.url);
+      continue;
+    }
+    if (archive) {
+      const clean = withoutMasks(rec);
+      if (clean.masked) { rec = clean.rec; maskedValues += clean.masked; how += ` (${clean.masked} masked value${clean.masked === 1 ? '' : 's'} left out)`; }
+    }
+    if (rec.hidden) how += ` + ${rec.hidden.words} words only in the ${rec.hidden.source === 'page archive' ? 'archived hidden text' : 'Next.js payload'}`;
     const slug = pageSlug(s.url);
     writeJson(path.join(pagesDir, `${slug}.json`), { ...rec, template: s.template, why: s.why, how });
     fs.writeFileSync(path.join(pagesDir, `${slug}.md`), pageDigest(rec));
@@ -244,6 +326,7 @@ async function extract(opts) {
     source: found.source, lang: homeRec?.lang || null, crawled: pages.length, indexable: pages.filter(indexable).length,
     truncated: !!report.crawl?.truncated || !!report.truncated, target, profile: path.join(target, 'site-profile.md'),
     options: { only: opts.only, queries, competitors: opts.competitors, repo: opts.repo },
+    ...(archive ? { archive: { dir: archive.dir, date: archive.date, allowLive: opts.allowLive, live: [...archive.live], notArchived, degraded, masked: maskedValues } } : {}),
     templates, sample: read,
   };
   writeJson(path.join(run, 'inventory.json'), inventory);
@@ -253,6 +336,7 @@ async function extract(opts) {
   console.log(`plan-geo ${VERSION} — ${host}`);
   console.log(`From ${found.source}`);
   console.log(`${templates.length} templates, ${read.length} pages read in full; site language ${inventory.lang || 'unknown'}`);
+  if (inventory.archive) console.log(`Built from the archive of ${inventory.archive.date}, not the live site: ${degraded.filter((d) => !d.partial).length} page(s) served HTML only, ${degraded.filter((d) => d.partial).length} served HTML + archived text, ${notArchived.length} not archived`);
   console.log('');
   console.log(`inventory.md   ${path.join(run, 'inventory.md')}`);
   console.log(`pages          ${pagesDir}${path.sep}`);
@@ -261,8 +345,22 @@ async function extract(opts) {
   console.log(`Run folder     ${run}`);
 }
 
+/** The archive-mode cover lines (inventory.md; proposals.md has its own copy in lib/proposals.mjs). */
+function archiveLines(a) {
+  if (!a) return [];
+  const out = [`> **Built from the archive of ${a.date}, not the live site.** Pages were read from \`${a.dir}\`${a.live?.length ? `; ${a.live.length} the archive does not hold were fetched live (--allow-live)` : ''}.`];
+  const only = (a.degraded || []).filter((d) => !d.partial);
+  const partial = (a.degraded || []).filter((d) => d.partial);
+  if (only.length) out.push(`> **Degraded, served HTML only:** ${only.map((d) => `pages/${d.slug}.md`).join(', ')}: thin served HTML that a live run renders in Chrome, and no archived text.`);
+  if (partial.length) out.push(`> **Degraded, served HTML + archived text:** ${partial.map((d) => `pages/${d.slug}.md`).join(', ')}: text and dates from the archive; outline, questions, word count and links from the served HTML.`);
+  if (a.notArchived?.length) out.push(`> **Not archived:** ${a.notArchived.join(', ')} (not read).`);
+  if (a.masked) out.push(`> **Masked secrets:** ${a.masked} masked value${a.masked === 1 ? '' : 's'} left out of the pages read; never copy one into a draft.`);
+  return out.flatMap((l) => [l, '']);
+}
+
 function inventoryMarkdown(inv) {
   const out = [`# Inventory: ${inv.host}`, '', `${inv.indexable} indexable pages of ${inv.crawled} crawled${inv.truncated ? ' (crawl capped)' : ''}, from \`${inv.source}\`. Site language: ${inv.lang || 'unknown'}.`, ''];
+  out.push(...archiveLines(inv.archive));
   out.push('## Templates', '', 'Guessed type and usual markup are a starting point; correct them after reading the pages.', '');
   out.push('| Template | Pages | Guessed type | Usual markup | Modules to consider | Markup now | Question pages | Dated pages | Median words | Example |', '| --- | ---: | --- | --- | --- | --- | ---: | ---: | ---: | --- |');
   for (const t of inv.templates) {
@@ -411,6 +509,9 @@ export function topTypes(data) {
 async function samples(run, opts, { quiet = false } = {}) {
   const inv = readJson(path.join(run, 'inventory.json'));
   if (!inv) throw new Error(`no inventory.json in ${run}: run "plan.mjs extract" first`);
+  // --live on a plan built from an archive reads the same archive (or the one --from-archive names).
+  const archiveDir = opts.archive || inv.archive?.dir || null;
+  const samplePage = pageGetter({ ...opts, allowLive: opts.allowLive || Boolean(inv.archive?.allowLive) }, opts.live && archiveDir ? openArchive(archiveDir) : null);
   const dir = path.join(run, 'markup');
   const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.jsonld')).sort() : [];
   if (!files.length) throw new Error(`no drafts in ${dir}: write markup/*.jsonld first`);
@@ -449,7 +550,7 @@ async function samples(run, opts, { quiet = false } = {}) {
     }
     let live = null; let removed = 0;
     if (opts.live && page?.url) {
-      const res = await get(page.url, { headers: opts.headers });
+      const res = await samplePage(page.url);
       if (res.ok && res.body) {
         const injected = injectLive(res.body, { graph, url: res.finalUrl || page.url });
         live = `${slug}.live.html`; removed = injected.removed;

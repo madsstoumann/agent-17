@@ -210,7 +210,10 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 | `--external-links N` | External links to check (default 150, 0 to skip). |
 | `--schema-pages N` | Pages sent to validator.schema.org (default 8, 0 to skip). |
 | `--production-host HOST` | The future live host. |
-| `--no-remote` / `--ignore-robots` | Skip validator.schema.org / crawl paths robots.txt disallows. |
+| `--no-remote` / `--no-validate` / `--ignore-robots` | Skip validator.schema.org (either flag) / crawl paths robots.txt disallows. |
+| `--from-archive DIR` | Read every page from a page archive (`index.json` plus `<slug>.html.gz`) instead of the site; the URL may be left out. The HTML checks run; checks that need the network (external links, og:image, redirects, AI crawlers at the edge, Chrome renders, and robots.txt, sitemap and llms.txt when not archived) are listed as skipped, and the report says on its cover that it was built from the archive of that date. URLs the archive does not hold are not fetched. |
+| `--allow-live` | With `--from-archive`: fetch what the archive does not hold from the site. |
+| `--save-html DIR` | Also write every page the crawl fetched (as served, redirects not followed), plus robots.txt, sitemaps and llms.txt, as a page archive in `DIR`, for plan-geo or a later `--from-archive` run. Secrets are not masked. |
 | `--concurrency N` / `--timeout MS` / `--quiet` | Parallel requests (6), per request (15000), no progress output. |
 
 ### audit-eco
@@ -299,7 +302,9 @@ Three steps with Claude's writing in between; the skill runs them. `plan.mjs ext
 | `--competitors a.com,b.com` | Alternatives comparison briefs may name. Without it, only alternatives the site already names. |
 | `--repo PATH` | The site's code, so markup and module tasks go to audit-fix as agent tasks. |
 | `--no-render` | Never use Chrome (by default pages whose served HTML is thin are rendered). |
-| `--no-remote` | On `check`, `samples` and `build`: do not send the drafts or samples to validator.schema.org. |
+| `--no-remote` / `--no-validate` | On `check`, `samples` and `build`: do not send the drafts or samples to validator.schema.org. |
+| `--from-archive DIR` | On `extract`: read every page from a page archive (as audit-seo `--save-html` writes it) instead of the site. Thin pages use the archived text files where a live run would render them, and are marked "served HTML only" without them; pages not in the archive are skipped. The plan says on top it was built from the archive of that date. `samples --live` reads the same archive. |
+| `--allow-live` | With `--from-archive`: fetch pages the archive does not hold from the site. |
 | `--samples` | On `build`: write `samples/` first and link it from `proposals.md`. |
 | `--live` | On `samples`: also write `<slug>.live.html`, the live page with its own JSON-LD replaced by the proposed graph and a `<base href>`, so it opens in a browser as the page would look after the work. |
 | `--out DIR` / `--header "Name: value"` / `--insecure` | As above. |

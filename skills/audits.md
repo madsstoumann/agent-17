@@ -103,6 +103,27 @@ Two things to know:
   `.audit-solution-health/run/` to `.gitignore`). After that, `check.mjs` and `finalize.mjs` run
   unattended with `--in-repo`.
 
+### Keep the pages, re-run from them
+
+audit-seo can save every page it crawls as a page archive, and audit-seo and plan-geo can later read
+that archive instead of the site. Use it when the site should not be crawled twice in a row (a WAF
+that answers 403 to a second crawl), to re-run after a fix to a skill without touching the site, or
+to plan from the exact pages an audit saw:
+
+```bash
+node skills/audit-seo/scripts/seo.mjs https://www.example.com --save-html pages/2026-11-10
+node skills/audit-seo/scripts/seo.mjs --from-archive pages/2026-11-10
+node skills/plan-geo/scripts/plan.mjs extract <audit-seo run folder> --from-archive pages/2026-11-10
+```
+
+The archive is `index.json` plus one `<slug>.html.gz` per URL (redirects kept as served), with
+robots.txt, sitemaps and llms.txt beside the pages. Nothing in it is masked: redact secrets before you
+share or commit it (masked values look like `abcd…[masked <type>]`, and the skills treat them as
+placeholders). From an archive, nothing on the site is fetched unless you add `--allow-live`; only
+validator.schema.org is still called (`--no-validate` skips it). The report says on its cover that it
+was built from the archive of that date, and lists the checks that need the live site (external links,
+og:image, redirects, AI crawlers at the edge, the Chrome renders) as skipped.
+
 ## Run an audit with Claude, without questions
 
 `claude -p` runs Claude Code once, with no chat, and prints the answer. Load the skills straight from

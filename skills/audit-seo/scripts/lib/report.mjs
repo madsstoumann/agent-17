@@ -8,6 +8,7 @@ import { AREAS, STATUS_ORDER, countStatuses } from './checks.mjs';
 import { diffMarkdown } from './diff.mjs';
 import { shows, levelNote, levelOf } from './levels.mjs';
 import { isGeoRow } from './geo.mjs';
+import { archiveCoverLines } from './offline.mjs';
 
 export const GLYPH = { pass: '✅', warn: '⚠️', fail: '❌', info: 'ℹ️', skip: '⏭️' };
 const LABEL = { pass: 'Pass', warn: 'Warn', fail: 'Fail', info: 'Info', skip: 'Skipped' };
@@ -57,7 +58,8 @@ export function renderMarkdown(report, { levels, geo = false } = {}) {
   const rows = scope.filter((r) => shows(levels, r));
   const out = [];
   out.push(`# ${geo ? 'GEO audit' : 'SEO audit'} — ${site.host}`, '');
-  out.push(`**Site:** ${site.finalUrl} · **Date:** ${report.date} · **Tool:** audit-seo ${report.version}${geo ? ' (--geo)' : ''}`, '');
+  out.push(`**Site:** ${site.finalUrl} · **Date:** ${report.date} · **Tool:** audit-seo ${report.version}${geo ? ' (--geo)' : ''}${report.archive ? ` · **Pages:** archive of ${report.archive.date}` : ''}`, '');
+  out.push(...archiveCoverLines(report.archive));
   out.push(`**Result:** ${resultLine(counts)}`, '');
   const gl = report.mode === 'schema' ? null : geoLine(report.geo?.score);
   if (gl) {
@@ -68,6 +70,7 @@ export function renderMarkdown(report, { levels, geo = false } = {}) {
   if (geo) out.push('**Scope:** AI search (GEO) only: AI crawler access in robots.txt and at the edge, text and JSON-LD without JavaScript, llms.txt, entity and article markup, dates and authors, answer structure, plus the indexing rows that decide what any crawler can reach. Run without --geo for the full SEO audit.', '');
   if (filtered) out.push(levelNote(levels, { hidden: report.rows.length - rows.length }), '');
   if (report.mode === 'schema') out.push(`**Checked:** structured data on this one page only (${/^file:|^\//.test(site.finalUrl) || !/^https?:/.test(site.finalUrl) ? 'a local file' : '--schema-only'}); nothing was crawled. Run without --schema-only for the full SEO audit.`, '');
+  else if (report.archive) out.push(`**Read from the archive:** ${stats.html} HTML pages and ${stats.other} other URLs (${stats.redirects} redirects, ${stats.errors} errors) by following links between archived pages${report.archive.extra ? `, plus ${report.archive.extra} archived URLs the links did not reach` : ''}. ${stats.indexable} pages are indexable.${localeNote(stats.locales)}`, '');
   else out.push(`**Crawled:** ${stats.html} HTML pages and ${stats.other} other URLs (${stats.redirects} redirects, ${stats.errors} errors) by following links${stats.truncated ? ` (stopped at the --pages cap of ${stats.maxPages}; the site has more)` : ''}${stats.sitemapMissing ? `, plus ${stats.sitemapSampled} of ${stats.sitemapMissing} sitemap URLs the links did not reach` : ''}. ${stats.indexable} pages are indexable.${localeNote(stats.locales)}${stats.linksChecked ? ` ${stats.linksChecked} more link targets past the cap were checked for a status only${stats.linksUnchecked ? ` (${stats.linksUnchecked} not checked)` : ''}.` : ''}`, '');
   if (env.note) out.push(`> ${env.note}`, '');
   if (report.notes) out.push('## Notes', '', report.notes.trim(), '');
@@ -160,9 +163,9 @@ export function renderStdout(report, paths, { levels, geo = false } = {}) {
   const all = geo ? report.rows.filter(isGeoRow) : report.rows;
   const counts = countStatuses(all);
   const rows = all.filter((r) => shows(levels, r));
-  const scope = report.mode === 'schema' ? 'Structured data on one page only' : `Crawled ${report.stats.html} pages (${report.stats.indexable} indexable)${report.stats.truncated ? ', capped' : ''}; ${report.stats.sitemapSampled} extra sitemap URLs${geo ? '; GEO rows only (--geo)' : ''}`;
+  const scope = report.mode === 'schema' ? 'Structured data on one page only' : report.archive ? `Read ${report.stats.html} pages (${report.stats.indexable} indexable) from the archive${geo ? '; GEO rows only (--geo)' : ''}` : `Crawled ${report.stats.html} pages (${report.stats.indexable} indexable)${report.stats.truncated ? ', capped' : ''}; ${report.stats.sitemapSampled} extra sitemap URLs${geo ? '; GEO rows only (--geo)' : ''}`;
   const gl = report.mode === 'schema' ? null : geoLine(report.geo?.score);
-  const out = [`audit-seo ${report.version} — ${report.site.finalUrl}`, `Result: ${resultLine(counts)}`, ...(gl ? [`GEO readiness: ${gl}`] : []), scope, ''];
+  const out = [`audit-seo ${report.version} — ${report.site.finalUrl}`, ...(report.archive ? [`Built from the archive of ${report.archive.date}, not the live site (${report.archive.skipped.length} checks skipped, ${report.archive.degraded.length} degraded, ${report.archive.notArchived.length} URLs not archived)`] : []), `Result: ${resultLine(counts)}`, ...(gl ? [`GEO readiness: ${gl}`] : []), scope, ''];
   for (const r of sorted(rows.filter((x) => x.status === 'fail' || x.status === 'warn'))) out.push(`${r.status.toUpperCase().padEnd(4)} ${r.title}: ${r.evidence}`);
   for (const r of rows.filter((x) => x.status === 'skip')) out.push(`SKIP ${r.title}: ${r.evidence}`);
   out.push('', `report.md     ${paths.md}`, `findings.json ${paths.findings}`);

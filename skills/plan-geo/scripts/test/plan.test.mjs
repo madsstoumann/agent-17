@@ -580,3 +580,85 @@ test('build --samples reuses the run\'s validator answers instead of posting eve
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------- archive mode
+
+test('archive.mjs is identical to audit-seo\'s copy', () => {
+  const theirs = path.join(SKILLS, 'audit-seo', 'scripts', 'lib', 'archive.mjs');
+  if (fs.existsSync(theirs)) assert.equal(fs.readFileSync(path.join(HERE, '..', 'lib', 'archive.mjs'), 'utf8'), fs.readFileSync(theirs, 'utf8'));
+});
+
+test('verifyDraft: a masked placeholder is never a value, even when the page shows it', () => {
+  const pageRec = { url: 'https://www.example.com/', text: 'Our key is AIza…[masked google-api-key] and we sell examples', title: 'Example', dates: [], urls: [] };
+  const issues = verifyDraft({ '@type': 'Organization', name: 'Example', identifier: 'AIza…[masked google-api-key]', logo: 'https://www.example.com/x.png?sig=82ef…[masked]' }, pageRec);
+  assert.deepEqual(issues.filter((i) => /masked placeholder/.test(i.reason)).map((i) => i.path).sort(), ['identifier', 'logo']);
+});
+
+test('extract --from-archive: archived pages, archived text for thin pages, served HTML only without it, missing pages and masked values', async () => {
+  const H = 'https://www.example.com';
+  const FIXTURE = path.join(HERE, 'fixtures', 'archive');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-geo-archive-'));
+  try {
+    const seoRun = path.join(tmp, 'seo-run');
+    fs.mkdirSync(seoRun);
+    fs.writeFileSync(path.join(seoRun, 'report.json'), JSON.stringify({ tool: 'audit-seo', site: { url: `${H}/`, host: 'www.example.com' }, pages: [
+      page(`${H}/`), page(`${H}/about`), page(`${H}/news/launch`), page(`${H}/faq`, { words: 20 }), page(`${H}/contact`, { words: 10 }), page(`${H}/missing`),
+    ] }));
+    const out = path.join(tmp, 'plan');
+    // Without --no-render: a live run would render the thin pages; archive mode must not start Chrome.
+    const ex = await run(['extract', seoRun, '--out', out, '--from-archive', FIXTURE], { AUDIT_OUT_DIR: path.join(tmp, 'reports'), CHROME_PATH: '/nonexistent/chrome' });
+    assert.equal(ex.code, 0, ex.err);
+    assert.match(ex.out, /Built from the archive of 2026-11-10, not the live site: 1 page\(s\) served HTML only, 1 served HTML \+ archived text, 1 not archived/);
+    const inv = JSON.parse(fs.readFileSync(path.join(out, 'inventory.json'), 'utf8'));
+    assert.equal(inv.archive.date, '2026-11-10');
+    assert.deepEqual(inv.archive.notArchived, [`${H}/missing`]);
+    const how = Object.fromEntries(inv.sample.map((s) => [s.slug, s.how]));
+    assert.equal(how.contact, 'served HTML only', 'a thin page without hidden text');
+    assert.equal(how.faq, 'served HTML + archived text + 26 words only in the archived hidden text');
+    assert.match(how.home, /^served HTML \(\d+ masked values? left out\)$/);
+    assert.equal(inv.sample.some((s) => s.url === `${H}/missing`), false);
+    assert.deepEqual(inv.archive.degraded.map((d) => [d.slug, Boolean(d.partial)]).sort(), [['contact', false], ['faq', true]]);
+
+    // The thin FAQ page: the archived hidden text counts, as the rendered page's would.
+    const faq = JSON.parse(fs.readFileSync(path.join(out, 'pages', 'faq.json'), 'utf8'));
+    assert.match(faq.text, /Example builds example software/);
+    assert.match(faq.hidden.markdown, /### What does Example do\?/);
+    assert.ok(faq.dates.includes('2026-11-03'), 'dates are read from the archived text');
+
+    // Masked values are left out of what Claude reads, so no draft can copy one.
+    const { how: _how, ...home } = JSON.parse(fs.readFileSync(path.join(out, 'pages', 'home.json'), 'utf8'));
+    assert.doesNotMatch(JSON.stringify(home), /masked/);
+    assert.equal(home.og.image, undefined, 'an og:image URL with a masked signature is dropped');
+    assert.doesNotMatch(fs.readFileSync(path.join(out, 'pages', 'home.md'), 'utf8'), /masked/);
+    const about = JSON.parse(fs.readFileSync(path.join(out, 'pages', 'about.json'), 'utf8'));
+    assert.doesNotMatch(about.text, /masked/);
+    assert.match(about.text, /Contact key:/);
+
+    const md = fs.readFileSync(path.join(out, 'inventory.md'), 'utf8');
+    assert.match(md, /\*\*Built from the archive of 2026-11-10, not the live site\.\*\*/);
+    assert.match(md, /\*\*Degraded, served HTML only:\*\* pages\/contact\.md/);
+    assert.match(md, /\*\*Not archived:\*\* https:\/\/www\.example\.com\/missing/);
+
+    // build: proposals.md carries the same cover.
+    fs.writeFileSync(path.join(out, 'tasks.json'), JSON.stringify({ tasks: [] }));
+    const b = await run(['build', out, '--no-validate']);
+    assert.equal(b.code, 0, b.err);
+    const prop = fs.readFileSync(path.join(out, 'proposals.md'), 'utf8');
+    assert.match(prop, /\*\*Built from the archive of 2026-11-10, not the live site\.\*\*/);
+    assert.match(prop, /\*\*Degraded, served HTML only:\*\* https:\/\/www\.example\.com\/contact/);
+    assert.match(prop, /\*\*Not archived:\*\* 1 page/);
+
+    // samples --live reads the archive the plan was built from.
+    fs.mkdirSync(path.join(out, 'markup'), { recursive: true });
+    fs.writeFileSync(path.join(out, 'markup', 'about.jsonld'), JSON.stringify({ '@context': 'https://schema.org', '@type': 'AboutPage', name: 'About Example' }));
+    const sm = await run(['samples', out, '--no-validate', '--live']);
+    assert.equal(sm.code, 0, sm.err);
+    assert.match(fs.readFileSync(path.join(out, 'samples', 'about.live.html'), 'utf8'), /<base href="https:\/\/www\.example\.com\/about">/);
+
+    const bad = await run(['extract', seoRun, '--allow-live']);
+    assert.notEqual(bad.code, 0);
+    assert.match(bad.err, /--allow-live only goes with --from-archive/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

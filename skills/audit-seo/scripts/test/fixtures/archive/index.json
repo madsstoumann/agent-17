@@ -1,0 +1,91 @@
+{
+ "host": "www.example.com",
+ "date": "2026-11-10",
+ "source": "archive test fixture",
+ "redaction": "none: secrets are not masked; redact before sharing",
+ "count": 6,
+ "pages": [
+  {
+   "url": "https://www.example.com/",
+   "status": 200,
+   "content_type": "text/html; charset=utf-8",
+   "fetched_at": "2026-11-10T07:00:00Z",
+   "bytes": 2216,
+   "sha256": "13cb858b5ff0076c9828f6cf680776067e9716b184e6c1336fd37e44415ce40f",
+   "title": "Example",
+   "files": [
+    "home.html.gz"
+   ],
+   "redactions": 3
+  },
+  {
+   "url": "https://www.example.com/about",
+   "status": 200,
+   "content_type": "text/html; charset=utf-8",
+   "fetched_at": "2026-11-10T07:00:00Z",
+   "bytes": 1919,
+   "sha256": "94cdfec70b18c9820faa943868bc992df1a42f9f1433bee40e4f0565a9938a21",
+   "title": "About Example",
+   "files": [
+    "about.html.gz"
+   ],
+   "redactions": 1
+  },
+  {
+   "url": "https://www.example.com/old",
+   "status": 301,
+   "content_type": "text/plain",
+   "fetched_at": "2026-11-10T07:00:00Z",
+   "bytes": 17,
+   "sha256": "d18ed36671b8618520016c81125aa889a5b800872038c5e009ef49cd305088cd",
+   "title": null,
+   "files": [
+    "old.html.gz"
+   ],
+   "redactions": 0,
+   "location": "/about"
+  },
+  {
+   "url": "https://www.example.com/news/launch",
+   "status": 200,
+   "content_type": "text/html; charset=utf-8",
+   "fetched_at": "2026-11-10T07:00:00Z",
+   "bytes": 1887,
+   "sha256": "6725381d7276f7fa7b50843273e33558ee42a7084376d733c3cd5b6b5011641c",
+   "title": "We launched",
+   "files": [
+    "news--launch.html.gz"
+   ],
+   "redactions": 0
+  },
+  {
+   "url": "https://www.example.com/faq",
+   "status": 200,
+   "content_type": "text/html; charset=utf-8",
+   "fetched_at": "2026-11-10T07:00:00Z",
+   "bytes": 490,
+   "sha256": "ed3d0539496b97aa71ff24ce745a7c5533740f9cc10a523ac302bdb84a972664",
+   "title": "FAQ",
+   "files": [
+    "faq.html.gz",
+    "faq.txt.gz",
+    "faq.hidden.txt.gz"
+   ],
+   "redactions": 0,
+   "text_source": "plan-geo"
+  },
+  {
+   "url": "https://www.example.com/contact",
+   "status": 200,
+   "content_type": "text/html; charset=utf-8",
+   "fetched_at": "2026-11-10T07:00:00Z",
+   "bytes": 490,
+   "sha256": "c8bf4b42f40aefc3fe5a71d06a56da2ae1f5709d4855e794f2cb569cdc9930b8",
+   "title": "Contact",
+   "files": [
+    "contact.html.gz"
+   ],
+   "redactions": 0
+  }
+ ]
+}
