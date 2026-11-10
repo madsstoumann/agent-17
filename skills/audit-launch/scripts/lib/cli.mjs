@@ -22,7 +22,9 @@ export const ENV_ALIASES = {
 };
 
 /** A label in the hostname that marks a non-production site ("dev" must be its own label: devices.example.com is not staging). */
-export const STAGING_HOST_RE = /(^|[.-])(dev|develop|development|staging|stage|stg|test|testing|uat|qa|preview|sandbox|demo)([.-]|$)/i;
+const STAGING_WORDS = 'dev|develop|development|staging|stage|stg|test|testing|uat|qa|preview|sandbox|demo';
+export const STAGING_HOST_RE = new RegExp(`(^|[.-])(${STAGING_WORDS})([.-]|$)`, 'i');
+const STAGING_WORD_RE = new RegExp(`^(${STAGING_WORDS})$`, 'i');
 /** Platform hosts that are never a customer's live domain. */
 export const STAGING_SUFFIXES = [
   '.ondigitalocean.app', '.vercel.app', '.netlify.app', '.pages.dev', '.workers.dev', '.azurewebsites.net',
@@ -52,6 +54,9 @@ export function isStagingHost(host) {
   if (!h) return false;
   if (isPrivateHost(h)) return true;
   if (STAGING_SUFFIXES.some((s) => h.endsWith(s))) return true;
+  // A site whose own domain name is the word (dev.<tld>, www.demo.<tld>) is a live site, not a staging host.
+  const labels = h.replace(/^www\./, '').split('.');
+  if (labels.length === 2 && STAGING_WORD_RE.test(labels[0])) return false;
   return STAGING_HOST_RE.test(h);
 }
 

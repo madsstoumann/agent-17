@@ -49,10 +49,10 @@ export const ARCHIVE_DEGRADED = {
  */
 export function applyArchiveMode(rows, { robots = false, sitemap = false, llms = false, notArchivedLinks = 0 } = {}) {
   const skip = new Map(Object.entries(ARCHIVE_SKIPPED).map(([id, [title, why]]) => [id, { title, why }]));
-  const missing = (map, file) => { for (const [id, title] of Object.entries(map)) skip.set(id, { title, why: `${file} is not in the archive (--allow-live fetches it)` }); };
+  const missing = (map, file) => { for (const [id, title] of Object.entries(map)) skip.set(id, { title, why: `${file || title} is not in the archive (--allow-live fetches it)` }); };
   if (!robots) missing(ROBOTS_ROWS, 'robots.txt');
   if (!sitemap) missing(SITEMAP_ROWS, 'the XML sitemap');
-  if (!llms) missing(LLMS_ROWS, 'llms.txt');
+  if (!llms) missing(LLMS_ROWS); // each row names its own file (llms.txt, llms-full.txt, ai.txt)
   const out = [];
   const skipped = [];
   const degraded = [];

@@ -58,6 +58,10 @@ test('isStagingHost and detectEnv', () => {
   assert.equal(isStagingHost('www.example.com'), false);
   assert.equal(isStagingHost('browser.style'), false);
   assert.equal(isStagingHost('devices.example.com'), false, 'dev inside a word is not staging');
+  assert.equal(isStagingHost('dev.tld'), false, 'a site whose own domain name is the word is a live site');
+  assert.equal(isStagingHost('www.demo.tld'), false);
+  assert.equal(isStagingHost('dev.example.com'), true);
+  assert.equal(isStagingHost('demo-shop.tld'), true);
   assert.equal(isStagingHost('example-test.vercel.app'), true);
   assert.equal(isStagingHost('example-live.euwest01.umbraco.io'), false, 'Umbraco Cloud live environment (and its media origin)');
   assert.equal(isStagingHost('dev-example-live.euwest01.umbraco.io'), true);
