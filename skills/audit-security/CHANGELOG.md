@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-security` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.3.1] - 2026-11-10
+
+### Changed
+- SKILL.md documents `--url` and that site mode sends `AUDIT_HEADERS`; the argument hint lists `--url` and `--insecure`.
+
 ## [2.3.0] - 2026-11-10
 
 ### Changed

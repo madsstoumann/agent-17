@@ -23,7 +23,7 @@ On **dev/staging** (`--env dev|staging`, or guessed from the hostname), findings
 | `crawl.charset` | Charset declared | missing warn; not UTF-8 info | `<meta charset="utf-8">` first in head. |
 | `crawl.h1` | H1 count on the start page | 0 warn; > 1 info | One h1. |
 | `crawl.llms-txt` | `/llms.txt` | info only | Optional (llmstxt.org); Lighthouse "Agentic browsing" scores it. |
-| `crawl.staging-refs` | dev/stage hostnames in links, assets, CSP, canonical, og, sitemap | any → warn *(before production)* | Replace before the staging host disappears. |
+| `crawl.staging-refs` | dev/stage hostnames in links, assets, CSP, canonical, og, sitemap. An Umbraco Cloud live host (`example-live.euwest01.umbraco.io`) is the live environment, not staging; its `dev-…` and `stage-…` hosts are | any → warn *(before production)* | Replace before the staging host disappears. |
 
 ## 2. redirects
 
@@ -104,7 +104,7 @@ On **dev/staging** (`--env dev|staging`, or guessed from the hostname), findings
 |---|---|---|---|
 | `perf.lighthouse-mobile` / `-desktop` | Five category scores | performance ≥ 90 pass; ≥ 50 warn; else fail. On dev the SEO score is annotated "depressed by noindex" | Opportunities row; LCP and TBT first. |
 | `perf.cwv-lab` | LCP/CLS/TBT (lab) | LCP 2.5/4 s, CLS 0.1/0.25, TBT 200/600 ms | Same targets in the field with INP ≤ 200 ms. |
-| `perf.cwv-field` | CrUX p75 (PSI only) | overall FAST/AVERAGE/SLOW | Needs real traffic. |
+| `perf.cwv-field` | CrUX p75 (PSI only). The scoreboard row says "not run (perf skipped)" when `--only` or `--skip` left perf out, and names `PSI_API_KEY` only when the run had none | overall FAST/AVERAGE/SLOW | Needs real traffic. |
 | `perf.opportunities` | Top 8 by savings | info | — |
 | `perf.third-parties` | Main-thread blocking by third parties | > 250 ms warn | Defer, facade, or load after consent. |
 | `perf.page` | Sampled sitemap pages (mobile) | as above, per page | The slow template. |
@@ -125,7 +125,7 @@ On **dev/staging** (`--env dev|staging`, or guessed from the hostname), findings
 | `privacy.cookies-first-load` | Non-essential cookies on the first response | any → warn *(before production)* | Only strictly necessary cookies before consent. |
 | `privacy.trackers` | Analytics/ads/session-replay hosts contacted on first load (Lighthouse network log; static scan fallback) | any → warn *(before production)* | Consent mode / script blocking. |
 | `privacy.third-party-hosts` | Everyone contacted, grouped | info | — |
-| `privacy.consent-tool` | CMP detected | info | Required with trackers in the EU. |
+| `privacy.consent-tool` | CMP detected by `lib/cmp.mjs` (shared with audit-privacy): the vendor host the page requests or loads a script from wins, then vendor markup; a bare `CookieConsent` id names no tool | info | Required with trackers in the EU. |
 | `privacy.manual` | Webbkoll / Blacklight | info | Run on production. |
 
 ## 11. links / social / icons

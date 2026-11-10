@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-infra` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.4.5] - 2026-11-10
+
+### Changed
+- SKILL.md describes the DNS-over-HTTPS order and the skipped DNS and mail rows when the local resolver returns no records, and SPF includes that use macros. The example hostname is a placeholder.
+
 ## [2.4.4] - 2026-11-09
 
 ### Fixed

@@ -13,7 +13,7 @@ import { analyse, SECTIONS } from './lib/analyse.mjs';
 import { hiddenBlocks, blocksMarkdown } from './lib/rsc.mjs';
 import { countStatuses, prepareRun, finishRun, consoleItems, diffRows, carryOverSections, sectionTables, fixFirst, resultLine, taskCandidates, writeJson, log, GLYPH, result } from './lib/common.mjs';
 
-export const VERSION = '2.2.2';
+export const VERSION = '2.2.3';
 
 const USAGE = `audit-privacy ${VERSION}: GDPR / ePrivacy check of cookies, trackers and the consent banner
 

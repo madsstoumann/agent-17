@@ -1,10 +1,10 @@
 ---
 name: audit-security
 description: Use when someone wants a security review, code security audit, vulnerability scan or "is this repo safe to ship" check of a whole codebase or folder — committed secrets and API keys (also in git history), known-vulnerable dependencies from any lockfile (npm, yarn, pnpm, NuGet, Composer, PyPI, RubyGems, Go via OSV), XSS sinks, SQL/command/template injection, SSRF, open redirects, path traversal, weak crypto, disabled TLS verification, JWT and CORS mistakes, unsafe deserialisation, debug config, and GitHub Actions risks such as pull_request_target and script injection. Also a site mode for a live URL with no repo: security headers (CSP, frame-ancestors, Permissions-Policy, HSTS, Referrer-Policy), cookie flags, CORS, HTTPS redirects, exposed files and admin paths, security.txt and phishing/malware blocklists, passive only. Report only. Not for a single diff (use /security-review), a full pre-launch check of a URL (use audit-launch), TLS, DNS and mail (use audit-infra), or routine package upkeep (use audit-solution-health).
-argument-hint: "[path | url] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline] [--visibility public|private|internal] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
+argument-hint: "[path | url] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline] [--visibility public|private|internal] [--url URL] [--header NAME:VALUE] [--insecure] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(git log:*), Bash(git show:*), Bash(gh repo view:*), Read, Grep, Glob, WebFetch
 metadata:
-  version: "2.3.0"
+  version: "2.3.1"
 ---
 
 # Security audit
@@ -216,6 +216,8 @@ secure", "check the headers and exposed files", "security scan of https://…"):
 node "${CLAUDE_SKILL_DIR}/scripts/scan.mjs" https://www.example.com [--only headers,redirects,exposed,blocklists] [--header "Name: value"] [--out DIR]
 ```
 
+`--url https://www.example.com` does the same when the URL is not the first argument.
+
 Run it with `timeout: 600000`; it takes one to two minutes. It is **passive**: one request per
 well-known path, no fuzzing, login attempts, load or exploitation, and never a probe the site's
 owner has not asked for. Only scan sites the user owns or is engaged on.
@@ -236,7 +238,8 @@ The scanner writes `report.md` and `report.json` itself (no triage step) into
 `<reports>/audit-security/<host>/runs/<stamp>/`, or `--out DIR`, and compares with the last site scan
 of the host ("Since last run": new, worse, fixed). `--level`, `--console`, `--json`, `--state`,
 `--baseline`, `--no-baseline`, `--insecure` and `--offline` (no blocklist lookups) work as in code
-mode; `--header` sends a WAF bypass header, as for audit-launch. Then:
+mode; `--header` sends a WAF bypass header, as for audit-launch, and so does `AUDIT_HEADERS` (one
+`Name: value` per line), on audit-launch's requests and on site mode's own clickjacking request. Then:
 
 1. Read `report.md` and add one `**Verdict:**` line under the title: ready, or what to fix first.
 2. Reply in chat with the verdict, the failures and warnings under "Fix first" in order, and what

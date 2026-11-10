@@ -16,14 +16,14 @@ Each audit writes `report.md` and JSON to the [report folder](#report-folders) a
 
 | Skill | What it does | How to use it |
 | --- | --- | --- |
-| [audit-all](audit-all/SKILL.md) | Runs any or all of the audits below on a live URL and one or more repos, then writes one combined report and PDF with a verdict, a "fix first" list, a "Built with" line from check-tech-stack and a fix plan for audit-fix; an audit that fails to write its report shows as a "Failed" row with its stderr. `--geo` makes it a GEO audit for a client. | `/skills:audit-all https://example.com ../my-repo`, or `/skills:audit-all https://example.com --geo` · [flags](../README.md#audit-all) |
+| [audit-all](audit-all/SKILL.md) | Runs any or all of the audits below on a live URL and one or more repos, then writes one combined report and PDF with a verdict, a security section for the live site even without a repo, a "fix first" list, a "Built with" line from check-tech-stack and a fix plan for audit-fix; an audit that fails to write its report shows as a "Failed" row with its stderr. `--geo` makes it a GEO audit for a client. | `/skills:audit-all https://example.com ../my-repo`, or `/skills:audit-all https://example.com --geo` · [flags](../README.md#audit-all) |
 | [audit-fix](audit-fix/SKILL.md) | Works through an audit-all or plan-geo fix plan with one subagent per task, each in its own git worktree. Commits locally, never pushes; a person reviews and merges. | `/skills:audit-fix` after audit-all, or `/skills:audit-fix <run folder>` · [flags](../README.md#audit-fix) |
-| [audit-launch](audit-launch/SKILL.md) | Pre-launch or go-live check: Lighthouse, security headers, validators, robots/sitemap/canonical, redirects, soft 404s, TLS, DNS (read over DNS-over-HTTPS when the local resolver answers addresses only), HSTS preload list, exposed files, caching, cookies, broken links, share previews and icons. | `/skills:audit-launch https://staging.example.com --env staging` · [flags](../README.md#audit-launch) |
+| [audit-launch](audit-launch/SKILL.md) | Pre-launch or go-live check: Lighthouse, security headers, validators, robots/sitemap/canonical, redirects, soft 404s, TLS, DNS (read over DNS-over-HTTPS when the local resolver answers addresses only), HSTS preload list, exposed files, caching, cookies, trackers and the consent tool, broken links, share previews and icons. With `PSI_API_KEY`, real-user Core Web Vitals (CrUX). | `/skills:audit-launch https://staging.example.com --env staging` · [flags](../README.md#audit-launch) |
 | [audit-a11y](audit-a11y/SKILL.md) | Accessibility against WCAG 2.2 and EN 301 549: axe-core and HTML_CodeSniffer, a keyboard-only walk, contrast, 320 px reflow and text spacing. | `/skills:audit-a11y https://example.com --pages 10` · [flags](../README.md#audit-a11y) |
 | [audit-seo](audit-seo/SKILL.md) | Site-wide SEO and AI search (GEO): titles and descriptions, share previews, structured data and rich results, sitemap and robots, canonical and hreflang, broken links in every language section, plus a GEO readiness score: AI crawler rules in robots.txt and at the CDN, text that only JavaScript builds, llms.txt, entity and article markup, dates and authors (news pages without markup included), answer structure. | `/skills:audit-seo https://example.com`, `--geo` for a GEO audit, `--schema-only page.html` for markup only, `--save-html DIR` to keep the pages, `--from-archive DIR` to audit saved pages offline · [flags](../README.md#audit-seo) |
 | [audit-eco](audit-eco/SKILL.md) | Carbon footprint per page view (Sustainable Web Design model), page weight, green hosting and what to cut first. | `/skills:audit-eco https://example.com --grid DK --views 50000` · [flags](../README.md#audit-eco) |
-| [audit-privacy](audit-privacy/SKILL.md) | GDPR and cookie compliance as three new visitors (no choice, reject, accept): trackers before consent, banner design, Consent Mode v2, third-country transfers, privacy and cookie policy. | `/skills:audit-privacy https://example.com` · [flags](../README.md#audit-privacy) |
-| [audit-infra](audit-infra/SKILL.md) | Domain, DNS and DNSSEC, mail authentication (SPF, DKIM, DMARC, MTA-STS), TLS per endpoint (and whether a proxy re-signs it), CDN and HTTP/3, HSTS preload and subdomains from Certificate Transparency. | `/skills:audit-infra example.com` · [flags](../README.md#audit-infra) |
+| [audit-privacy](audit-privacy/SKILL.md) | GDPR and cookie compliance as three new visitors (no choice, reject, accept): trackers before consent, banner design, Consent Mode v2, third-country transfers, privacy and cookie policy (including text behind closed accordions, also when a Next.js page only has it in its script payload). | `/skills:audit-privacy https://example.com` · [flags](../README.md#audit-privacy) |
+| [audit-infra](audit-infra/SKILL.md) | Domain, DNS and DNSSEC (read over DNS-over-HTTPS), mail authentication (SPF with every include, DKIM, DMARC, MTA-STS), TLS per endpoint (and whether a proxy re-signs it), CDN and HTTP/3, HSTS preload and subdomains from Certificate Transparency (crt.sh, or Cert Spotter when it does not answer). | `/skills:audit-infra example.com` · [flags](../README.md#audit-infra) |
 | [audit-security](audit-security/SKILL.md) | Code security review of a repo: committed secrets (also in git history), vulnerable dependencies, injection and XSS sinks, weak crypto, config and GitHub Actions risks. Site mode for a live URL: security headers (CSP, frame-ancestors, Permissions-Policy, HSTS, Referrer-Policy), cookie flags, CORS, exposed files and admin paths, security.txt and blocklists, passive only. Report only. | `/skills:audit-security ../my-repo --history` · `/skills:audit-security https://www.example.com` · [flags](../README.md#audit-security) |
 | [audit-solution-health](audit-solution-health/SKILL.md) | Periodic dependency health check: outdated, vulnerable and deprecated npm and NuGet packages, licences, runtime end-of-life and external APIs that are shutting down. Remembers the last run. | `/skills:audit-solution-health` in the solution folder · [flags](../README.md#audit-solution-health) |
 
@@ -33,7 +33,7 @@ Checks describe or look something up. They give no verdict on the code and take 
 
 | Skill | What it does | How to use it |
 | --- | --- | --- |
-| [check-tech-stack](check-tech-stack/SKILL.md) | Tells what one or more websites are built with: CMS, framework, libraries and versions, hosting, CDN, analytics, tag manager, consent tool, with evidence for each finding, library versions against npm and what changed since the last run. | `/skills:check-tech-stack https://example.com https://competitor.com`, or `--pages 5` to read more pages · [flags](../README.md#check-tech-stack) |
+| [check-tech-stack](check-tech-stack/SKILL.md) | Tells what one or more websites are built with: CMS, framework, libraries and versions, hosting, CDN, analytics, tag manager, consent tool, with evidence for each finding, library versions against npm and what changed since the last run. | `/skills:check-tech-stack https://example.com https://example.org`, or `--pages 5` to read more pages · [flags](../README.md#check-tech-stack) |
 | [check-node-toolchain](check-node-toolchain/SKILL.md) | Reports what is outdated in your local Node setup (nvm, Node versions, global npm packages, brew-installed pnpm/yarn/bun/deno, a stray system Node) and upgrades only what you approve. | `/skills:check-node-toolchain` · [flags](../README.md#check-node-toolchain) |
 
 ### Plans
@@ -100,9 +100,25 @@ Nothing that should carry over between runs lives in a timestamped folder. Each 
 - Each skill finds its own target folder by target, even when the run output goes somewhere else (audit-all passes `--out` into its own run folder), and compares with its last run automatically. `--baseline FILE` picks a specific run; `--no-baseline` skips the comparison.
 - A folder with an `.audit-run` marker, or one inside it, is never used for state: audit-solution-health ignores a `--dir` there.
 - When a target folder is new, a skill looks once for its earlier results in the old layouts (timestamped folders, audit-all run folders) by their content, not by folder name.
+- audit-security keeps one target folder per repo (code mode) and one per host (site mode, `<folder>/audit-security/<host>/`).
 - audit-solution-health's state folder is `<folder>/audit-solution-health/<solution>/` itself (manifest.json, state.json, snapshots/, notes.md), because each run updates the state in place; `--in-repo` keeps it in the solution for teams that commit it.
 
-Skills install separately, so audit-launch, audit-security, audit-a11y and audit-all each carry a copy of `scripts/lib/target-state.mjs` (audit-security's tests check the copies are identical), and each carries its own `reportsRoot()` (see `audit-security/scripts/scan.mjs`); keep them in step. A new skill that writes reports should use the same layout. Other shared copies, each checked by a test: `lib/cmp.mjs` (the consent-tool detector) in audit-launch and audit-privacy, `lib/rsc.mjs` in audit-privacy and plan-geo, `lib/sources.mjs` and `lib/target.mjs` from is-website-safe in audit-security. audit-security's site mode and plan-geo also run a sibling skill (audit-launch, audit-seo) from the folder next to theirs.
+Skills install separately, so every skill that keeps a target folder (audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security, audit-all and plan-geo) carries a copy of `scripts/lib/target-state.mjs` (audit-security's tests check the copies are identical), and audit-security carries its own `reportsRoot()` (see `audit-security/scripts/scan.mjs`); keep them in step. A new skill that writes reports should use the same layout.
+
+Other shared copies, each checked by a test:
+
+| File | In | What it is |
+| --- | --- | --- |
+| `lib/cmp.mjs` | audit-launch, audit-privacy | The consent-tool detector: the vendor host the page loads wins over markup |
+| `lib/rsc.mjs` | audit-privacy, plan-geo | Text from a Next.js page's script payload, the page's own components only |
+| `lib/schema.mjs` | audit-launch, audit-seo, plan-geo | validator.schema.org |
+| `lib/html.mjs`, `lib/render.mjs`, `lib/rich.mjs` | audit-seo, plan-geo | HTML parsing, headless rendering, Google's rich-result rules |
+| `lib/tasks.mjs` | audit-all, plan-geo | The tasks.json shape audit-fix reads |
+| `lib/diff.mjs` | audit-seo, audit-eco | "Since last run" |
+| `lib/common.mjs` | audit-infra, audit-privacy | The result shape, report folder, Markdown and task candidates |
+| `lib/sources.mjs`, `lib/target.mjs` | is-website-safe, audit-security | Blocklist lookups and URL parsing |
+
+audit-security's site mode and plan-geo also run a sibling skill (audit-launch, audit-seo) from the folder next to theirs.
 
 ## Levels and the console list
 

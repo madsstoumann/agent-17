@@ -234,10 +234,17 @@ jobs:
       AUDIT_HEADERS: ${{ secrets.AUDIT_HEADERS }}   # preview protection bypass, if any
     steps:
       # check out agent-17 and set up Node as above
-      - run: node agent-17/skills/audit-launch/scripts/audit.mjs "$URL" --env staging --console --level error
+      - run: node agent-17/skills/audit-launch/scripts/audit.mjs "$URL" --env staging --skip headers,exposed --console --level error
       - run: node agent-17/skills/audit-a11y/scripts/a11y.mjs "$URL" --pages 5 --console --level error
       - run: node agent-17/skills/audit-seo/scripts/seo.mjs "$URL" --console --level error
+      - run: node agent-17/skills/audit-security/scripts/scan.mjs "$URL" --skip redirects --console --level error
 ```
+
+The last step is audit-security's site mode: security headers (with clickjacking), exposed files and
+admin paths, security.txt and the blocklists. It runs audit-launch's own header and exposed-file
+checks, so the job splits them as audit-all does: audit-launch skips `headers,exposed`, the site
+scan skips `redirects`, and each finding appears once. Set `GOOGLE_SAFE_BROWSING_KEY`, `URLHAUS_AUTH_KEY` or
+`VIRUSTOTAL_API_KEY` as secrets for more blocklists than OpenPhish.
 
 GitHub's Ubuntu runners have Chrome installed, which audit-a11y, audit-eco, audit-privacy and audit-seo
 use. Set `CHROME_PATH` if they can't find it. Set `PSI_API_KEY` so Lighthouse results come from
@@ -266,6 +273,13 @@ the last run.
 to visitors in the EU, so audit-privacy can miss what an EU visitor sees. Run it from a self-hosted
 runner in the EU, or from your own machine.
 
+**Behind a proxy or a limited DNS resolver.** Some runners and cloud sandboxes re-sign TLS on their
+way out, or have a resolver that answers addresses only (no TXT, MX, NS or CAA). audit-infra notices
+both: its certificate rows are skipped with `tls.interception` naming the CA that re-signed them,
+and audit-infra and audit-launch read DNS and mail records over DNS-over-HTTPS, or skip them with
+"the local resolver returned no records" when that is blocked too. A skipped row is not a pass:
+check those rows from another network.
+
 ### Fixing what was found
 
 Keep fixing started by a person. Run `/skills:audit-fix` on a finished audit-all run: it works on a local
@@ -288,7 +302,7 @@ These gaps are known. Until they are fixed, treat the CI workflows above as repo
 
 | Gap | What it means | Workaround for now |
 | --- | --- | --- |
-| The scripts always exit with 0 | A failed check can't fail the build | Read the first line of `--console` output (`— N errors`) in a script step |
+| The scripts exit with 0 whatever they find, except audit-launch with `--strict` (exit 3 when anything fails) | Most audits can't fail the build on their own | Use `--strict` for audit-launch; for the others, read the first line of `--console` output (`— N errors`) in a script step |
 | Baselines and triage live in the reports folder on the machine | A fresh CI runner has no "since last run" and re-triages everything | Cache `AUDIT_OUT_DIR` between runs as in the example; never commit reports, they can describe live secrets |
 | Each run is compared with the last run, not with the main branch | Two pull requests can overwrite each other's baseline | Cache per branch and fall back to main's cache, as in the example |
 | Some decisions need a person: the first solution-health manifest, accepting a licence, accepting a security finding | An unattended run can't make them | Make them once in Claude Code and commit the result (`--in-repo`) |
