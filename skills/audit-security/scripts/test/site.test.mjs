@@ -204,3 +204,25 @@ test('countFramingOnce: a missing frame-ancestors is one finding, not three (X-F
   const ok = [rows[0], frameAncestors({ 'content-security-policy': "frame-ancestors 'self'" })];
   assert.equal(countFramingOnce(ok)[0].status, 'fail');
 });
+
+test('hstsSubdomains: the fix keeps the site\'s own max-age and directives (never suggests a shorter one)', () => {
+  assert.match(hstsSubdomains({ 'strict-transport-security': 'max-age=63072000' }).fix, /Strict-Transport-Security: max-age=63072000; includeSubDomains\./);
+  assert.match(hstsSubdomains({ 'strict-transport-security': 'max-age=31536000; preload' }).fix, /max-age=31536000; includeSubDomains; preload\./);
+  assert.doesNotMatch(hstsSubdomains({ 'strict-transport-security': 'max-age=63072000' }).fix, /31536000/);
+});
+
+test('diffRows: a row folded into another by the skill is "merged", not "fixed"', () => {
+  const prev = { results: [{ id: 'headers.xfo', status: 'fail', title: 'X-Frame-Options', evidence: 'missing' }, { id: 'headers.observatory', status: 'fail', title: 'MDN HTTP Observatory' }, { id: 'headers.csp', status: 'fail', title: 'Content-Security-Policy' }] };
+  const now = countFramingOnce([
+    { id: 'headers.xfo', group: 'headers', status: 'fail', title: 'X-Frame-Options', evidence: 'missing', fix: 'X-Frame-Options: DENY' },
+    { id: 'headers.observatory', group: 'headers', status: 'fail', title: 'MDN HTTP Observatory', evidence: 'B- (65/100)', data: { score: 65, failed: [{ name: 'x-frame-options', modifier: -20 }] } },
+    { id: 'headers.csp', group: 'headers', status: 'pass', title: 'Content-Security-Policy', evidence: 'default-src self' },
+    frameAncestors({}),
+  ]);
+  const d = diffRows(prev, { results: now });
+  assert.deepEqual(d.fixed.map((r) => r.id), ['headers.csp'], 'only a row the site fixed');
+  assert.deepEqual(d.merged.map((r) => [r.id, r.into]), [['headers.xfo', 'Clickjacking (frame-ancestors)'], ['headers.observatory', 'Clickjacking (frame-ancestors)']]);
+  const md = renderSiteMarkdown({ input: { url: 'https://www.example.com/' }, site: { host: 'www.example.com' }, counts: {}, results: now, diff: d, version: 't' });
+  assert.match(md, /- Merged: \*\*X-Frame-Options\*\* \(was fail\) is now counted under \*\*Clickjacking \(frame-ancestors\)\*\*/);
+  assert.doesNotMatch(md, /Fixed: ✅ \*\*X-Frame-Options/);
+});

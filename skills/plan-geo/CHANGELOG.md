@@ -2,6 +2,12 @@
 
 All notable changes to the `plan-geo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.6.1] - 2026-11-10
+
+### Fixed
+- `check` no longer flags schema.org enumeration members (`https://schema.org/Tuesday` in `dayOfWeek`, `…/InStock`) as "URL not linked from the page": they are vocabulary, not values from the page.
+- `check` flags a `datePublished`/`dateModified` that equals a page date read from an unlabelled line (a date line next to the h1 or a press dateline): "the page does not label this date …; confirm it before using it as datePublished". Before, a draft that used that date passed unconfirmed.
+
 ## [1.6.0] - 2026-11-10
 
 ### Changed

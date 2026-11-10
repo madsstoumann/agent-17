@@ -35,7 +35,7 @@ import { writeFixPlan, validateTasks } from './lib/tasks.mjs';
 import { mergeGraph, sampleHtml, injectLive, samplesReadme } from './lib/samples.mjs';
 import { openArchive, archiveHttp, hasMask, stripMasks, countMasks } from './lib/archive.mjs';
 
-export const VERSION = '1.6.0';
+export const VERSION = '1.6.1';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const log = (...a) => process.stderr.write(`${a.join(' ')}\n`);

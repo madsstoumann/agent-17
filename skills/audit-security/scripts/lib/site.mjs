@@ -136,8 +136,12 @@ export function hstsSubdomains(headers = {}) {
   const v = String(headers['strict-transport-security'] || '');
   const age = Number(/max-age\s*=\s*"?(\d+)/i.exec(v)?.[1] || 0);
   if (!v || age < 31536000 || /includesubdomains/i.test(v)) return null;
+  // The advice keeps the site's own max-age (always a year or more here) and its other directives.
+  const parts = v.split(';').map((x) => x.trim()).filter(Boolean);
+  const at = parts.findIndex((x) => /^max-age/i.test(x));
+  parts.splice(at + 1, 0, 'includeSubDomains');
   return row('headers.hsts-subdomains', 'info', 'HSTS includeSubDomains', `Strict-Transport-Security: ${v.trim()}: no includeSubDomains, so subdomains are not covered and the domain cannot be preloaded`, {
-    fix: 'Add includeSubDomains once every subdomain answers over https (then preload if wanted): Strict-Transport-Security: max-age=31536000; includeSubDomains.',
+    fix: `Add includeSubDomains once every subdomain answers over https (then preload if wanted): Strict-Transport-Security: ${parts.join('; ')}.`,
   });
 }
 
@@ -153,7 +157,7 @@ export function countFramingOnce(results) {
   if (!fa || (fa.status !== 'fail' && fa.status !== 'warn')) return results;
   const note = 'counted once, under Clickjacking (frame-ancestors)';
   return results.map((r) => {
-    if (r.id === 'headers.xfo' && (r.status === 'fail' || r.status === 'warn')) return { ...r, status: 'info', evidence: `${r.evidence} (${note})`, fix: '' };
+    if (r.id === 'headers.xfo' && (r.status === 'fail' || r.status === 'warn')) return { ...r, status: 'info', evidence: `${r.evidence} (${note})`, fix: '', mergedInto: fa.id };
     if (r.id === 'headers.observatory' && (r.status === 'fail' || r.status === 'warn')) {
       const failed = r.data?.failed || [];
       const xfo = failed.find((t) => t.name === 'x-frame-options');
@@ -163,7 +167,7 @@ export function countFramingOnce(results) {
       const status = /^A/.test(grade) ? 'pass' : /^B/.test(grade) ? 'warn' : 'fail';
       // Its framing advice is the Clickjacking row's fix; keep the rest.
       const fix = String(r.fix || '').split(/(?<=\.)\s+/).filter((x) => !/frame-ancestors|x-frame-options/i.test(x)).join(' ');
-      return { ...r, status, evidence: `${r.evidence} (x-frame-options ${note}; ${grade} without it)`, fix };
+      return { ...r, status, evidence: `${r.evidence} (x-frame-options ${note}; ${grade} without it)`, fix, mergedInto: fa.id };
     }
     return r;
   });
@@ -204,19 +208,28 @@ export async function checkBlocklists(url, { fetch: f = globalThis.fetch, env = 
   return blocklistRows({ openphish, safeBrowsing: sb, urlhaus: uh, virusTotal: vt }, t.host);
 }
 
-/** Rows that changed since the last site scan: { fixed, new, worse } by id + subject. */
+/**
+ * Rows that changed since the last site scan: { fixed, new, worse, merged } by id + subject.
+ * A row the skill now counts under another (`mergedInto`, see countFramingOnce) went quiet because
+ * of the skill, not the site: it is listed as merged, never as fixed. A row that is gone is neither.
+ */
 export function diffRows(prev, cur) {
   const key = (r) => `${r.id}|${r.subject || ''}`;
   const bad = (r) => r && (r.status === 'fail' || r.status === 'warn');
   const before = new Map((prev?.results || []).map((r) => [key(r), r]));
   const now = new Map((cur?.results || []).map((r) => [key(r), r]));
-  const out = { fixed: [], new: [], worse: [] };
+  const out = { fixed: [], new: [], worse: [], merged: [] };
   for (const [k, r] of now) {
     const p = before.get(k);
     if (bad(r) && !bad(p)) out.new.push(r);
     else if (r.status === 'fail' && p?.status === 'warn') out.worse.push(r);
   }
-  for (const [k, p] of before) if (bad(p) && now.has(k) && !bad(now.get(k))) out.fixed.push(p);
+  for (const [k, p] of before) {
+    const r = now.get(k);
+    if (!bad(p) || !r || bad(r)) continue;
+    if (r.mergedInto) out.merged.push({ ...p, into: now.get(`${r.mergedInto}|`)?.title || r.mergedInto });
+    else out.fixed.push(p);
+  }
   return out;
 }
 
@@ -323,11 +336,12 @@ export function renderSiteMarkdown(report, { levels } = {}) {
     L.push('');
   }
   const d = report.diff;
-  if (d && (d.fixed.length || d.new.length || d.worse.length)) {
+  if (d && (d.fixed.length || d.new.length || d.worse.length || d.merged?.length)) {
     L.push('## Since last run', '');
     for (const r of d.new) L.push(`- New: ${GLYPH[r.status]} **${r.title}** — ${r.evidence}`);
     for (const r of d.worse) L.push(`- Worse: ❌ **${r.title}** — ${r.evidence}`);
     for (const r of d.fixed) L.push(`- Fixed: ✅ **${r.title}** (was ${r.status})`);
+    for (const r of d.merged || []) L.push(`- Merged: **${r.title}** (was ${r.status}) is now counted under **${r.into}**`);
     L.push('');
   }
   for (const g of SITE_GROUPS) {

@@ -313,7 +313,10 @@ test('verifyDraft: values from the page pass, invented ones are flagged', () => 
     mentions: { '@type': 'SoftwareApplication', name: 'Acme One', url: 'https://acme.com/products/one' },
     inLanguage: 'en',
   };
-  assert.deepEqual(verifyDraft(good, p), []);
+  // Everything else is on the page; the date is the unlabelled line under the title, so it waits for a person to confirm it.
+  assert.deepEqual(verifyDraft(good, p).map((f) => [f.path, f.reason]), [['datePublished', 'the page does not label this date (a date line next to the h1); confirm it before using it as datePublished']]);
+  const { datePublished: _unconfirmed, ...undated } = good;
+  assert.deepEqual(verifyDraft(undated, p), []);
   const bad = {
     '@type': 'Article', headline: 'What is an IBOR?',
     datePublished: '2027-01-01', dateModified: '2025-04-01', award: 'Best IBOR vendor 2025', foundingDate: '1971',
@@ -491,7 +494,7 @@ test('extract → check → build on a local site', async () => {
     fs.writeFileSync(path.join(out, 'markup', 'broken.jsonld'), '{ nope');
     const ck = await run(['check', out, '--no-remote']);
     assert.equal(ck.code, 0, ck.err);
-    assert.match(ck.out, /WARN markup\/insights\.jsonld \[Article\]: 1 value\(s\) not on the page: award "Invented award"/);
+    assert.match(ck.out, /WARN markup\/insights\.jsonld \[Article\]: 2 value\(s\) not on the page: datePublished "2025-03-07"; award "Invented award"/);
     assert.match(ck.out, /FAIL markup\/broken\.jsonld: does not parse/);
 
     fs.writeFileSync(path.join(out, 'markup', 'site.jsonld'), JSON.stringify({ '@context': 'https://schema.org', '@graph': [{ '@type': 'Organization', '@id': `${base}/#organization`, name: 'Acme', url: `${base}/` }, { '@type': 'SoftwareApplication', name: 'Acme One' }] }));
@@ -828,4 +831,27 @@ test('extractPage records where the page date came from', () => {
   assert.equal(none.leadDate, null);
   assert.equal(none.leadDateSource, null);
   assert.match(pageDigest(none), /Page date: none stated near the top \(unknown\)/);
+});
+
+// ---------------------------------------------------------------- check: enumerations, unlabelled dates, one list per type
+
+test('verifyDraft: schema.org enumeration members are vocabulary, not values to find on the page', () => {
+  const p = extractPage('<html lang="da"><body><main><h1>Besøg</h1><p>Åbent tirsdag-søndag 10-17.</p></main></body></html>', 'https://example.dk/besog');
+  const draft = { '@type': 'Museum', name: 'Besøg', openingHoursSpecification: [{ '@type': 'OpeningHoursSpecification', dayOfWeek: ['https://schema.org/Tuesday', 'http://schema.org/Sunday'], opens: '10:00', closes: '17:00' }], offers: { availability: 'https://schema.org/InStock' } };
+  const flags = verifyDraft(draft, p).map((f) => f.path);
+  assert.equal(flags.some((x) => /dayOfWeek/.test(x)), false, flags.join(', '));
+  // A schema.org page that is not an enumeration member is still a URL to check.
+  assert.deepEqual(verifyDraft({ '@type': 'WebPage', name: 'Besøg', url: 'https://schema.org/docs/full.html' }, p).map((f) => f.reason), ['URL not linked from the page']);
+});
+
+test('verifyDraft: a page date read from an unlabelled date line or press dateline is never accepted as datePublished unconfirmed', () => {
+  const dateline = extractPage('<html lang="de"><body><main><h1>Investoren</h1><p>29. Oktober 2026</p>' + '<p>Wort wort wort wort wort wort wort wort wort wort wort wort.</p>'.repeat(6) + '</main></body></html>', 'https://example.com/de-de/investors');
+  assert.ok(['dateline', 'press'].includes(dateline.leadDateSource), dateline.leadDateSource);
+  const flags = verifyDraft({ '@type': 'WebPage', name: 'Investoren', datePublished: dateline.leadDate }, dateline);
+  assert.deepEqual(flags.map((f) => f.path), ['datePublished']);
+  assert.match(flags[0].reason, /confirm it before using it as datePublished/);
+  // A labelled date ("Published 4 June 2024") is the page's own and passes.
+  const labelled = extractPage('<html lang="en"><body><main><h1>Report</h1><p>Published 4 June 2024</p>' + '<p>word word word word word word word word word word word word.</p>'.repeat(6) + '</main></body></html>', 'https://example.com/report');
+  assert.equal(labelled.leadDateSource, 'label');
+  assert.deepEqual(verifyDraft({ '@type': 'Article', headline: 'Report', datePublished: '2024-06-04' }, labelled), []);
 });

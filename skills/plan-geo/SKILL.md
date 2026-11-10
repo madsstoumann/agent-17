@@ -4,7 +4,7 @@ description: Use when someone wants to know what structured data and what conten
 argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--insecure] [--no-remote | --no-validate] [--samples] [--live] [--from-archive DIR [--allow-live]] [--urls a,b]"
 allowed-tools: Bash(node:*), Read, Write
 metadata:
-  version: "1.6.0"
+  version: "1.6.1"
 ---
 
 # GEO plan

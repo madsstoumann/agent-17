@@ -10,6 +10,10 @@
  * Zero dependencies. Node >= 22. Pure.
  */
 import { hasMask } from './archive.mjs';
+import { GUESSED_DATE } from './extract.mjs';
+
+/** A schema.org enumeration member (https://schema.org/Tuesday, …/InStock): vocabulary, not a claim. */
+const SCHEMA_ENUM = /^https?:\/\/schema\.org\/[A-Z][A-Za-z0-9]*$/;
 
 // Keys whose values are vocabulary, identifiers or settings rather than claims about the page.
 const SKIP_KEYS = new Set(['@context', '@type', '@id', '@language', 'inLanguage', 'encodingFormat', 'availability', 'itemCondition', 'eventStatus', 'eventAttendanceMode', 'employmentType', 'priceCurrency', 'applicationCategory', 'operatingSystem', 'contactType', 'areaServed', 'addressCountry', 'position', 'width', 'height', 'ratingValue', 'bestRating', 'worstRating']);
@@ -86,6 +90,7 @@ export function verifyDraft(data, page) {
     if (!value) continue;
     if (typeof raw === 'number') continue;
     if (hasMask(value)) { out.push({ path: p, value: value.length > 90 ? `${value.slice(0, 87)}…` : value, reason: 'masked placeholder from the page archive, not a real value' }); continue; }
+    if (SCHEMA_ENUM.test(value)) continue;
     if (/^https?:\/\//i.test(value)) {
       if (!knownUrl(value, page)) out.push({ path: p, value, reason: 'URL not linked from the page' });
       continue;
@@ -98,6 +103,9 @@ export function verifyDraft(data, page) {
       if (!shown) out.push({ path: p, value, reason: year ? 'year not on the page' : 'date not shown on the page' });
       // A publication date must be the date the page shows as its own, not a deadline in the text.
       else if (PAGE_DATE_KEYS.test(key) && !year && d !== page.leadDate) out.push({ path: p, value, reason: !page.leadDate ? 'the page states no date of its own near the top; this date is from the text' : ['dateline', 'press'].includes(page.leadDateSource) ? `the page does not label its own date; the date line by the title reads ${page.leadDate}` : `the page's own date is ${page.leadDate}` });
+      // The page's own date read from an unlabelled line (a date line by the h1, a press dateline):
+      // it may be the page date, but nothing on the page says so; a person confirms it first.
+      else if (PAGE_DATE_KEYS.test(key) && !year && GUESSED_DATE.has(page.leadDateSource)) out.push({ path: p, value, reason: `the page does not label this date (${page.leadDateSource === 'press' ? 'a press release dateline' : 'a date line next to the h1'}); confirm it before using it as ${key}` });
       continue;
     }
     if (/^#|^_:/.test(value)) continue;

@@ -207,3 +207,37 @@ test('common.mjs is the same file in audit-infra and audit-privacy', () => {
   const other = path.join(here, '../../../audit-infra/scripts/lib/common.mjs');
   if (fs.existsSync(other)) assert.equal(a, fs.readFileSync(other, 'utf8'));
 });
+
+test('TikTok: ttcsid cookies are TikTok, and its cookies on its own domain count as a tracker before consent with no captured request', () => {
+  assert.equal(classifyCookie({ name: 'ttcsid', domain: '.shop.dk' }, 'shop.dk').vendor, 'TikTok');
+  assert.equal(classifyCookie({ name: 'ttcsid_C0EXAMPLEPIXEL1234', domain: '.shop.dk' }, 'shop.dk').purpose, 'marketing');
+  assert.equal(classifyHost('analytics.tiktok.com').vendor, 'TikTok');
+  const rows = analyse({
+    url: 'https://shop.dk/', host: 'shop.dk',
+    first: {
+      requests: [req('https://policy.app.cookieinformation.com/uc.js')],
+      cookies: [{ name: '_ttp', domain: '.tiktok.com' }, { name: '_tt_enable_cookie', domain: '.shop.dk' }, { name: '_ttp', domain: '.shop.dk' }, { name: 'ttcsid', domain: '.shop.dk' }],
+      facts: { globals: [], localStorage: [], sessionStorage: [], policyLinks: [], forms: [] },
+      banner: { found: true, text: 'Cookies', accept: [BUTTON('Accepter')], reject: [BUTTON('Afvis')], settings: [], checked: 0 },
+      html: '', pages: [],
+    },
+    policies: [],
+  });
+  const by = Object.fromEntries(rows.map((r) => [r.id, r]));
+  assert.equal(by['before.trackers'].status, 'fail');
+  assert.match(by['before.trackers'].evidence, /TikTok \(tiktok\.com, cookie _ttp\)/);
+  assert.equal(by['transfer.third-countries'].status, 'warn');
+  assert.match(by['transfer.third-countries'].evidence, /CN: TikTok/);
+  assert.equal(by['before.unclassified-cookies'], undefined, 'ttcsid is no longer unrecognised');
+});
+
+test('withCookieHosts: no extra row when a request already reached the cookie\'s domain or the vendor', () => {
+  const parties = thirdParties([req('https://www.google.com/recaptcha/api.js')], 'shop.dk');
+  const rows = analyse({
+    url: 'https://shop.dk/', host: 'shop.dk',
+    first: { requests: [req('https://www.google.com/recaptcha/api.js')], cookies: [{ name: 'NID', domain: '.google.com' }], facts: { globals: [], localStorage: [], sessionStorage: [], policyLinks: [], forms: [] }, banner: { found: false, accept: [], reject: [], settings: [] }, html: '', pages: [] },
+    policies: [],
+  });
+  const hosts = rows.find((r) => r.id === 'transfer.hosts').data.hosts.map((h) => h.host);
+  assert.deepEqual(hosts, parties.map((p) => p.host));
+});
