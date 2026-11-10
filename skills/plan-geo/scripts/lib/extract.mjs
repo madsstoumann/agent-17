@@ -250,7 +250,26 @@ export function pressDateline(line) {
  * date after `today`: a page is not published in the future, an event is. null when there is none.
  * `markdown` is toMarkdown() of the main content, with markDated() applied for the element rule.
  */
-export function leadDate(markdown, { today = new Date().toISOString().slice(0, 10) } = {}) {
+export function leadDate(markdown, opts = {}) {
+  return leadDateSource(markdown, opts)?.date || null;
+}
+
+// Where a page date was read. The first two are the page labelling its own date; the last two are
+// read from how a line looks (a date alone next to the h1, a press release's opening), so a page
+// date from them is a reading, not a statement, and extractPage() (ownDate) prefers the head's
+// article:published_time or the page's own JSON-LD datePublished over them when the page shows that date.
+export const DATE_SOURCES = {
+  element: 'a <time> or date element by the h1',
+  label: 'a published/updated label',
+  meta: 'article:published_time, shown on the page',
+  jsonld: 'the page\'s JSON-LD datePublished, shown on the page',
+  dateline: 'a date line next to the h1 (no label)',
+  press: 'a press release dateline (no label)',
+};
+export const GUESSED_DATE = new Set(['dateline', 'press']);
+
+/** leadDate() with where the date came from: { date, source } (a DATE_SOURCES key), or null. */
+export function leadDateSource(markdown, { today = new Date().toISOString().slice(0, 10) } = {}) {
   const lines = String(markdown || '').split('\n').filter(Boolean);
   const h1 = lines.findIndex((l) => /^# /.test(l));
   let words = 0;
@@ -281,20 +300,20 @@ export function leadDate(markdown, { today = new Date().toISOString().slice(0, 1
     const mark = l.indexOf(DATE_MARK);
     if (mark >= 0 && close.has(i)) {
       const d = ok(visibleDates(l.slice(mark, mark + 80))[0]);
-      if (d) return d;
+      if (d) return { date: d, source: 'element' };
     }
     DATE_LABEL.lastIndex = 0;
     for (const m of l.matchAll(DATE_LABEL)) {
       const d = ok(visibleDates(l.slice(m.index + m[0].length, m.index + m[0].length + 40))[0]);
-      if (d) return d;
+      if (d) return { date: d, source: 'label' };
     }
     if (near.has(i) && dateline(l)) {
       const d = ok(visibleDates(l)[0]);
-      if (d) return d;
+      if (d) return { date: d, source: 'dateline' };
     }
     // A press release's dateline: "Copenhagen, New York – 23 April 2024 – Example today announced".
     const d = !/^#/.test(l) && ok(pressDateline(l));
-    if (d) return d;
+    if (d) return { date: d, source: 'press' };
   }
   return null;
 }
@@ -458,6 +477,7 @@ export function extractPage(html, url) {
   const dates = visibleDates(fullText);
   const days = dayMonths(fullText);
   const published = publishedMeta(html);
+  const own = ownDate(leadDateSource(markedMd), { published, jsonLd: meta.jsonLd, dates });
   return {
     url,
     title: meta.title,
@@ -471,8 +491,9 @@ export function extractPage(html, url) {
     questions: mergeQuestions(questionPairs(mainMd), hidden.length ? questionPairs(hiddenMd) : []),
     tables: mainMd.split('\n').filter((l) => l.startsWith('| ')).length,
     dates,
-    // The date shown at the top; without one, article:published_time when the page shows that date too.
-    leadDate: leadDate(markedMd) || (dates.includes(published) ? published : null),
+    // The page's own date and where it was read (DATE_SOURCES), or null: see ownDate().
+    leadDate: own?.date || null,
+    leadDateSource: own?.source || null,
     publishedMeta: published,
     dayMonths: days,
     bylines: bylines(markedMd),
@@ -484,6 +505,33 @@ export function extractPage(html, url) {
     hidden: hiddenText ? { source: 'Next.js payload', words: blockWords(hidden), markdown: hiddenMd } : null,
     text: fullText,
   };
+}
+
+/** datePublished (YYYY-MM-DD) from the page's own JSON-LD: an Article, NewsArticle, BlogPosting or WebPage node. */
+function jsonLdPublished(blocks) {
+  const seen = [];
+  const walk = (v) => {
+    if (Array.isArray(v)) return v.forEach(walk);
+    if (!v || typeof v !== 'object') return;
+    if (typeof v.datePublished === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v.datePublished)) seen.push(v.datePublished.slice(0, 10));
+    for (const [k, x] of Object.entries(v)) if (k !== 'datePublished') walk(x);
+  };
+  for (const b of blocks || []) if (!b.error) walk(b.data);
+  return [...new Set(seen)].length === 1 ? seen[0] : null;
+}
+
+/**
+ * The page's own date, from what states it: a date element or a published/updated label near the h1
+ * first; then article:published_time or the page's JSON-LD datePublished, when the page shows that
+ * date; then a reading of the lines (an unlabelled date line by the h1, a press dateline). A page
+ * that states none has no page date: "unknown" is a correct answer, a wrong date is not.
+ */
+export function ownDate(lead, { published = null, jsonLd = [], dates = [] } = {}) {
+  if (lead && !GUESSED_DATE.has(lead.source)) return lead;
+  if (published && dates.includes(published)) return { date: published, source: 'meta' };
+  const fromLd = jsonLdPublished(jsonLd);
+  if (fromLd && dates.includes(fromLd)) return { date: fromLd, source: 'jsonld' };
+  return lead || null;
 }
 
 /** The page's question headings plus the payload's questions: an answer from the payload fills an empty one. */
@@ -504,7 +552,7 @@ export function pageDigest(p, { maxChars = 14000 } = {}) {
   if (p.description) lines.push(`Meta description: ${p.description}`);
   if (p.lang) lines.push(`Language: ${p.lang}`);
   lines.push(`Words in main content: ${p.words} · question headings: ${p.questions.length} · table rows: ${p.tables}${p.hidden ? ` · words only in the Next.js payload: ${p.hidden.words}` : ''}`);
-  lines.push(`Page date: ${p.leadDate || 'none shown near the top'}${p.publishedMeta ? ` · article:published_time ${p.publishedMeta}${p.dates.includes(p.publishedMeta) ? '' : ' (not shown on the page)'}` : ''}${p.dates.length ? ` · other dates in the text: ${p.dates.filter((d) => d !== p.leadDate).join(', ') || 'none'}` : ''}`);
+  lines.push(`Page date: ${p.leadDate ? `${p.leadDate} (from ${DATE_SOURCES[p.leadDateSource] || 'the top of the page'}${GUESSED_DATE.has(p.leadDateSource) ? '; the page does not label it, so confirm it before using it as datePublished' : ''})` : 'none stated near the top (unknown)'}${p.publishedMeta ? ` · article:published_time ${p.publishedMeta}${p.dates.includes(p.publishedMeta) ? '' : ' (not shown on the page)'}` : ''}${p.dates.length ? ` · other dates in the text: ${p.dates.filter((d) => d !== p.leadDate).join(', ') || 'none'}` : ''}`);
   if (p.bylines.length) lines.push(`Bylines: ${p.bylines.join(', ')}`);
   if (p.breadcrumbs.length) lines.push(`Breadcrumb: ${p.breadcrumbs.map((b) => b.name).join(' › ')}`);
   const o = p.org;

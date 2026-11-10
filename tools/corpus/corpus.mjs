@@ -115,6 +115,7 @@ export function digestPage(p) {
     questions: (p.questions || []).length,
     tables: (p.tables || []).length,
     leadDate: p.leadDate ?? null,
+    leadDateSource: p.leadDateSource ?? null,
     publishedMeta: p.publishedMeta ?? null,
     dates: (p.dates || []).length,
     bylines,

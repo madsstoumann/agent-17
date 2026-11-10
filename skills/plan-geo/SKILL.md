@@ -4,7 +4,7 @@ description: Use when someone wants to know what structured data and what conten
 argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--insecure] [--no-remote | --no-validate] [--samples] [--live] [--from-archive DIR [--allow-live]] [--urls a,b]"
 allowed-tools: Bash(node:*), Read, Write
 metadata:
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # GEO plan
@@ -68,7 +68,11 @@ page states its own date: a `<time>` element or an element classed as a date or 
 h1, a label such as "Opdateret 3. maj 2026" / "Published 3 May 2026" near the title, a date line
 right above or below the h1, or a press release dateline ("Copenhagen, 3 May 2026 –"). Dates in
 the text, law references, FAQ answers, event and exhibition dates, deadlines and
-"Appointed/Joined/Born" labels are never the page date, and a page that shows none has none.
+"Appointed/Joined/Born" labels are never the page date, and a page that shows none has none
+("none stated near the top (unknown)"): an unknown date is a correct answer, a guessed one is not.
+`Page date:` says where the date was read. A date line or press dateline has no label, so when the
+page also shows its `article:published_time` or its own JSON-LD `datePublished`, that date is used
+instead, and a date taken from a line alone is marked "confirm it before using it as datePublished".
 **Bylines** are names after a "By/Af/Authors:" label or in an element classed as an author: a
 teaser label, a list of staff or the person a story is about is not an author.
 
