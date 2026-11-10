@@ -119,7 +119,7 @@ export const COOKIES = [
   C(/^(_uetsid|_uetvid|_uetmsclkid)$/, 'Microsoft Ads', 'marketing', 'US'),
   C(/^(MSPTC|_EDGE_S|_EDGE_V|SRCHD|SRCHUID|SRCHUSR|_SS)$/, 'Microsoft Ads', 'marketing', 'US', /(^|\.)bing\.com$/),
   C(/^(li_sugr|bcookie|bscookie|lidc|UserMatchHistory|AnalyticsSyncHistory|li_gc|_guid|lang_li|li_mc|ln_or|li_fat_id|li_giant|lms_ads|lms_analytics)$/, 'LinkedIn', 'marketing', 'US'),
-  C(/^(_ttp|_tt_enable_cookie|tt_.*|ttwid|tt_chain_token)$/, 'TikTok', 'marketing', 'CN'),
+  C(/^(_ttp|_tt_enable_cookie|tt_.*|ttwid|tt_chain_token|ttcsid|ttcsid_.*)$/, 'TikTok', 'marketing', 'CN'),
   C(/^(_pin_unauth|_pinterest_.*|_routing_id|_pinterest_ct_ua)$/, 'Pinterest', 'marketing', 'US'),
   C(/^(_scid|_scid_r|sc_at|_sctr|X-AB)$/, 'Snap', 'marketing', 'US'),
   C(/^(_rdt_uuid|_rdt_em)$/, 'Reddit', 'marketing', 'US'),

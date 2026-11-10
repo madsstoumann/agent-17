@@ -34,6 +34,26 @@ export function thirdParties(requests, siteHost) {
 }
 
 /**
+ * A cookie on a known vendor's own domain (`_ttp` on .tiktok.com) proves the browser talked to that
+ * vendor, even when no request to it was captured or classified. Such a vendor joins the parties as
+ * a host row of its own (`viaCookie` names the cookies), unless a request already put it there.
+ */
+export function withCookieHosts(parties, cookies, siteHost) {
+  const apex = siteApex(siteHost);
+  const out = [...parties];
+  for (const c of cookies || []) {
+    const d = String(c.domain || '').replace(/^\./, '').toLowerCase();
+    if (!d || d === apex || d.endsWith(`.${apex}`) || String(siteHost).endsWith(d)) continue;
+    const v = classifyHost(d);
+    if (!v) continue;
+    const seen = out.find((p) => p.host === d || p.host.endsWith(`.${d}`) || (p.vendor && p.vendor === v.vendor));
+    if (seen) { if (seen.viaCookie && !seen.viaCookie.includes(c.name)) seen.viaCookie.push(c.name); continue; }
+    out.push({ host: d, ...v, count: 0, urls: [], hits: 0, deniedHits: 0, other: 1, viaCookie: [c.name] });
+  }
+  return out;
+}
+
+/**
  * Tracking hosts: categories that need consent. A Google host whose only hits said "storage
  * denied" (Consent Mode pings) and that sent nothing else but scripts is marked cookielessOnly.
  */
@@ -75,9 +95,9 @@ export function analyse(d) {
   const host = d.host;
   const first = d.first;
   const allFirstRequests = [...first.requests, ...(first.pages || []).flatMap((p) => p.requests)];
-  const firstParties = thirdParties(allFirstRequests, host);
+  const firstParties = withCookieHosts(thirdParties(allFirstRequests, host), first.cookies, host);
   const firstCookies = consentCookies(first.cookies, host);
-  const acceptParties = d.accept ? thirdParties(d.accept.requests, host) : [];
+  const acceptParties = d.accept ? withCookieHosts(thirdParties(d.accept.requests, host), d.accept.cookies, host) : [];
   const acceptCookies = d.accept ? consentCookies(d.accept.cookies, host) : [];
   const cmp = detectCmp({ html: first.html || '', urls: allFirstRequests.map((r) => r.url), globals: first.facts?.globals || [] });
   const b = first.banner || { found: false, accept: [], reject: [], selection: [], settings: [] };
@@ -112,7 +132,7 @@ export function analyse(d) {
     return pages.length && !thirdParties(first.requests, host).some((x) => x.host === t.host) ? ` on ${pages.join(', ')}` : '';
   };
   out.push(real.length
-    ? result('before.trackers', 'fail', 'Trackers before consent', real.map((t) => `${t.vendor} (${t.host}${pageNote(t)})`).join('; '), { fix: 'Block these until the visitor accepts: use the consent tool\'s script blocking or Google Consent Mode with the tags set to wait for consent.', data: { hosts: real.map((t) => t.host) } })
+    ? result('before.trackers', 'fail', 'Trackers before consent', real.map((t) => `${t.vendor} (${t.host}${t.viaCookie ? `, cookie ${t.viaCookie.join(', ')}` : pageNote(t)})`).join('; '), { fix: 'Block these until the visitor accepts: use the consent tool\'s script blocking or Google Consent Mode with the tags set to wait for consent.', data: { hosts: real.map((t) => t.host) } })
     : result('before.trackers', 'pass', 'Trackers before consent', `no analytics, ads, session-replay or marketing host contacted before a choice (${plural(1 + (first.pages || []).length, 'page')} loaded)`));
   if (pings.length) out.push(result('before.cookieless-pings', 'warn', 'Consent Mode pings before consent', `${pings.map((t) => t.host).join(', ')} received Consent Mode hits with storage denied (gcs=G100) before a choice`, { fix: 'Google Consent Mode "advanced" sends cookieless pings before consent. They still carry the IP address and user agent to Google in the US; several EU regulators consider that processing that needs consent. Use "basic" mode (no tags before consent) to be safe.' }));
   const gtm = tBefore.filter((t) => t.category === 'tag-manager');
@@ -136,7 +156,7 @@ export function analyse(d) {
     if (!ch.method) {
       out.push(result('reject.works', b.found ? 'fail' : 'skip', 'Reject is honoured', b.found ? `could not reject: ${ch.steps?.join('; ')}` : 'no banner to reject in'));
     } else {
-      const rParties = thirdParties(d.reject.requests, host);
+      const rParties = withCookieHosts(thirdParties(d.reject.requests, host), d.reject.cookies, host);
       const rT = trackers(rParties).filter((t) => !t.cookielessOnly && t.category !== 'tag-manager');
       const rC = consentCookies(d.reject.cookies, host).filter((c) => needsConsent(c.purpose));
       const bad = [rT.length ? `trackers ${rT.map((t) => `${t.vendor} (${t.host})`).join(', ')}` : '', rC.length ? `cookies ${cookiesText(rC)}` : ''].filter(Boolean);

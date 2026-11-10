@@ -22,7 +22,7 @@ import { annotate, baselineLines, tag } from './lib/baseline.mjs';
 import { parseLevel, levelOfWord, scratchDir, consoleList } from './lib/levels.mjs';
 import { SITE_GROUPS, siteUrl, runSite, renderSiteMarkdown, diffRows, consoleItems } from './lib/site.mjs';
 
-export const VERSION = '2.5.0';
+export const VERSION = '2.5.1';
 const GROUPS = ['deps', 'secrets', 'xss', 'injection', 'request', 'crypto', 'config', 'ci'];
 const SEV = { high: 3, medium: 2, low: 1 };
 
@@ -378,7 +378,7 @@ async function siteMain(args) {
   const act = report.results.filter((r) => r.status === 'fail' || r.status === 'warn').sort((a, b) => (a.status === 'fail' ? -1 : 0) - (b.status === 'fail' ? -1 : 0));
   process.stdout.write(`audit-security ${VERSION} — site mode — ${report.site.finalUrl}
 ${c.pass} pass · ${c.warn} warn · ${c.fail} fail · ${c.info} info · ${c.skip} skipped
-${act.map((r) => `  ${r.status.toUpperCase().padEnd(4)} ${r.id}  ${r.title} — ${String(r.evidence).slice(0, 140)}`).join('\n')}${report.diff ? `\nSince last run: ${report.diff.new.length} new, ${report.diff.worse.length} worse, ${report.diff.fixed.length} fixed` : ''}
+${act.map((r) => `  ${r.status.toUpperCase().padEnd(4)} ${r.id}  ${r.title} — ${String(r.evidence).slice(0, 140)}`).join('\n')}${report.diff ? `\nSince last run: ${report.diff.new.length} new, ${report.diff.worse.length} worse, ${report.diff.fixed.length} fixed${report.diff.merged?.length ? `, ${report.diff.merged.length} merged into another row` : ''}` : ''}
 
 report:   ${path.join(outDir, 'report.md')} (written by the scanner; add a **Verdict:** line under the title)
 state:    ${stateDir}${notes ? `\nnotes:    ${report.state.notes} (read it before presenting)` : ''}

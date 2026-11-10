@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-security` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.5.1] - 2026-11-10
+
+### Fixed
+- Site mode: the `headers.hsts-subdomains` fix keeps the site's own max-age and other directives (`max-age=63072000; includeSubDomains`) instead of suggesting `max-age=31536000`, which would shorten a longer policy.
+- Site mode, "Since last run": a row the skill now counts under another (X-Frame-Options and the Observatory row under Clickjacking (frame-ancestors), since 2.4.0) is listed as "Merged: … is now counted under …", never as "Fixed". Rows carry `mergedInto`; `diff.merged` is new.
+
 ## [2.5.0] - 2026-11-10
 
 ### Changed

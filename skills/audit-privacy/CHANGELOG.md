@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-privacy` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.3.2] - 2026-11-10
+
+### Fixed
+- A tracker vendor whose cookies are set on its own domain (`_ttp` on `.tiktok.com`) counts as contacted, in "Trackers before consent", "Reject is honoured" and "Data to third countries", even when no request to it was captured. The row names the cookie (`TikTok (tiktok.com, cookie _ttp)`); a vendor a request already reached is not added twice.
+- `ttcsid` and `ttcsid_<pixel id>` are TikTok marketing cookies, no longer "unrecognised".
+
 ## [2.3.1] - 2026-11-10
 
 ### Changed
