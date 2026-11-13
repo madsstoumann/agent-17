@@ -4,7 +4,7 @@ description: Use when someone wants to know what structured data and what conten
 argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--insecure] [--no-remote | --no-validate] [--samples] [--live] [--from-archive DIR [--allow-live]] [--urls a,b]"
 allowed-tools: Bash(node:*), Read, Write
 metadata:
-  version: "1.6.1"
+  version: "1.6.2"
 ---
 
 # GEO plan
@@ -259,8 +259,8 @@ Honesty rules:
   Google AI Overviews anything. Offer the question list as the test set: ask each engine before
   and after the work, by hand or with a visibility tracker.
 - **The questions are an informed guess** unless `--queries` gave real search data. Say which.
-- **Rich results are not promised.** FAQ rich results are limited to government and health
-  sites; HowTo is retired. The markup is for meaning: which text is the answer, who wrote it,
+- **Rich results are not promised.** Google retired FAQ rich results in May 2026 and HowTo
+  in 2023. The markup is for meaning: which text is the answer, who wrote it,
   when, about what.
 - **Templates, not pages.** The drafts are for one example page per template; the `.md` beside
   each says how the template fills it for every page. Say how many pages each template covers.

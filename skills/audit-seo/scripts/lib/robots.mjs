@@ -132,7 +132,7 @@ function blocks(xml, prefix, name) {
   return Array.from(xml.matchAll(re), (m) => m[1]);
 }
 
-const empty = (kind, error) => ({ kind, urls: [], sitemaps: [], count: 0, error });
+const empty = (kind, error) => ({ kind, urls: [], sitemaps: [], count: 0, news: 0, error });
 
 /**
  * Regex-based sitemap reader: `<urlset>` or `<sitemapindex>`, with CDATA, XML entities,
@@ -143,8 +143,9 @@ const empty = (kind, error) => ({ kind, urls: [], sitemaps: [], count: 0, error 
  *   kind: 'urlset'|'sitemapindex'|'unknown',
  *   urls: Array<{ loc: string, lastmod: string|null, alternates: Array<{ lang: string, href: string }> }>,
  *   sitemaps: Array<{ loc: string, lastmod: string|null }>,
- *   count: number, error: string|null
+ *   count: number, news: number, error: string|null
  * }}
+ * `news` counts `<news:news>` entries (a Google News sitemap holds at most 1,000).
  */
 export function parseSitemap(xml) {
   const src = String(xml ?? '').replace(/^﻿/, '').replace(/<!--[\s\S]*?-->/g, '');
@@ -156,7 +157,7 @@ export function parseSitemap(xml) {
   }
   const prefix = (root[1] || '').replace(/\./g, '\\.');
   const kind = root[2];
-  const out = { kind, urls: [], sitemaps: [], count: 0, error: null };
+  const out = { kind, urls: [], sitemaps: [], count: 0, news: 0, error: null };
   if (kind === 'sitemapindex') {
     for (const b of blocks(src, prefix, 'sitemap')) {
       const loc = child(b, prefix, 'loc');
@@ -176,8 +177,14 @@ export function parseSitemap(xml) {
     out.urls.push({ loc, lastmod: child(b, prefix, 'lastmod'), alternates });
   }
   out.count = out.urls.length;
+  out.news = (src.match(/<(?:[\w.-]+:)?news(?=[\s>])/gi) || []).length;
   return out;
 }
+
+/** The sitemap protocol's limits per file (sitemaps.org; Google applies the same). */
+export const SITEMAP_MAX_URLS = 50000;
+export const SITEMAP_MAX_BYTES = 50 * 1024 * 1024;
+export const NEWS_SITEMAP_MAX = 1000;
 
 /**
  * `parseSitemap` over a fetched body: gunzips a Buffer that starts with `1f 8b` or was
@@ -185,19 +192,23 @@ export function parseSitemap(xml) {
  * A string body is parsed as text. Same shape as `parseSitemap`.
  * @param {Buffer|string} body
  * @param {{ url?: string, contentType?: string }} [meta]
- * @returns {ReturnType<typeof parseSitemap>}
+ * `bytes` is the uncompressed size; `oversize` is true when it is past the protocol's 50 MB (a gzip
+ * body is inflated no further than that).
+ * @returns {ReturnType<typeof parseSitemap> & { bytes: number, oversize?: boolean }}
  */
 export function parseSitemapBody(body, { url = '', contentType = '' } = {}) {
-  if (typeof body === 'string') return parseSitemap(body);
-  if (!Buffer.isBuffer(body)) return empty('unknown', 'no body');
+  if (typeof body === 'string') return { ...parseSitemap(body), bytes: Buffer.byteLength(body) };
+  if (!Buffer.isBuffer(body)) return { ...empty('unknown', 'no body'), bytes: 0 };
   const magic = body.length >= 2 && body[0] === 0x1f && body[1] === 0x8b;
   let buf = body;
   if (magic || /\.gz(?:[?#]|$)/i.test(url)) {
-    try { buf = gunzipSync(body); } catch (e) {
-      if (magic || !/^\s*<\?xml|^\s*<[a-z]/i.test(body.subarray(0, 64).toString('utf8'))) return empty('unknown', `gunzip failed: ${e.message}`);
+    try { buf = gunzipSync(body, { maxOutputLength: SITEMAP_MAX_BYTES + 1 }); } catch (e) {
+      if (e?.code === 'ERR_BUFFER_TOO_LARGE' || e instanceof RangeError) return { ...empty('unknown', `larger than ${SITEMAP_MAX_BYTES / 1024 / 1024} MB uncompressed`), bytes: SITEMAP_MAX_BYTES + 1, oversize: true };
+      if (magic || !/^\s*<\?xml|^\s*<[a-z]/i.test(body.subarray(0, 64).toString('utf8'))) return { ...empty('unknown', `gunzip failed: ${e.message}`), bytes: body.length };
     }
   }
-  const parsed = parseSitemap(buf.toString('utf8'));
+  const parsed = { ...parseSitemap(buf.toString('utf8')), bytes: buf.length };
+  if (buf.length > SITEMAP_MAX_BYTES) parsed.oversize = true;
   if (parsed.kind === 'unknown' && /html/i.test(contentType) && !/HTML/.test(parsed.error)) parsed.error = `${parsed.error} (content-type ${contentType})`;
   return parsed;
 }
@@ -253,13 +264,16 @@ export function sampleSitemapUrls(urls, { startUrl, n, exclude = [] }) {
  * `sources` has one row per sitemap, an index's children in the index's order: a child beyond
  * `maxChildren` (counted across the whole walk), or anything left unfetched once `maxUrls` is
  * reached (`truncated: true`), is `kind: 'skipped'` with `status: null`. A fetch failure or a
- * body that is not a sitemap is a row with an `error`. Never throws.
+ * body that is not a sitemap is a row with an `error`. A row carries its uncompressed `bytes`, its
+ * `news` entries, `oversize` when the file passes 50 MB (or the read stopped at `maxBytes`), and
+ * `parent`, the index that listed it. Never throws.
  * @param {{ get: (url: string, opts: object) => Promise<object> }} http
  * @param {string[]} sitemapUrls
  * @param {{ maxChildren?: number, maxUrls?: number, maxBytes?: number, log?: (msg: string) => void }} [opts]
  * @returns {Promise<{
  *   urls: string[],
- *   sources: Array<{ url: string, status: number|null, kind: 'urlset'|'sitemapindex'|'unknown'|'skipped', count: number, error: string|null }>,
+ *   sources: Array<{ url: string, status: number|null, kind: 'urlset'|'sitemapindex'|'unknown'|'skipped', count: number, error: string|null,
+ *     bytes?: number, news?: number, oversize?: boolean, parent?: string }>,
  *   truncated: boolean, indexes: string[], lastmod: Record<string, string>
  * }>}
  */
@@ -284,6 +298,9 @@ export async function loadSitemaps(http, sitemapUrls, { maxChildren = 5, maxUrls
     const parsed = parseSitemapBody(res.body, { url: res.finalUrl || url, contentType: res.contentType || '' });
     source.kind = parsed.kind;
     source.count = parsed.count;
+    source.bytes = parsed.bytes;
+    if (parsed.news) source.news = parsed.news;
+    if (parsed.oversize || (res.truncated && res.bytes >= SITEMAP_MAX_BYTES)) source.oversize = true;
     source.error = parsed.error || (res.truncated ? `body truncated at ${res.bytes} bytes` : null);
     log(`sitemap ${url} -> ${parsed.kind}, ${parsed.count} entries${source.error ? ` (${source.error})` : ''}`);
     if (parsed.kind === 'sitemapindex') {
@@ -300,7 +317,7 @@ export async function loadSitemaps(http, sitemapUrls, { maxChildren = 5, maxUrls
           continue;
         }
         childrenFollowed++;
-        const row = { url: loc, status: null, kind: 'unknown', count: 0, error: null };
+        const row = { url: loc, status: null, kind: 'unknown', count: 0, error: null, parent: url };
         reserved.set(loc, row);
         out.sources.push(row);
         kids.push(loc);

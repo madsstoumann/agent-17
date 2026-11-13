@@ -21,13 +21,14 @@ export const ARCHIVE_SKIPPED = {
   'seo.ai-bot-access': ['AI crawlers at the edge', 'each crawler\'s user agent is sent to the live site'],
   'seo.ai-rendered-text': ['Text without JavaScript', 'pages are rendered in Chrome from the live site'],
   'seo.jsonld-client-side': ['JSON-LD added by JavaScript', 'pages are rendered in Chrome from the live site'],
+  'seo.js-signals': ['Signals changed by JavaScript', 'pages are rendered in Chrome from the live site'],
   // An archive holds the pages one crawl fetched: a sitemap URL it did not reach is not an orphan.
   'seo.orphans': ['Orphan pages', 'an archive holds only the pages one crawl reached, so sitemap URLs that no archived page links to are not orphans'],
 };
 
 /** Skipped when the archive does not hold the file they read. */
 const ROBOTS_ROWS = { 'seo.robots-txt': 'robots.txt', 'seo.robots-blocked-links': 'Links to disallowed paths', 'seo.ai-crawlers': 'AI crawlers in robots.txt', 'seo.content-signal': 'Content-Signal in robots.txt', 'seo.bingbot': 'Bing (feeds ChatGPT search and Copilot)' };
-const SITEMAP_ROWS = { 'seo.sitemap': 'XML sitemap', 'seo.sitemap-status': 'Sitemap URLs answer 200', 'seo.sitemap-noindex': 'Noindex pages in the sitemap', 'seo.sitemap-canonical': 'Sitemap URLs canonicalised elsewhere', 'seo.sitemap-blocked': 'Sitemap URLs blocked by robots.txt', 'seo.sitemap-missing': 'Indexable pages missing from the sitemap', 'seo.sitemap-hosts': 'Sitemap hosts', 'seo.orphans': 'Orphan pages', 'seo.sitemap-lastmod': 'Sitemap lastmod' };
+const SITEMAP_ROWS = { 'seo.sitemap': 'XML sitemap', 'seo.sitemap-status': 'Sitemap URLs answer 200', 'seo.sitemap-noindex': 'Noindex pages in the sitemap', 'seo.sitemap-canonical': 'Sitemap URLs canonicalised elsewhere', 'seo.sitemap-blocked': 'Sitemap URLs blocked by robots.txt', 'seo.sitemap-missing': 'Indexable pages missing from the sitemap', 'seo.sitemap-hosts': 'Sitemap hosts', 'seo.orphans': 'Orphan pages', 'seo.sitemap-lastmod': 'Sitemap lastmod', 'seo.sitemap-limits': 'Sitemap file limits' };
 const LLMS_ROWS = { 'seo.llms-txt': 'llms.txt', 'seo.llms-full': 'llms-full.txt', 'seo.ai-txt': 'ai.txt' };
 
 /** Still run, but see less than a live run: id -> why. */
@@ -35,6 +36,8 @@ export const ARCHIVE_DEGRADED = {
   'seo.broken-internal': 'statuses as archived; link targets the archive does not hold are not checked',
   'seo.start': 'X-Robots-Tag headers are not archived: noindex read from meta tags only',
   'seo.noindex': 'X-Robots-Tag headers are not archived: noindex read from meta tags only',
+  'seo.snippet-controls': 'X-Robots-Tag headers are not archived: nosnippet and max-snippet read from meta tags only',
+  'seo.head-conflicts': 'Link headers are not archived: canonicals read from the HTML only',
   'seo.jsonld-coverage': 'served HTML only: JSON-LD that JavaScript adds is not seen',
   'seo.jsonld-parse': 'served HTML only: JSON-LD that JavaScript adds is not seen',
   'seo.rich-required': 'served HTML only: JSON-LD that JavaScript adds is not seen',

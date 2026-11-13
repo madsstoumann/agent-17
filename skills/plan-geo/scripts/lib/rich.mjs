@@ -61,7 +61,7 @@ export const RULES = {
   FAQPage: {
     required: ['mainEntity'],
     extra: (node) => list(node.mainEntity).flatMap((q, i) => [!has(q?.name) && `mainEntity[${i}].name`, !has(get(q, 'acceptedAnswer.text')) && `mainEntity[${i}].acceptedAnswer.text`].filter(Boolean)),
-    note: 'Google shows FAQ rich results only for well-known government and health sites (since 2023).',
+    note: 'Google stopped showing FAQ rich results on 7 May 2026; the markup does no harm and still tells other engines which text answers which question.',
   },
   HowTo: { note: 'Google no longer shows HowTo rich results (since 2023); the markup does no harm.' },
   JobPosting: {

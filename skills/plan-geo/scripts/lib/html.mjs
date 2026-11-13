@@ -152,10 +152,15 @@ function collectTypes(node, out) {
  * values are null, [] or {}; a present but empty content is ''. The title is the head's:
  * a `<title>` after `<body>` or inside an `<svg>` never counts.
  * `jsonLd[].types` is every `@type` found anywhere in the block (`@graph`, arrays and nested objects), unique.
+ * `robots` and `googlebot` join every such meta tag's content with ", " (search engines combine
+ * them, the most restrictive rule winning). `title`, `description` and `canonical` are the first
+ * value; `titles`, `descriptions` and `canonicals` list every distinct one, so a page that states
+ * two can be told apart. `refresh` is a `<meta http-equiv="refresh">` (`url` null when it only reloads).
  * @param {string} html
  * @param {string} baseUrl
  * @returns {{
  *   title: string|null, description: string|null, robots: string|null, googlebot: string|null, canonical: string|null,
+ *   titles: string[], descriptions: string[], canonicals: string[], refresh: { delay: number, url: string|null }|null,
  *   lang: string|null, viewport: string|null, charset: string|null, base: string|null, themeColor: string|null,
  *   generator: string|null, h1Count: number, h1s: string[],
  *   hreflang: Array<{ lang: string, href: string }>,
@@ -174,7 +179,10 @@ export function extractMeta(html, baseUrl) {
   const meta = {
     title: null, description: null, robots: null, googlebot: null, canonical: null, lang: null, viewport: null, charset: null,
     base, themeColor: null, generator: null, h1Count: 0, h1s: [], hreflang: [], og: {}, twitter: {}, icons: [], manifest: null, jsonLd: [],
+    titles: [], descriptions: [], canonicals: [], refresh: null,
   };
+  const addOnce = (list, value) => { if (value != null && !list.includes(value)) list.push(value); };
+  const joinMeta = (key, value) => { const v = String(value).trim(); if (!v) { if (meta[key] == null) meta[key] = value; return; } meta[key] = meta[key] ? `${meta[key]}, ${v}` : v; };
   const named = { description: 'description', robots: 'robots', googlebot: 'googlebot', viewport: 'viewport', 'theme-color': 'themeColor', generator: 'generator' };
   const setOnce = (obj, key, value) => { if (obj[key] == null) obj[key] = value; };
   let inHead = true;
@@ -184,16 +192,21 @@ export function extractMeta(html, baseUrl) {
     switch (t.tag) {
       case 'html': if (a.lang) setOnce(meta, 'lang', a.lang.trim()); break;
       case 'body': case 'svg': inHead = false; break;
-      case 'title': if (inHead) setOnce(meta, 'title', stripTags(t.content || '')); break;
+      case 'title': if (inHead) { const v = stripTags(t.content || ''); setOnce(meta, 'title', v); addOnce(meta.titles, v); } break;
       case 'meta': {
         if (a.charset) setOnce(meta, 'charset', a.charset.trim());
         if (/^content-type$/i.test(a['http-equiv'] || '')) {
           const cs = /charset=["']?([^\s;"']+)/i.exec(a.content || '');
           if (cs) setOnce(meta, 'charset', cs[1]);
         }
+        if (/^refresh$/i.test(a['http-equiv'] || '') && meta.refresh == null && a.content != null) {
+          const r = /^\s*(\d+(?:\.\d+)?)?\s*(?:[;,]\s*(?:url\s*=\s*)?['"]?([^'"]*)['"]?)?\s*$/i.exec(a.content);
+          if (r) meta.refresh = { delay: Number(r[1] || 0), url: r[2] && r[2].trim() ? resolve(r[2].trim(), root) : null };
+        }
         const key = (a.name || a.property || '').trim().toLowerCase();
         if (!key || a.content == null) break;
-        if (named[key]) setOnce(meta, named[key], a.content);
+        if (key === 'robots' || key === 'googlebot') joinMeta(key, a.content);
+        else if (named[key]) { setOnce(meta, named[key], a.content); if (key === 'description') addOnce(meta.descriptions, a.content.trim()); }
         else if (key.startsWith('og:')) setOnce(meta.og, key.slice(3), a.content);
         else if (key.startsWith('twitter:')) setOnce(meta.twitter, key.slice(8), a.content);
         break;
@@ -202,7 +215,7 @@ export function extractMeta(html, baseUrl) {
         const rel = relTokens(a);
         const href = resolve(a.href, root);
         if (!href) break;
-        if (rel.includes('canonical')) setOnce(meta, 'canonical', href);
+        if (rel.includes('canonical')) { setOnce(meta, 'canonical', href); addOnce(meta.canonicals, href); }
         if (rel.includes('alternate') && a.hreflang) meta.hreflang.push({ lang: a.hreflang.trim(), href });
         if (rel.includes('manifest')) setOnce(meta, 'manifest', href);
         if (rel.some((r) => r === 'icon' || r.endsWith('-icon'))) {
@@ -226,6 +239,35 @@ export function extractMeta(html, baseUrl) {
     }
   }
   return meta;
+}
+
+const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
+
+/**
+ * The text of every element marked `data-nosnippet` (outermost ones only, nesting of the same
+ * tag balanced), joined by spaces: what Google may not show in a snippet or use as input for
+ * AI Overviews and AI Mode. Scripts and styles inside are left out. '' when none.
+ * @param {string} html
+ * @returns {string}
+ */
+export function nosnippetText(html) {
+  const src = String(html ?? '');
+  if (!/data-nosnippet/i.test(src)) return '';
+  const parts = [];
+  let skipUntil = -1;
+  for (const t of tokenize(src)) {
+    if (t.index < skipUntil || !Object.hasOwn(t.attrs, 'data-nosnippet') || VOID.has(t.tag)) continue;
+    const from = t.index + t.raw.length;
+    const re = new RegExp(`<(/?)${t.tag}(?=[\\s>/])[^>]*>`, 'ig');
+    re.lastIndex = from;
+    let depth = 1; let end = src.length; let m;
+    while ((m = re.exec(src))) {
+      if (m[1]) { if (--depth === 0) { end = m.index; break; } } else if (!m[0].endsWith('/>')) depth++;
+    }
+    skipUntil = end;
+    parts.push(stripTags(src.slice(from, end).replace(/<(script|style|template)\b[\s\S]*?<\/\1\s*>/gi, ' ')));
+  }
+  return parts.filter(Boolean).join(' ');
 }
 
 /**

@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-eco` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.2.3] - 2026-11-13
+
+### Changed
+- `lib/html.mjs` kept identical to audit-seo's: every robots and googlebot meta tag on a page counts, not only the first; head metadata also lists every distinct canonical, title and description, and a meta refresh. No change in what audit-eco measures.
+
 ## [2.2.2] - 2026-11-09
 
 ### Fixed

@@ -253,7 +253,7 @@
 
 ### Structured data opportunities
 
-**Fix:** Article (with datePublished, dateModified, author) on articles; BreadcrumbList where a breadcrumb trail is shown; FAQPage where a page answers several questions. Google shows FAQ rich results only for government and health sites, but the markup still tells AI engines which text answers which question. Mark up only what is visible on the page.
+**Fix:** Article (with datePublished, dateModified, author) on articles; BreadcrumbList where a breadcrumb trail is shown; FAQPage where a page answers several questions. Google no longer shows FAQ rich results (since May 2026), but the markup still tells AI engines which text answers which question. Mark up only what is visible on the page.
 
 - `https://browser.style/examples/core/` — FAQPage (4 questions)
 - `https://browser.style/ui/accordion/` — FAQPage (16 questions)

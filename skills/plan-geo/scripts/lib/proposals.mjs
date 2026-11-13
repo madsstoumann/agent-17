@@ -129,7 +129,7 @@ export function renderProposals({ inventory, check = null, questions = [], brief
   out.push('## Not covered', '',
     '- Whether ChatGPT, Perplexity, Gemini or Google AI Overviews cite the site today. Test the questions above in each engine, or with a visibility tracker, before and after the work.',
     '- Rankings, traffic and Search Console data. With `--queries` the question list starts from real searches; without it the questions are an informed guess from the site and its industry.',
-    '- Rich results: FAQ rich results are limited to government and health sites and HowTo is retired. The markup is for meaning, not for snippets.',
+    '- Rich results: Google retired FAQ rich results in May 2026 and HowTo in 2023. The markup is for meaning, not for snippets.',
     '');
   return out.join('\n');
 }

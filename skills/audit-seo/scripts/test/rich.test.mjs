@@ -30,7 +30,7 @@ test('nested and @graph nodes are checked; a nested Organization and bare @id re
 test('Event, FAQ note, HowTo note and schema.org/ prefixed types', () => {
   assert.deepEqual(byType(richIssues([{ '@type': 'https://schema.org/Event', name: 'Gig' }]), 'Event').required, ['startDate', 'location']);
   const faq = richIssues([{ '@type': 'FAQPage', mainEntity: [{ '@type': 'Question', name: 'Q?' }] }]);
-  assert.match(faq[0].note, /government and health/);
+  assert.match(faq[0].note, /stopped showing FAQ rich results on 7 May 2026/);
   assert.deepEqual(faq[0].required, ['mainEntity[0].acceptedAnswer.text']);
   assert.match(richIssues([{ '@type': 'HowTo', name: 'x' }])[0].note, /no longer/);
   assert.deepEqual(richTypes([{ '@type': 'HowTo' }, { '@type': 'Event' }]), ['Event']);

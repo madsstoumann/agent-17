@@ -4,7 +4,7 @@ description: Use when someone asks about a website's carbon footprint, CO2 per p
 argument-hint: "<url> [more page urls] [--pages N] [--grid DK] [--views N] [--mobile] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "2.2.2"
+  version: "2.2.3"
 ---
 
 # Eco audit

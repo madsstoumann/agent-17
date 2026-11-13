@@ -9,7 +9,7 @@
  *
  * Zero dependencies. Node >= 22.
  */
-import { extractLinks, extractMeta, stripTags, tokenize } from './html.mjs';
+import { extractLinks, extractMeta, nosnippetText, stripTags, tokenize } from './html.mjs';
 import { richOf } from './rich.mjs';
 import { pageSignals } from './content.mjs';
 import { hostOf, pLimit } from './http.mjs';
@@ -37,6 +37,70 @@ export function normalise(u) {
   } catch { return null; }
 }
 
+/**
+ * Internal links of a page the way the crawl counts them: normalised, on one of `own` hosts, not a
+ * file or a CDN path. A Set of URLs. Used for the served HTML and the rendered DOM alike.
+ */
+export function internalLinks(html, url, own) {
+  const out = new Set();
+  for (const l of extractLinks(html, url)) {
+    const link = normalise(l.href);
+    if (!link || !own.has(hostOf(link))) continue;
+    const p = new URL(link).pathname;
+    if (SKIP_EXT.test(p) || SKIP_PATH.test(p)) continue;
+    out.add(link);
+  }
+  return out;
+}
+
+// Directives with a colon of their own; any other `name:` in an X-Robots-Tag names a user agent.
+const COLON_DIRECTIVES = /^(max-snippet|max-image-preview|max-video-preview|unavailable_after|indexifembedded)$/i;
+
+/**
+ * X-Robots-Tag value(s) -> [{ agent, directive }]: `agent` is '*' unless the header (or the part
+ * after a `name:` prefix) names one, as in "googlebot: nosnippet" or "otherbot: noindex, nofollow".
+ */
+export function xRobotsDirectives(value) {
+  const out = [];
+  let agent = '*';
+  for (const raw of String(value || '').split(',')) {
+    let piece = raw.trim();
+    if (!piece) continue;
+    const m = /^([a-z0-9_.-]+)\s*:\s*(.*)$/i.exec(piece);
+    if (m && !COLON_DIRECTIVES.test(m[1])) { agent = m[1].toLowerCase(); piece = m[2].trim(); }
+    if (piece) out.push({ agent, directive: piece.toLowerCase().replace(/\s*:\s*/, ':') });
+  }
+  return out;
+}
+
+/**
+ * What a page tells Google about snippets: 'nosnippet', 'max-snippet:0' (the same), 'max-snippet:N'
+ * for a limit, or null. Read from X-Robots-Tag (for every agent or googlebot) and the robots and
+ * googlebot meta tags; the strictest wins. Google applies these to AI Overviews and AI Mode too.
+ */
+export function snippetControl(xRobots, metaRobots, metaGooglebot) {
+  const list = [
+    ...xRobotsDirectives(xRobots).filter((d) => d.agent === '*' || d.agent === 'googlebot').map((d) => d.directive),
+    ...[metaRobots, metaGooglebot].flatMap((v) => directives(String(v || '').replace(/\s*:\s*/g, ':'))),
+  ].map((d) => d.replace(/\s+/g, ''));
+  if (list.includes('nosnippet')) return 'nosnippet';
+  const limits = list.map((d) => /^max-snippet:(-?\d+)$/.exec(d)).filter(Boolean).map((m) => Number(m[1])).filter((n) => n >= 0);
+  if (!limits.length) return null;
+  const n = Math.min(...limits);
+  return `max-snippet:${n}`;
+}
+
+/** Link header -> rel=canonical targets, absolute. */
+export function headerCanonicals(link, base) {
+  const out = [];
+  for (const part of String(link || '').split(/,(?=\s*<)/)) {
+    const m = /^\s*<([^>]*)>\s*;(.*)$/.exec(part);
+    if (!m || !/(^|;)\s*rel\s*=\s*"?[^";]*\bcanonical\b/i.test(m[2])) continue;
+    try { const u = new URL(m[1].trim(), base); if (/^https?:$/.test(u.protocol)) out.push(u.toString()); } catch { /* skip */ }
+  }
+  return out;
+}
+
 const directives = (v) => String(v || '').toLowerCase().split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
 
 /** Visible words in the body: scripts, styles, SVG, noscript and templates removed. */
@@ -58,6 +122,7 @@ export function pageRecord(url, res, html) {
     xRobots: headers['x-robots-tag'] || null,
     ms: res.ms ?? null,
   };
+  const linkCanonicals = headerCanonicals(headers.link, url);
   if (res.status >= 300 && res.status < 400 && headers.location) {
     try { rec.location = new URL(headers.location, url).toString(); } catch { rec.location = null; }
   }
@@ -69,6 +134,7 @@ export function pageRecord(url, res, html) {
     title: meta.title,
     description: meta.description,
     metaRobots: meta.robots,
+    ...(meta.googlebot ? { metaGooglebot: meta.googlebot } : {}),
     noindex,
     canonical: meta.canonical,
     canonicalRaw: rawCanonical(html),
@@ -85,6 +151,20 @@ export function pageRecord(url, res, html) {
     imgNoAlt: imgs.filter((t) => !('alt' in t.attrs)).length,
     bytes: Buffer.byteLength(html),
   });
+  if (res.truncated) rec.truncated = true;
+  // Values a page states more than once and differently: search engines may ignore them all.
+  const distinct = (list) => list.filter((v, i) => !list.slice(0, i).some((w) => w === v));
+  const canonicals = distinct([...meta.canonicals, ...linkCanonicals].map((c) => c.replace(/\/$/, '')));
+  const conflicts = {};
+  if (canonicals.length > 1) conflicts.canonical = [...new Set([...meta.canonicals, ...linkCanonicals])];
+  if (meta.titles.length > 1) conflicts.title = meta.titles;
+  if (meta.descriptions.length > 1) conflicts.description = meta.descriptions;
+  if (Object.keys(conflicts).length) rec.headConflicts = conflicts;
+  if (meta.refresh?.url) rec.refresh = meta.refresh;
+  const snippet = snippetControl(rec.xRobots, meta.robots, meta.googlebot);
+  if (snippet) rec.snippet = snippet;
+  const hidden = nosnippetText(html);
+  if (hidden) rec.nosnippetWords = hidden.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
   return rec;
 }
 
@@ -108,6 +188,7 @@ export async function crawlSite(http, { startUrl, hosts, sitemapUrls = [], robot
   const inlinks = new Map();
   const external = new Map();
   const blocked = new Map();
+  const served = new Map(); // url -> Set of the internal links its served HTML carries (for the render comparison)
   const seen = new Set();
   const queue = [];
   const limit = pLimit(concurrency);
@@ -169,6 +250,7 @@ export async function crawlSite(http, { startUrl, hosts, sitemapUrls = [], robot
       if (target && own.has(hostOf(target))) { record(inlinks, target, url); enqueue(target, { budget: false }); }
     }
     if (!html) return;
+    served.set(url, internalLinks(html, url, own));
     rec.outlinks = 0;
     for (const l of extractLinks(html, url)) {
       const link = normalise(l.href);
@@ -206,7 +288,7 @@ export async function crawlSite(http, { startUrl, hosts, sitemapUrls = [], robot
     followLinks = false; // follow their redirects, not their links
     await drain();
   }
-  return { pages: [...pages.values()], inlinks, external, blocked, truncated, sitemapMissing: missing.length, sitemapSampled: sample.length, locales: Object.fromEntries(perLocale) };
+  return { pages: [...pages.values()], inlinks, external, blocked, served, truncated, sitemapMissing: missing.length, sitemapSampled: sample.length, locales: Object.fromEntries(perLocale) };
 }
 
 /**
