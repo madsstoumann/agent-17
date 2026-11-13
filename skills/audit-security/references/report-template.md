@@ -1,6 +1,6 @@
 # Security audit: <repo name>
 
-<date> · code mode · audit-security <version> · scanned `<path>` (<N> files, git: yes/no, history: last N commits / not scanned)
+<date> · code mode<, deep> · audit-security <version> · scanned `<path>` (<N> files, git: yes/no, history: last N commits / not scanned)
 
 **Verdict:** <one sentence: N blockers / no blockers found, and the single most important action>
 
@@ -57,6 +57,39 @@ with evidence (e.g. "Auth: all `/api/admin/*` routes use `requireAdmin` (src/rou
 
 Skipped groups, `--offline`, history not scanned, Semgrep not installed, missing-control questions not done, anything
 behind generated code, languages the rules do not cover.
+
+## Deep review
+
+Only with `--deep` (references/deep.md). Leave out otherwise.
+
+**Coverage:** <N> units: <n> covered, <n> candidate, <n> blocked, <n> deferred, <n> not applicable.
+Areas reviewed: <core eight + selected>. Not reached: <deferred units and why>. Since the last deep
+run (deep-check): <n> new, <n> still open, <n> gone. One run never covers everything.
+
+**Architecture:** two or three sentences from `deep/architecture.md`: what the app is, its
+principals and the boundaries that matter, and what the repo cannot show (proxy, WAF, identity provider).
+
+### Confirmed
+
+| # | Severity | Finding | Boundary (who → what) | Trace | Fix |
+|---|---|---|---|---|---|
+| D1 | High | Any signed-in user reads other users' invoices | customer → other customers' invoices | `src/api/invoices.ts:14` → `src/db/invoices.ts:22` | scope `findById` to the owner |
+
+For each confirmed medium, high or critical record, a short paragraph: the principal and input,
+the control that fails, the result, the fix and the regression test.
+
+### Needs validation
+
+Leads with no severity. One line each: title, trace, the missing fact, the check that settles it.
+
+### Hardening notes
+
+Defence-in-depth gaps with no reachable boundary failure, and positive patterns worth keeping.
+
+### Tools
+
+Semgrep, osv-scanner, Gitleaks and TruffleHog: ran (with counts) or not checked and why, with the
+install line.
 
 ## Accepted
 

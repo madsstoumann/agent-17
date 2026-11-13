@@ -137,7 +137,7 @@ test('runSite: --only blocklists skips audit-launch; a missing audit-launch is a
   assert.match(r2.results[0].evidence, /not installed/);
   const off = await runSite({ root: 'https://www.example.com/', only: ['blocklists'], skip: [], offline: true }, { version: '2.2.0', outDir: out, stateDir: out });
   assert.equal(off.results[0].status, 'skip');
-  assert.deepEqual(SITE_GROUPS, ['headers', 'redirects', 'exposed', 'blocklists']);
+  assert.deepEqual(SITE_GROUPS, ['headers', 'redirects', 'exposed', 'blocklists', 'client']);
 });
 
 test('site target folder is per host; the baseline is the last site scan', () => {

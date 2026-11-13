@@ -14,15 +14,17 @@ import path from 'node:path';
 
 import { execFileSync } from 'node:child_process';
 
-import { RULES, FILE_RULES, PLATFORM_FILES, platformFor, rulesFor, scanText, redact } from './lib/patterns.mjs';
+import { RULES, DEEP_RULES, FILE_RULES, PLATFORM_FILES, platformFor, rulesFor, scanText, redact } from './lib/patterns.mjs';
 import { listFiles, readScannable, historyAddedLines, TEST_PATH } from './lib/files.mjs';
 import { collectPackages, queryOsv } from './lib/deps.mjs';
 import { targetDir, claimTarget, newRun, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
 import { annotate, baselineLines, tag } from './lib/baseline.mjs';
 import { parseLevel, levelOfWord, scratchDir, consoleList } from './lib/levels.mjs';
 import { SITE_GROUPS, siteUrl, runSite, renderSiteMarkdown, diffRows, consoleItems } from './lib/site.mjs';
+import { createInventory, seedLedger, inventoryLines } from './lib/deep.mjs';
+import { runTools } from './lib/tools.mjs';
 
-export const VERSION = '2.5.1';
+export const VERSION = '2.6.0';
 const GROUPS = ['deps', 'secrets', 'xss', 'injection', 'request', 'crypto', 'config', 'ci'];
 const SEV = { high: 3, medium: 2, low: 1 };
 
@@ -51,6 +53,10 @@ Usage: node scan.mjs [path] [options]       code mode: a repo or folder
   --console         No report.md: after triage, print the compact list of confirmed issues instead.
                     findings.json goes to a scratch folder in the system temp folder. Add --report for both.
   --json            Print findings.json to stdout instead of the summary.
+  --deep            The deep review (references/deep.md): extra rules for trust boundaries, an inventory of
+                    entry points, controls and review areas, Semgrep, osv-scanner, Gitleaks and TruffleHog
+                    when installed (never installed for you), git history (as --history), and a coverage
+                    ledger in <out>/deep/ that you fill in and check with deep-check.mjs.
 
 Site mode (a URL instead of a path, or --url URL):
   --only / --skip   Groups: ${SITE_GROUPS.join(' ')}. headers, redirects and exposed are audit-launch's
@@ -59,14 +65,17 @@ Site mode (a URL instead of a path, or --url URL):
                     URLHAUS_AUTH_KEY or VIRUSTOTAL_API_KEY is set.
   --header "N: v"   Send this header to the site (a WAF bypass rule), repeatable.
   --insecure        Accept a self-signed certificate (local and staging hosts).
-  --offline         No blocklist lookups.
+  --offline         No blocklist lookups (and with --deep no OSV lookup of front-end libraries).
+  --deep            Adds the client group: scripts the pages load (SRI, public source maps, secrets in
+                    bundles, known-vulnerable front-end libraries, message listeners) and public API
+                    descriptions (OpenAPI, Swagger UI, GraphQL IDEs). Still one request per file or path.
   --out, --state, --baseline, --no-baseline, --level, --console, --report, --json as above;
                     the site's target folder is <reports>/audit-security/<host>/ and the scanner
                     writes report.json and report.md itself (no triage step).
 `;
 
 export function parseArgs(argv) {
-  const a = { root: '.', only: null, skip: [], history: 0, offline: false, tests: true, max: 6, out: null, json: false, baseline: null, noBaseline: false, state: null, visibility: null, levels: parseLevel('all'), console: false, report: false, headers: {}, insecure: false };
+  const a = { root: '.', only: null, skip: [], history: 0, offline: false, tests: true, max: 6, out: null, json: false, baseline: null, noBaseline: false, state: null, visibility: null, levels: parseLevel('all'), console: false, report: false, headers: {}, insecure: false, deep: false };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i];
     const next = () => argv[++i];
@@ -88,6 +97,7 @@ export function parseArgs(argv) {
     else if (v === '--report') a.report = true;
     else if (v === '--url') a.root = next();
     else if (v === '--insecure') a.insecure = true;
+    else if (v === '--deep') a.deep = true;
     else if (v === '--header') {
       const h = String(next() || '');
       const i = h.indexOf(':');
@@ -101,6 +111,9 @@ export function parseArgs(argv) {
   if (a.mode === 'code' && /^[a-z][a-z0-9+.-]*:\/\//i.test(a.root)) throw new Error(`Site mode takes an http or https URL, not ${a.root}`);
   const groups = a.mode === 'site' ? SITE_GROUPS : GROUPS;
   for (const g of [...(a.only || []), ...a.skip]) if (!groups.includes(g)) throw new Error(`Unknown group "${g}". Groups: ${groups.join(' ')}`);
+  if (a.mode === 'site' && !a.deep && a.only?.includes('client')) throw new Error('The client group runs with --deep');
+  // A deep review always reads git history; --history N still sets how far back.
+  if (a.mode === 'code' && a.deep && !a.history) a.history = 1000;
   return a;
 }
 
@@ -189,10 +202,11 @@ export async function run(args) {
   const root = path.resolve(args.root);
   if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) throw new Error(`Not a folder: ${root}`);
   const on = (g) => (args.only ? args.only.includes(g) : true) && !args.skip.includes(g);
-  const ruleById = Object.fromEntries([...RULES, ...FILE_RULES, ...PLATFORM_FILES].map((r) => [r.id, r]));
+  const ruleById = Object.fromEntries([...RULES, ...DEEP_RULES, ...FILE_RULES, ...PLATFORM_FILES].map((r) => [r.id, r]));
 
   const { git, all, tracked } = listFiles(root);
   log(`files: ${all.length} (${git ? 'git: tracked + untracked, .gitignore respected' : 'not a git repo: folder walk'})`);
+  const inv = args.deep ? createInventory() : null;
 
   // -------------------------------------------------------------- code + file rules
   const hits = [];
@@ -206,10 +220,13 @@ export async function run(args) {
       if (git && !tracked.has(rel)) continue;
       hits.push({ id: fr.id, file: rel, line: 0, text: git ? 'tracked in git' : 'present (not a git repo: check it is not deployed or committed)', inTest });
     }
-    const rules = rulesFor(rel).filter((r) => on(r.group));
-    if (!rules.length) continue;
+    if (inv && !inTest) inv.file(rel);
+    const rules = rulesFor(rel, { deep: args.deep }).filter((r) => on(r.group));
+    if (!rules.length && !inv) continue;
     const text = readScannable(root, rel);
     if (text == null) continue;
+    if (inv && !inTest) inv.text(rel, text);
+    if (!rules.length) continue;
     scanned++;
     const plat = platformFor(rel);
     for (const h of scanText(rel, text, rules)) {
@@ -273,9 +290,19 @@ export async function run(args) {
     .map(([id, list]) => {
       const r = ruleById[id];
       const plat = r.platform ? { platform: r.platform, owner: r.owner, visibility: repo?.visibility || 'unknown' } : {};
-      return { id, group: r.group, severity: r.platform ? platformSeverity(plat.visibility) : r.severity, title: r.title, review: r.review, fix: r.fix, ...plat, count: list.length, inTest: list.filter((h) => h.inTest).length, hits: list };
-    })
-    .sort((a, b) => SEV[b.severity] - SEV[a.severity] || b.count - a.count);
+      return { id, group: r.group, severity: r.platform ? platformSeverity(plat.visibility) : r.severity, title: r.title, review: r.review, fix: r.fix, ...plat, ...(r.deep ? { deep: true } : {}), count: list.length, inTest: list.filter((h) => h.inTest).length, hits: list };
+    });
+
+  // -------------------------------------------------------------- --deep: external scanners, when installed
+  let deep = null;
+  if (inv) {
+    const known = new Set();
+    for (const p of deps?.vulnerable || []) for (const v of p.vulns) for (const id of [v.id, ...(v.aliases || [])]) known.add(`${p.ecosystem}|${p.name}|${p.version}|${id}`.toLowerCase());
+    const tools = (args.runTools || runTools)({ root, git, offline: args.offline, on, exec: args.exec, which: args.which, known, existingSecretHits: hits.filter((h) => h.id.startsWith('secrets.')), log });
+    for (const r of tools.rules) rules.push({ ...r, count: r.hits.length, inTest: 0 });
+    deep = { inventory: inv.done(), tools: tools.rows };
+  }
+  rules.sort((a, b) => SEV[b.severity] - SEV[a.severity] || b.count - a.count);
 
   return {
     tool: 'audit-security', mode: 'code', version: VERSION, root, git, startedAt: new Date().toISOString(),
@@ -283,7 +310,46 @@ export async function run(args) {
     groups: GROUPS.filter(on),
     ...(repo ? { repo } : {}),
     deps, rules, history,
+    ...(deep ? { deep } : {}),
   };
+}
+
+/**
+ * The baseline as this scan can see it: rules only a deep scan has, and history hits, are left out
+ * when this scan did not look for them, so they are not reported as fixed.
+ */
+export function comparable(baseline, report) {
+  if (!baseline) return baseline;
+  const b = { ...baseline };
+  if (!report.deep && b.rules) b.rules = b.rules.filter((r) => !r.deep);
+  if (!report.history || report.history.skipped) b.history = null;
+  return b;
+}
+
+/** --deep: writes <out>/deep/ (meta.json, ledger.json seeded from the inventory, an empty verdicts.json). */
+export function writeDeep(report, outDir, stateDir, { exec = execFileSync } = {}) {
+  const dir = path.join(outDir, 'deep');
+  fs.mkdirSync(dir, { recursive: true });
+  let prior = null;
+  try { prior = JSON.parse(fs.readFileSync(path.join(stateDir, 'last-deep-ledger.json'), 'utf8')); } catch { /* first deep run */ }
+  let sourceRef = null;
+  if (report.git) {
+    try {
+      const head = exec('git', ['-C', report.root, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      const dirty = exec('git', ['-C', report.root, 'status', '--porcelain'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().length > 0;
+      sourceRef = { commit: head, dirty };
+    } catch { /* no commits yet */ }
+  }
+  const ledger = seedLedger(report.deep.inventory, { prior });
+  const files = { dir, meta: path.join(dir, 'meta.json'), ledger: path.join(dir, 'ledger.json'), verdicts: path.join(dir, 'verdicts.json'), architecture: path.join(dir, 'architecture.md') };
+  fs.writeFileSync(files.meta, JSON.stringify({ tool: 'audit-security', version: report.version, root: report.root, stateDir, sourceRef, startedAt: report.startedAt, prior: prior ? path.join(stateDir, 'last-deep-ledger.json') : null }, null, 2));
+  // Never overwrite work in a re-used --out folder.
+  if (!fs.existsSync(files.ledger)) fs.writeFileSync(files.ledger, JSON.stringify(ledger, null, 2));
+  if (!fs.existsSync(files.verdicts)) fs.writeFileSync(files.verdicts, JSON.stringify({ version: 1, records: [] }, null, 2));
+  report.deep.files = files;
+  report.deep.units = ledger.units.length;
+  report.deep.sourceRef = sourceRef;
+  return report.deep;
 }
 
 export function summarise(r, max = 6, levels = null) {
@@ -321,6 +387,7 @@ export function summarise(r, max = 6, levels = null) {
     if (rule.count > max) L.push(`      … ${rule.count - max} more`);
   }
   if (r.baseline) { L.push(''); L.push(...baselineLines(r.baseline)); }
+  if (r.deep) { L.push(''); L.push(...inventoryLines(r.deep)); }
   if (r.history) {
     L.push('');
     if (r.history.skipped) L.push(`HISTORY  SKIP: ${r.history.skipped}`);
@@ -403,9 +470,10 @@ async function main() {
   }
   let triage = null;
   try { triage = JSON.parse(fs.readFileSync(path.join(stateDir, 'triage.json'), 'utf8')); } catch { /* none yet */ }
-  annotate(report, { baseline, triage, from: baseline ? baseFile : null });
+  annotate(report, { baseline: comparable(baseline, report), triage, from: baseline ? baseFile : null });
   report.state = { dir: stateDir, triage: path.join(stateDir, 'triage.json'), notes: readNotes(stateDir) ? path.join(stateDir, 'notes.md') : null };
   fs.mkdirSync(outDir, { recursive: true });
+  if (report.deep) writeDeep(report, outDir, stateDir);
   const file = path.join(outDir, 'findings.json');
   fs.writeFileSync(file, JSON.stringify(report, null, 2));
   fs.writeFileSync(path.join(stateDir, 'last-findings.json'), JSON.stringify(report, null, 2));

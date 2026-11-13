@@ -1,10 +1,10 @@
 ---
 name: audit-all
 description: Use when someone wants the full audit of a site and its code in one go, a combined or all-in-one audit report, or one PDF covering launch readiness, accessibility, SEO and AI search (GEO), sustainability (carbon footprint), privacy and consent, domain and mail infrastructure, code security and dependency health. Runs audit-launch, audit-a11y (WCAG 2.2 / EN 301 549), audit-seo, audit-eco, audit-privacy, audit-infra and audit-security's site mode on the live URL, audit-security and audit-solution-health on one or more repos, then writes a combined report.md and a typeset report.pdf with a verdict and a ranked "fix first" list, plus a fix plan (fix/TODO.md and one agent-ready prompt per task, each with a suggested model) that the audit-fix skill can hand to subagents. Also when asked to combine existing audit-launch, audit-a11y, audit-seo, audit-eco, audit-privacy, audit-infra, audit-security or audit-solution-health reports into one.
-argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--geo] [--yes] [--style serif|sans|editorial|modern] [--level error|warn|error,warn|all] [--console] [--out DIR]"
+argument-hint: "[url] [repo path ...] [--url URL | --no-site] [--only|--skip|--add a11y,infra,launch,privacy,security,seo,health,eco] [--geo] [--deep] [--yes] [--style serif|sans|editorial|modern] [--level error|warn|error,warn|all] [--console] [--out DIR]"
 allowed-tools: AskUserQuestion, Bash(node:*), Bash(npx lighthouse:*), Bash(curl:*), Bash(dig:*), Bash(git log:*), Bash(git show:*), Bash(npm:*), Bash(dotnet:*), Bash(semgrep:*), Bash(command -v:*), Bash(cp:*), Bash(mkdir:*), Read, Write, Edit, Grep, Glob, WebFetch, WebSearch
 metadata:
-  version: "1.18.0"
+  version: "1.19.0"
 ---
 
 # Audit all
@@ -43,6 +43,11 @@ other way, invoke them by name instead (`skills:audit-launch` in the plugin, `au
   exactly those, `--skip health` drops one from the default set and `--add seo` adds an opt-in
   one. "only launch and security", "also check accessibility", "no SEO", "skip the carbon check"
   and the like mean the same; "everything" or `--only all` runs all eight.
+- **Deep security.** `--deep` (or "deep / thorough security audit", "pen-test prep") passes `--deep` to
+  audit-security, on each repo and on the site: the code review then follows audit-security's
+  references/deep.md (coverage ledger, every finding challenged by a fresh agent, `deep-check.mjs`)
+  and site mode adds its `client` group. It does nothing to the other audits and does not add
+  Security when `--only` or `--skip` leaves it out. It takes much longer: say so when you confirm the run.
 - **GEO audit.** `--geo` (or "GEO audit", "AI search readiness", "is the site ready for ChatGPT /
   AI answers") runs SEO / GEO with audit-seo's `--geo` flag, plus Launch unless the user said
   only GEO. Treat it as `--only seo,launch`; it settles the audit questions, so ask only Look and
@@ -193,8 +198,8 @@ folder name.
 | audit-eco | Follow audit-eco's SKILL.md with `--out "<run>/audit-eco"`. Add `--grid` and `--views` only when the user gives a country or traffic | `report.md`, `findings.json` |
 | audit-privacy | Follow audit-privacy's SKILL.md with `--out "<run>/audit-privacy"`, including the policy review it asks you to add to `report.md` | `report.md`, `report.json`, `banner.png`, `policy-*.txt` |
 | audit-infra | Follow audit-infra's SKILL.md with `--out "<run>/audit-infra"` | `report.md`, `report.json` |
-| audit-security (code) | For each repo: follow audit-security's SKILL.md with `--out "<run>/audit-security-<repo>"`, including the triage and `report.md` it asks you to write. Semgrep runs automatically when installed | `findings.json`, `report.md` |
-| audit-security (site) | When there is a site: follow audit-security's SKILL.md in site mode, `scan.mjs <url> --out "<run>/audit-security-<host>"` (pass `--header` as for audit-launch). The scanner writes `report.md` itself; add a `**Verdict:**` line under its title. When audit-launch runs too, pass `--skip redirects` here and `--skip headers,exposed` to audit-launch, so each finding appears once. `combine.mjs` gives it its own title, standfirst and cover tile ("Security audit (site)") | `report.md`, `report.json` |
+| audit-security (code) | For each repo: follow audit-security's SKILL.md with `--out "<run>/audit-security-<repo>"`, including the triage and `report.md` it asks you to write. Semgrep runs automatically when installed. With `--deep`, add `--deep` and do its whole review (references/deep.md) before `report.md`; confirmed records become tasks like other confirmed findings, needs-validation records `human` tasks to run their check | `findings.json`, `report.md` (and `deep/` with `--deep`) |
+| audit-security (site) | When there is a site: follow audit-security's SKILL.md in site mode, `scan.mjs <url> --out "<run>/audit-security-<host>"` (pass `--header` as for audit-launch, and `--deep` with `--deep`). The scanner writes `report.md` itself; add a `**Verdict:**` line under its title. When audit-launch runs too, pass `--skip redirects` here and `--skip headers,exposed` to audit-launch, so each finding appears once. `combine.mjs` gives it its own title, standfirst and cover tile ("Security audit (site)") | `report.md`, `report.json` |
 | check-tech-stack | Whenever a site audit runs: `node "${CLAUDE_SKILL_DIR}/../check-tech-stack/scripts/check-tech-stack.mjs" <url> --out "<run>/check-tech-stack" --quiet`. It is not an audit and has no findings: `combine.mjs` puts a "Built with" line on the cover. If the skill is not installed next to this one, leave it out | `report.md`, `results.json` |
 | audit-solution-health | Follow audit-solution-health's SKILL.md in the repo, **without** `--dir` or `--out`: it keeps its manifest, state and report in its own folder (`<reports>/audit-solution-health/<repo>/`, or `.audit-solution-health/` with `--in-repo`), never in the run folder. Pass the repo to `combine.mjs --repo` and it copies the report in | `report.md` in its state folder |
 

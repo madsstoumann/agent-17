@@ -1,17 +1,18 @@
 ---
 name: audit-security
-description: Use when someone wants a security review, code security audit, vulnerability scan or "is this repo safe to ship" check of a whole codebase or folder — committed secrets and API keys (also in git history), known-vulnerable dependencies from any lockfile (npm, yarn, pnpm, NuGet, Composer, PyPI, RubyGems, Go via OSV), XSS sinks, SQL/command/template injection, SSRF, open redirects, path traversal, weak crypto, disabled TLS verification, JWT and CORS mistakes, unsafe deserialisation, debug config, and GitHub Actions risks such as pull_request_target and script injection. Also a site mode for a live URL with no repo: security headers (CSP, frame-ancestors, Permissions-Policy, HSTS, Referrer-Policy), cookie flags, CORS, HTTPS redirects, exposed files and admin paths, security.txt and phishing/malware blocklists, passive only. Report only. Not for a single diff (use /security-review), a full pre-launch check of a URL (use audit-launch), TLS, DNS and mail (use audit-infra), or routine package upkeep (use audit-solution-health).
-argument-hint: "[path | url] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline] [--visibility public|private|internal] [--url URL] [--header NAME:VALUE] [--insecure] [--level error|warn|error,warn|all] [--console]"
+description: Use when someone wants a security review, code security audit, vulnerability scan or "is this repo safe to ship" check of a codebase: committed secrets (also in git history), known-vulnerable dependencies from any lockfile via OSV, XSS, SQL/command/template injection, SSRF, open redirects, path traversal, weak crypto, disabled TLS checks, JWT, CORS and cookie mistakes, unsafe deserialisation, debug config and GitHub Actions risks. --deep for a thorough audit or pen-test prep: a planned review of every trust boundary (threat model, coverage ledger, each finding challenged by a fresh agent) plus Semgrep, osv-scanner, Gitleaks and TruffleHog when installed. Site mode for a live URL: security headers, cookies, CORS, redirects, exposed files and admin paths, security.txt, blocklists; --deep adds the scripts pages load and public API docs. Read-only. Not for a single diff (/security-review), a full pre-launch check (audit-launch), TLS, DNS and mail (audit-infra) or package upkeep (audit-solution-health).
+argument-hint: "[path | url] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline] [--visibility public|private|internal] [--url URL] [--header NAME:VALUE] [--insecure] [--deep] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(git log:*), Bash(git show:*), Bash(gh repo view:*), Read, Grep, Glob, WebFetch
 metadata:
-  version: "2.5.1"
+  version: "2.6.0"
 ---
 
 # Security audit
 
 Two modes. **Code mode** (a path, the default) scans a repository and you triage every hit; most
 of this file is about it. **Site mode** (an `http(s)://` URL) checks the live site from outside and
-writes its own report: see [Site mode](#site-mode) at the end.
+writes its own report: see [Site mode](#site-mode) at the end. `--deep` makes either one much more
+thorough: see [Deep review](#deep-review-deep). Without it both run as described here.
 
 ## Code mode
 
@@ -51,6 +52,7 @@ finds; non-zero means the scanner itself failed.
 | `--no-baseline` | The user wants a scan from scratch, with no comparison. Triage verdicts in `triage.json` still apply. |
 | `--visibility V` | `public`, `private` or `internal`, when the scanner cannot ask `gh` (not installed, not signed in, not a GitHub remote) and the user knows. Only matters for platform credential files (below). |
 | `--max N` | Hits printed per rule (default 6). `findings.json` always has every hit. |
+| `--deep` | The user asks for a deep, thorough or full security audit, a pen-test prep or a threat model. See [Deep review](#deep-review-deep): it takes much longer (a planned review per trust boundary). Turns on `--history`. |
 
 ## What carries over between runs
 
@@ -65,7 +67,8 @@ so the next scan finds it whatever folder the last report went to.
 | `last-findings.json` | Scanner | The last scan; the next scan's baseline |
 | `triage.json` | You | Your verdict per finding, so a re-run does not triage the same hit twice |
 | `notes.md` | People | Hand-written notes; no script writes it. Read it before triage |
-| `runs/<stamp>/` | Scanner + you | `findings.json` and `report.md` of each run, unless `--out` |
+| `last-deep-ledger.json`, `last-deep-verdicts.json` | `deep-check.mjs --save` | The last deep review's coverage and records; the next `--deep` run starts from them |
+| `runs/<stamp>/` | Scanner + you | `findings.json` and `report.md` of each run (and `deep/` with `--deep`), unless `--out` |
 
 Every hit and advisory in `findings.json` has a fingerprint `fp` (also printed as `#…` after each
 hit). It leaves out the line number, so code that moves keeps its fp. With a baseline, each hit has
@@ -172,6 +175,32 @@ and triage its results the same way, merging duplicates with the scanner's hits.
 installed, do not install it without asking: say so under "Not checked" with the install line
 (`brew install semgrep` or `pipx install semgrep`).
 
+## Deep review (`--deep`)
+
+For "deep / thorough / full security audit", "threat model", "before the pen test", or when the user
+says the default pass is not enough. Follow [references/deep.md](references/deep.md) step by step;
+the attack classes per area are in [references/deep-classes.md](references/deep-classes.md). In short:
+
+1. `scan.mjs <path> --deep` (`timeout: 600000`) adds rules for trust boundaries the default rules
+   leave out, reads git history, runs **Semgrep, osv-scanner, Gitleaks and TruffleHog** when they are
+   on PATH (results are rules like `semgrep:…` you triage as usual; one that is missing is a
+   "not checked" row with its install line: do not install it without asking, and do not run Semgrep
+   again yourself), prints an inventory of entry points, auth controls and review areas, and seeds
+   a coverage ledger in `<out>/deep/ledger.json`.
+2. Triage every hit as in default code mode.
+3. Write `deep/architecture.md` (principals, boundaries, controls), then review every ledger unit
+   with the core method; with sub-agents, one hunter per unit or group of units.
+4. Give every candidate to a fresh agent that tries to refute it. Write `deep/verdicts.json`:
+   `confirmed` (full boundary, a `file:line` trace from entry to sink, severity, fix),
+   `needs-validation` (no severity: the missing fact and the check that settles it) or `rejected`.
+5. `node "${CLAUDE_SKILL_DIR}/scripts/deep-check.mjs" <out>/deep --save` until it says OK, then
+   write `report.md` with the deep sections of the template.
+
+Still read-only: never run the project, its tests or builds, and never contact its deployment or a
+provider. "What grep cannot see" is covered by the ledger's units, so skip that separate pass.
+The method is adapted from Cloudflare's security-audit skill (MIT,
+[references/THIRD-PARTY-NOTICES.md](references/THIRD-PARTY-NOTICES.md)).
+
 ## Report
 
 **Levels.** `--level error`, `warn`, `error,warn` or `all` (the default) limits what the scanner
@@ -218,7 +247,7 @@ node "${CLAUDE_SKILL_DIR}/scripts/scan.mjs" https://www.example.com [--only head
 
 `--url https://www.example.com` does the same when the URL is not the first argument.
 
-Run it with `timeout: 600000`; it takes one to two minutes. It is **passive**: one request per
+Run it with `timeout: 600000`; it takes one to two minutes (a little longer with `--deep`). It is **passive**: one request per
 well-known path, no fuzzing, login attempts, load or exploitation, and never a probe the site's
 owner has not asked for. Only scan sites the user owns or is engaged on.
 
@@ -228,6 +257,7 @@ owner has not asked for. Only scan sites the user owns or is engaged on.
 | `redirects` | HTTP to HTTPS, www/apex, redirect chains and status codes, HSTS on the https hops |
 | `exposed` | Secret files (`.git`, `.env`, `appsettings.json`, `web.config`, …), dependency manifests, CMS backoffice and admin paths, `security.txt` (RFC 9116) |
 | `blocklists` | OpenPhish (no key), plus Google Safe Browsing, URLhaus and VirusTotal when `GOOGLE_SAFE_BROWSING_KEY`, `URLHAUS_AUTH_KEY` or `VIRUSTOTAL_API_KEY` is set; a missing key is a skipped row, never a pass |
+| `client` | Only with `--deep`. The start page and up to four more same-site pages (one per first path segment), the scripts and styles they load and a short list of API paths, each fetched once: third-party files without Subresource Integrity (a library CDN file without it warns; tag managers and widgets are listed as info), public source maps (warn when they hold the original source), secrets in the site's JavaScript (live-looking keys fail; browser keys that are public by design are info), front-end library versions from their banners checked against OSV (skipped with `--offline`), `message` listeners with no origin check (info, for code mode), and public OpenAPI/Swagger documents, Swagger UI and GraphQL IDEs (judged on the body, so a single-page app's catch-all page is not a hit) |
 
 `headers`, `redirects` and `exposed` are audit-launch's own checks, run from the audit-launch skill
 installed next to this one (`--only headers,redirects,exposed`, with its state kept apart in this
@@ -238,7 +268,7 @@ The scanner writes `report.md` and `report.json` itself (no triage step) into
 `<reports>/audit-security/<host>/runs/<stamp>/`, or `--out DIR`, and compares with the last site scan
 of the host ("Since last run": new, worse, fixed). `--level`, `--console`, `--json`, `--state`,
 `--baseline`, `--no-baseline`, `--insecure` and `--offline` (no blocklist lookups) work as in code
-mode; `--header` sends a WAF bypass header, as for audit-launch, and so does `AUDIT_HEADERS` (one
+mode, and `--deep` adds the `client` group; `--header` sends a WAF bypass header, as for audit-launch, and so does `AUDIT_HEADERS` (one
 `Name: value` per line), on audit-launch's requests and on site mode's own clickjacking request. Then:
 
 1. Read `report.md` and add one `**Verdict:**` line under the title: ready, or what to fix first.
@@ -277,17 +307,24 @@ Check our dependencies for known vulnerabilities — we have npm and NuGet
 Security review of the whole codebase before the pen test next week
 Only check the GitHub Actions workflows for security problems
 Security scan of https://www.example.com: headers, exposed files, blocklists
+Deep security audit of this repo before the pen test
+Deep security scan of https://www.example.com, including the JavaScript it loads
 ```
 
-Mapping: "compare with last time" → nothing to add (automatic); "from scratch" → `--no-baseline`; "including history" / "leaked keys" → `--history`; "only dependencies" → `--only deps`;
+Mapping: "deep", "thorough", "full audit", "threat model", "pen-test prep" → `--deep`; "compare with last time" → nothing to add (automatic); "from scratch" → `--no-baseline`; "including history" / "leaked keys" → `--history`; "only dependencies" → `--only deps`;
 "just the workflows" → `--only ci`; "ignore tests" → `--no-tests`; "save it in …" → `--out`.
 
 ## Files
 
 - `scripts/scan.mjs`: the scanner (`--help` lists every flag). Zero dependencies, Node 18 or later, uses `git` when present.
 - `scripts/lib/site.mjs`: site mode (runs audit-launch's header, redirect and exposed groups, adds clickjacking and blocklists, writes the report).
+- `scripts/lib/client.mjs`: site mode's `client` group (`--deep`).
+- `scripts/lib/deep.mjs`: `--deep` in code mode: the inventory, the review areas, the ledger seed and the checks `deep-check.mjs` runs.
+- `scripts/lib/tools.mjs`: Semgrep, osv-scanner, Gitleaks and TruffleHog (detected on PATH, never installed; output parsed and redacted).
+- `scripts/deep-check.mjs`: checks `deep/ledger.json` and `deep/verdicts.json`, and with `--save` keeps them for the next deep run.
+- `references/deep.md`, `references/deep-classes.md`: the deep review workflow and its attack classes; `references/THIRD-PARTY-NOTICES.md`: the Cloudflare licence.
 - `scripts/lib/sources.mjs`, `scripts/lib/target.mjs`: identical copies of is-website-safe's blocklist lookups and URL parsing (a test checks).
-- `scripts/lib/patterns.mjs`: every rule, with its regex, `review` and `fix` text, plus
+- `scripts/lib/patterns.mjs`: every rule (`DEEP_RULES` only with `--deep`), with its regex, `review` and `fix` text, plus
   `PLATFORM_FILES` (platform credential files such as `umbraco-cloud.json`). A line
   containing `audit-security: ignore` is skipped, which teams can use for accepted findings.
 - `scripts/lib/deps.mjs`: lockfile parsers and the OSV lookup.
