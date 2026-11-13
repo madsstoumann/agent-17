@@ -4,7 +4,7 @@ description: Use when someone wants an SEO, content or GEO (AI search) audit of 
 argument-hint: "<url | file.html> [--geo] [--schema-only] [--pages N] [--sitemap-sample N] [--external-links N] [--internal-links N] [--schema-pages N] [--render-pages N] [--bot-pages N] [--production-host HOST] [--out DIR] [--header NAME:VALUE] [--level error|warn|error,warn|all] [--console] [--from-archive DIR [--allow-live]] [--save-html DIR] [--no-validate]"
 allowed-tools: Bash(node:*), Read
 metadata:
-  version: "2.7.1"
+  version: "2.8.0"
 ---
 
 # SEO audit
@@ -40,7 +40,7 @@ the findings; non-zero means the script failed (read the last stderr lines).
 | `--internal-links N` (default 300) | Internal link targets the crawl found but did not fetch (past `--pages`), checked for a status so a broken footer link in any crawled section is reported. `0` to skip. |
 | `--external-links N` (default 150) | Outbound links to check. `0` to skip. 403/429/999 answers are bot walls, reported as "verify by hand". |
 | `--schema-pages N` (default 8) | Pages sent to validator.schema.org, one per distinct JSON-LD type set. Private hosts get their HTML posted instead. `0` or `--no-remote` skips it. |
-| `--render-pages N` (default 8) | Pages rendered in headless Chrome after the crawl: the start page, then pages whose served HTML has no JSON-LD, one per section, then one page per section not picked yet. JSON-LD that appears only after JavaScript runs is adopted for every structured-data check, posted to the validator as the rendered DOM, and reported as "JSON-LD added by JavaScript" (Google sees it; Bing, social scrapers and most AI crawlers do not). Each rendered page's text (consent banners left out) is compared with its served HTML for "Text without JavaScript". Needs Chrome, Chromium or Edge (found automatically, or `CHROME_PATH`); without one those rows are skipped. `0` turns it off. Raise it (16–24) for a GEO audit of a site with many templates. |
+| `--render-pages N` (default 8) | Pages rendered in headless Chrome after the crawl: the start page, then pages whose served HTML has no JSON-LD, one per section, then one page per section not picked yet. JSON-LD that appears only after JavaScript runs is adopted for every structured-data check, posted to the validator as the rendered DOM, and reported as "JSON-LD added by JavaScript" (Google sees it; Bing, social scrapers and most AI crawlers do not). Each rendered page's text (consent banners left out) is compared with its served HTML for "Text without JavaScript", and its robots, canonical, title, h1 and internal links for "Signals changed by JavaScript". Needs Chrome, Chromium or Edge (found automatically, or `CHROME_PATH`); without one those rows are skipped. `0` turns it off. Raise it (16–24) for a GEO audit of a site with many templates. |
 | `--bot-pages N` (default 3) | Pages (start page, then one per section) fetched once as a browser and once with each AI crawler's user agent (OAI-SearchBot, ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, GPTBot, ClaudeBot), bingbot and Googlebot, without the `--header` bypass, to find CDN or WAF rules that refuse crawlers robots.txt lets in. Crawlers robots.txt shuts out are not fetched. `0` skips it. |
 | `--geo` | The user wants a GEO audit, AI search readiness, "is the site ready for ChatGPT / AI answers", or the technical part of a GEO proposal. `report.md` becomes a "GEO audit" with the AI search rows first and only the indexing rows that decide what AI crawlers reach (robots.txt, noindex, thin pages, sitemap and the noindex or blocked URLs it lists, canonical targets, JSON-LD and its coverage, duplicate titles, h1, lang). `report.json` and `findings.json` keep every row (`"geo": true` marks the GEO findings). |
 | `--schema-only` | The user only wants the structured data of one page checked ("validate the schema on …", "is my JSON-LD valid?"). Fetches that URL alone, renders it, validates it and runs the Google rich-result rules, and lists every validator error and warning on its own line. No crawl, robots, sitemap or GEO. |
@@ -149,9 +149,28 @@ Honesty rules:
 - "Thin pages" counts text in the served HTML. A page that renders its text with JavaScript shows
   up there too; say so if the site is an SPA. JSON-LD is different: the Chrome pass finds JSON-LD
   that JavaScript adds on the pages it renders (`--render-pages`), not on every crawled page.
-- FAQPage and HowTo markup are fine to keep, but Google limits FAQ rich results to government and
-  health sites and no longer shows HowTo; do not promise them.
+- FAQPage and HowTo markup are fine to keep, but Google no longer shows either as a rich result
+  (FAQ since 7 May 2026, HowTo since 2023); do not promise them.
 - Duplicate titles across language versions are fine when hreflang ties them together.
+- **Signals changed by JavaScript** compares the rendered pages only (`--render-pages`). JavaScript
+  that adds or removes noindex, or adds, removes or changes the canonical, is an error: Google may
+  act on either version (it does not render a page served as noindex), and crawlers that do not run
+  JavaScript see only the served one. A changed title or h1 and internal links that exist only after
+  JavaScript (10 or more, and 30 % of the page's links) are warnings: Bing, link previews and most AI
+  crawlers miss them. A page that moves the browser elsewhere is not compared.
+- **Conflicting head tags**: two different canonicals on a page (in the HTML, or the HTML and a
+  `Link` header) is an error, since search engines may ignore all of them; a second, different
+  title or description is a warning. Several robots meta tags are not a conflict: search engines
+  combine them and the strictest rule wins, and so does this audit.
+- **Snippet controls** (GEO): `nosnippet`, `max-snippet:0` or most of a page's text inside
+  `data-nosnippet` keeps that text out of Google's snippets and out of AI Overviews and AI Mode
+  input, per Google's robots meta tag documentation. Warn on indexable pages; it is right only
+  for content that should be indexed but never shown. A positive `max-snippet` is info.
+- **Sitemap file limits**: at most 50,000 URLs and 50 MB uncompressed per file, no index listed by
+  another index, at most 1,000 entries in a news sitemap. Sitemaps are read up to 50 MB.
+- **HTML size**: Googlebot reads the first 2 MB of an HTML file for Search and ignores the rest. The
+  crawl reads 2 MiB of a page, so a page that reaches that is past the limit; 1.6 MB and more is info.
+- **Meta refresh redirects** to another URL are a warning: use a server 301 or 308.
 - The crawl is a sample when the cap was hit. Say "in the 150 pages crawled", not "on the site".
 - **GEO readiness** (on every full run, at the top of the report) is the share of GEO rows that
   pass: pass and plain info count 1, warn 0.5, fail 0, skipped rows are left out. Info rows that

@@ -9,6 +9,7 @@ import { hostOf, sameUrlModuloSlash, stripWww } from './http.mjs';
 import { isAllowed } from './robotsmatch.mjs';
 import { normalise } from './crawl.mjs';
 import { RICH_TEST, DOCS, prop } from './rich.mjs';
+import { SITEMAP_MAX_URLS, SITEMAP_MAX_BYTES, NEWS_SITEMAP_MAX } from './robots.mjs';
 
 export const AREAS = [
   ['indexing', 'Indexing and crawl'],
@@ -25,6 +26,11 @@ const LANG_RE = /^([a-z]{2,3}(-[A-Za-z]{2,4}(-[A-Za-z0-9]{2,8})?)?|x-default)$/i
 const TITLE = [10, 60];
 const DESC = [50, 160];
 const THIN_WORDS = 150;
+// Googlebot reads the first 2 MB of an HTML file when crawling for Search; the rest is ignored
+// (developers.google.com/search/docs/crawling-indexing/googlebot). The crawl reads 2 MiB of a page,
+// so a page that reaches the read cap is past the limit however "MB" is counted.
+export const HTML_LIMIT = 2 * 1024 * 1024;
+const HTML_NEAR = 1.6 * 1000 * 1000;
 
 export function result(id, status, title, evidence, { fix = '', urls = [] } = {}) {
   return { id, area: AREA_OF[id] || 'indexing', status, title, evidence, fix, urls };
@@ -32,7 +38,7 @@ export function result(id, status, title, evidence, { fix = '', urls = [] } = {}
 
 // Which section each check id belongs to.
 const AREA_OF = {
-  'seo.start': 'indexing', 'seo.noindex': 'indexing', 'seo.status': 'indexing', 'seo.thin': 'indexing', 'seo.url-hygiene': 'indexing', 'seo.slash-duplicates': 'indexing',
+  'seo.start': 'indexing', 'seo.noindex': 'indexing', 'seo.html-size': 'indexing', 'seo.js-signals': 'indexing', 'seo.sitemap-limits': 'sitemap', 'seo.meta-refresh': 'links', 'seo.head-conflicts': 'canonical', 'seo.snippet-controls': 'geo', 'seo.status': 'indexing', 'seo.thin': 'indexing', 'seo.url-hygiene': 'indexing', 'seo.slash-duplicates': 'indexing',
   'seo.robots-txt': 'sitemap', 'seo.sitemap': 'sitemap', 'seo.sitemap-status': 'sitemap', 'seo.sitemap-noindex': 'sitemap', 'seo.sitemap-canonical': 'sitemap',
   'seo.sitemap-blocked': 'sitemap', 'seo.sitemap-hosts': 'sitemap', 'seo.sitemap-missing': 'sitemap', 'seo.orphans': 'sitemap', 'seo.robots-blocked-links': 'sitemap',
   'seo.broken-internal': 'links', 'seo.internal-redirects': 'links', 'seo.redirect-chains': 'links', 'seo.temporary-redirects': 'links', 'seo.broken-external': 'links',
@@ -129,6 +135,15 @@ export function runChecks(input) {
     ? result('seo.thin', 'info', 'Thin pages', `${plural(thin.length, 'indexable page')} with fewer than ${THIN_WORDS} words of text`, { fix: 'Thin pages rarely rank. Add content, merge them, or noindex utility pages. Pages that render their text with JavaScript also show up here.', urls: thin.map((p) => ({ url: p.url, note: `${p.words} words` })) })
     : result('seo.thin', 'pass', 'Thin pages', `every indexable page has at least ${THIN_WORDS} words`));
 
+  const tooBig = html.filter((p) => p.truncated || p.bytes >= HTML_LIMIT);
+  const nearBig = html.filter((p) => !tooBig.includes(p) && p.bytes >= HTML_NEAR);
+  const mb = (n) => `${(n / 1000 / 1000).toFixed(1)} MB`;
+  out.push(tooBig.length
+    ? result('seo.html-size', 'fail', 'HTML size', `${plural(tooBig.length, 'page')} with more than 2 MB of HTML: Googlebot reads the first 2 MB and ignores the rest`, { fix: 'Bring the HTML under 2 MB (uncompressed): move inline data, SVG sprites, base64 images and large JSON state out of the page, or load them as files.', urls: tooBig.map((p) => ({ url: p.url, note: p.truncated ? `more than ${mb(HTML_LIMIT)} (the read stopped at ${mb(p.bytes)})` : mb(p.bytes) })) })
+    : nearBig.length
+      ? result('seo.html-size', 'info', 'HTML size', `${plural(nearBig.length, 'page')} close to the 2 MB Googlebot reads`, { urls: nearBig.map((p) => ({ url: p.url, note: mb(p.bytes) })) })
+      : result('seo.html-size', 'pass', 'HTML size', `every page under ${mb(HTML_NEAR)} of HTML (Googlebot reads 2 MB)`));
+
   const hygiene = html.filter((p) => { const u = new URL(p.url); return /[A-Z]/.test(u.pathname) || /_/.test(u.pathname) || p.url.length > 115; });
   if (hygiene.length) out.push(result('seo.url-hygiene', 'info', 'URL hygiene', `${plural(hygiene.length, 'URL')} with capitals, underscores or more than 115 characters`, { fix: 'Lowercase, hyphenated, short URLs are easier to share and avoid case duplicates. Change URLs only with 301 redirects.', urls: hygiene.map((p) => ({ url: p.url })) }));
 
@@ -155,6 +170,19 @@ export function runChecks(input) {
     out.push(result('seo.sitemap', (sitemap.declared || []).length ? 'pass' : 'warn', 'XML sitemap', `${smUrls.length}${sitemap.truncated ? '+' : ''} URLs in ${plural(okSources.length, 'file')}${(sitemap.declared || []).length ? ', declared in robots.txt' : ', but robots.txt does not declare it'}`, { fix: (sitemap.declared || []).length ? '' : 'Add "Sitemap: <absolute URL>" to robots.txt.' }));
     const foreign = smUrls.filter(otherHost);
     if (foreign.length) out.push(result('seo.sitemap-hosts', 'fail', 'Sitemap hosts', `${plural(foreign.length, 'sitemap URL')} on other hosts (${[...new Set(foreign.map(hostOf))].slice(0, 3).join(', ')})`, { fix: 'A sitemap may only list URLs on its own host. Generate it from the live hostname.', urls: foreign.map((u) => ({ url: u })) }));
+
+    const over = [];
+    for (const src of sitemap.sources || []) {
+      const why = [];
+      if (src.count > SITEMAP_MAX_URLS) why.push(`${src.count.toLocaleString('en')} ${src.kind === 'sitemapindex' ? 'sitemaps listed' : 'URLs'} (limit 50,000)`);
+      if (src.oversize || src.bytes > SITEMAP_MAX_BYTES) why.push('larger than 50 MB uncompressed');
+      if (src.kind === 'sitemapindex' && src.parent) why.push(`a sitemap index listed by another index (${src.parent})`);
+      if (src.news > NEWS_SITEMAP_MAX) why.push(`${src.news.toLocaleString('en')} news entries (limit 1,000)`);
+      if (why.length) over.push({ url: src.url, note: why.join('; ') });
+    }
+    out.push(over.length
+      ? result('seo.sitemap-limits', 'fail', 'Sitemap file limits', `${plural(over.length, 'sitemap file')} past the sitemap protocol's limits`, { fix: 'Split a file past 50,000 URLs or 50 MB (uncompressed) into several and list them in one sitemap index. An index may list sitemaps only, not other indexes. A news sitemap holds at most 1,000 articles from the last two days.', urls: over })
+      : result('seo.sitemap-limits', 'pass', 'Sitemap file limits', `${plural(okSources.length, 'file')} within 50,000 URLs and 50 MB each`));
 
     const checked = smUrls.filter((u) => byUrl.has(u));
     const answers = checked.map((u) => ({ u, p: byUrl.get(u) }));
@@ -199,6 +227,10 @@ export function runChecks(input) {
     : result('seo.redirect-chains', 'pass', 'Redirect chains', redirects.length ? `${plural(redirects.length, 'redirect')}, each one hop` : 'no redirects met'));
   const temp = redirects.filter((p) => [302, 303, 307].includes(p.status) && inlinks.has(p.url));
   if (temp.length) out.push(result('seo.temporary-redirects', 'warn', 'Temporary redirects', `${plural(temp.length, 'redirect')} use ${[...new Set(temp.map((p) => p.status))].join('/')} instead of 301/308`, { fix: 'Use 301 (or 308) for moves that stay; a temporary redirect keeps the old URL in the index.', urls: temp.map((p) => ({ url: p.url, note: `${p.status} → ${p.location}` })) }));
+  const refresh = html.filter((p) => p.refresh?.url && !sameUrlModuloSlash(p.refresh.url, p.url));
+  out.push(refresh.length
+    ? result('seo.meta-refresh', 'warn', 'Meta refresh redirects', `${plural(refresh.length, 'page')} ${refresh.length === 1 ? 'sends' : 'send'} visitors on with <meta http-equiv="refresh">`, { fix: 'Redirect on the server with a 301 (or 308) instead. Google follows a meta refresh, but other search engines, AI crawlers and link previews may index the empty page or not follow it at all.', urls: refresh.map((p) => ({ url: p.url, note: `after ${p.refresh.delay} s → ${p.refresh.url}` })) })
+    : result('seo.meta-refresh', 'pass', 'Meta refresh redirects', 'no page redirects with a meta refresh'));
 
   if (input.external) {
     const dead = input.external.filter((r) => !r.ok);
@@ -261,6 +293,13 @@ export function runChecks(input) {
     ? result('seo.canonical-target', 'fail', 'Canonical points at a bad URL', `${plural(badTargets.length, 'page')} canonicalise to a redirect, an error, a noindex page or a page with another canonical`, { fix: 'A canonical must name a 200, indexable page that is its own canonical; otherwise search engines ignore it and pick one themselves.', urls: badTargets.map(({ p, t }) => ({ url: p.url, note: `→ ${p.canonical} (${t.location ? `${t.status} redirect` : t.noindex ? 'noindex' : t.status !== 200 ? t.status : `canonical ${t.canonical}`})` })) })
     : result('seo.canonical-target', 'pass', 'Canonical points at a bad URL', 'no canonical points at a redirect, error or noindex page'));
   if (canonTargets.length) out.push(result('seo.canonicalised', 'info', 'Canonicalised pages', `${plural(canonTargets.length, 'page')} name another URL as canonical (duplicates by design, check each)`, { urls: canonTargets.map((p) => ({ url: p.url, note: `→ ${p.canonical}` })) }));
+
+  const conflicted = html.filter((p) => p.headConflicts);
+  const canonConflict = conflicted.filter((p) => p.headConflicts.canonical);
+  const conflictNote = (c) => Object.entries(c).map(([k, v]) => `${v.length} different ${k === 'canonical' ? 'canonicals' : `${k}s`}: ${v.map((x) => `"${String(x).slice(0, 80)}"`).join(' / ')}`).join('; ');
+  out.push(conflicted.length
+    ? result('seo.head-conflicts', canonConflict.length ? 'fail' : 'warn', 'Conflicting head tags', `${plural(conflicted.length, 'page')} ${conflicted.length === 1 ? 'states' : 'state'} ${canonConflict.length ? 'two or more different canonicals' : 'a title or description twice, differently'}${canonConflict.length && conflicted.length > canonConflict.length ? ' (and titles or descriptions twice)' : ''}`, { fix: canonConflict.length ? 'Keep one rel=canonical per page (in the HTML or the Link header, not both with different URLs). When a page names several, Google may ignore all of them and pick the canonical itself.' : 'Keep one <title> and one meta description per page; a second one usually comes from a plugin or a layout and a template both writing it.', urls: conflicted.map((p) => ({ url: p.url, note: conflictNote(p.headConflicts) })) })
+    : result('seo.head-conflicts', 'pass', 'Conflicting head tags', 'no page states two different canonicals, titles or descriptions'));
 
   // ---------------------------------------------------------------- hreflang
   const withHl = html.filter((p) => p.hreflang?.length);
@@ -436,4 +475,63 @@ export function countStatuses(rows) {
   const c = { pass: 0, warn: 0, fail: 0, info: 0, skip: 0 };
   for (const r of rows) c[r.status]++;
   return c;
+}
+
+// ---------------------------------------------------------------- signals JavaScript changes
+
+const LINKS_ONLY_MIN = 10;
+const LINKS_ONLY_SHARE = 0.3;
+const flagsOf = (v) => {
+  const d = String(v || '').toLowerCase().split(/[,\s]+/).filter(Boolean);
+  return { noindex: d.includes('noindex') || d.includes('none'), nofollow: d.includes('nofollow') || d.includes('none') };
+};
+const squash = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+const noSlash = (u) => String(u).replace(/\/$/, '');
+
+/**
+ * What JavaScript changes in a page's indexing signals: the served page record against the head of
+ * the rendered DOM (`extractMeta` of it) and the internal links of each. Pure.
+ * -> Array<{ signal: 'robots'|'canonical'|'title'|'h1'|'links', severity: 'fail'|'warn', note: string }>
+ */
+export function jsDrift(page, rendered, servedLinks = null, renderedLinks = null) {
+  const out = [];
+  const before = flagsOf([page.metaRobots, page.metaGooglebot].filter(Boolean).join(','));
+  const after = flagsOf([rendered.robots, rendered.googlebot].filter(Boolean).join(','));
+  if (before.noindex && !after.noindex) out.push({ signal: 'robots', severity: 'fail', note: 'served HTML is noindex, JavaScript removes it: Google does not render a page it sees as noindex, so the page stays out' });
+  else if (!before.noindex && after.noindex) out.push({ signal: 'robots', severity: 'fail', note: 'JavaScript adds noindex: crawlers that do not render index the page, Google drops it' });
+  else if (before.nofollow !== after.nofollow) out.push({ signal: 'robots', severity: 'warn', note: `JavaScript ${after.nofollow ? 'adds' : 'removes'} nofollow` });
+  const sc = [...new Set((page.headConflicts?.canonical || (page.canonical ? [page.canonical] : [])).map(noSlash))];
+  const rc = [...new Set((rendered.canonicals || []).map(noSlash))];
+  if (!sc.length && rc.length) out.push({ signal: 'canonical', severity: 'warn', note: `canonical only after JavaScript: ${rc[0]}` });
+  else if (sc.length && !rc.length) out.push({ signal: 'canonical', severity: 'fail', note: `JavaScript removes the canonical (${sc[0]})` });
+  else if (sc.length && (sc.length !== rc.length || sc.some((c) => !rc.includes(c)))) out.push({ signal: 'canonical', severity: 'fail', note: `canonical ${sc[0]} served, ${rc[0]} after JavaScript` });
+  const st = squash(page.title); const rt = squash(rendered.title);
+  if (!st && rt) out.push({ signal: 'title', severity: 'warn', note: `title only after JavaScript: "${rt.slice(0, 80)}"` });
+  else if (st && rt && st !== rt) out.push({ signal: 'title', severity: 'warn', note: `title "${st.slice(0, 60)}" served, "${rt.slice(0, 60)}" after JavaScript` });
+  const sh = squash(page.h1); const rh = squash(rendered.h1s?.[0]);
+  if (!sh && rh) out.push({ signal: 'h1', severity: 'warn', note: `h1 only after JavaScript: "${rh.slice(0, 80)}"` });
+  else if (sh && rh && sh !== rh) out.push({ signal: 'h1', severity: 'warn', note: `h1 "${sh.slice(0, 60)}" served, "${rh.slice(0, 60)}" after JavaScript` });
+  if (servedLinks && renderedLinks && renderedLinks.size && !page.truncated) {
+    const only = [...renderedLinks].filter((l) => !servedLinks.has(l)).length;
+    if (only >= LINKS_ONLY_MIN && only / renderedLinks.size >= LINKS_ONLY_SHARE) out.push({ signal: 'links', severity: 'warn', note: `${only} of ${renderedLinks.size} internal links exist only after JavaScript (${servedLinks.size} in the served HTML)` });
+  }
+  return out;
+}
+
+/** seo.js-signals over the render pass: `render.pages[].drift` from jsDrift. */
+export function jsSignalsRow(render) {
+  const T = 'Signals changed by JavaScript';
+  if (!render?.ran) return result('seo.js-signals', 'skip', T, render?.error ? `not rendered: ${render.error}` : 'not rendered (--render-pages 0)');
+  const ok = (render.pages || []).filter((p) => p.ok);
+  if (!ok.length) return result('seo.js-signals', 'skip', T, 'Chrome rendered no page');
+  const hit = ok.filter((p) => p.drift?.length);
+  if (!hit.length) return result('seo.js-signals', 'pass', T, `${plural(ok.length, 'page')} rendered in Chrome: robots, canonical, title, h1 and internal links are the same as in the served HTML`);
+  const bad = hit.some((p) => p.drift.some((d) => d.severity === 'fail'));
+  const signals = [...new Set(hit.flatMap((p) => p.drift.map((d) => d.signal)))];
+  const fix = [
+    signals.includes('robots') || signals.includes('canonical') ? 'Put meta robots and the canonical in the served HTML and never change them with JavaScript: Google may act on either version, and crawlers that do not render see only the served one.' : '',
+    signals.includes('title') || signals.includes('h1') ? 'Render the title and h1 on the server; Bing, link previews and most AI crawlers read the served HTML only.' : '',
+    signals.includes('links') ? 'Render navigation and content links as <a href> in the served HTML, so crawlers that do not run JavaScript can find the pages.' : '',
+  ].filter(Boolean).join(' ');
+  return result('seo.js-signals', bad ? 'fail' : 'warn', T, `${plural(hit.length, 'page')} of ${ok.length} rendered ${hit.length === 1 ? 'changes' : 'change'} ${signals.join(', ')} after JavaScript runs`, { fix, urls: hit.flatMap((p) => p.drift.map((d) => ({ url: p.url, note: d.note }))) });
 }

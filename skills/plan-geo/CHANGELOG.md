@@ -2,6 +2,12 @@
 
 All notable changes to the `plan-geo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.6.2] - 2026-11-13
+
+### Fixed
+- FAQ rich results: the FAQPage note, `proposals.md` and SKILL.md say Google stopped showing them on 7 May 2026, not that they are limited to government and health sites (`lib/rich.mjs` stays identical to audit-seo's).
+- `lib/html.mjs` (identical to audit-seo's): every robots and googlebot meta tag on a page counts, not only the first; head metadata also lists every distinct canonical, title and description, and a meta refresh. `lib/render.mjs` (identical to audit-seo's) also returns where the page is once it settled (`location`).
+
 ## [1.6.1] - 2026-11-10
 
 ### Fixed

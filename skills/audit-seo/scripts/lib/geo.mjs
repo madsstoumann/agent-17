@@ -359,9 +359,31 @@ export function schemaOpportunitiesRow({ pages = [] }) {
   const count = (name) => hits.filter((h) => h.note.includes(name)).length;
   if (!hits.length) return result('seo.schema-opportunities', 'pass', 'Structured data opportunities', `no page looks like an article, FAQ or breadcrumb trail without the matching markup (${plural(idx.length, 'page')})`);
   return result('seo.schema-opportunities', 'info', 'Structured data opportunities', `pages that look like they could carry more markup: Article ${count('Article')}, FAQPage ${count('FAQPage')}, BreadcrumbList ${count('BreadcrumbList')}`, {
-    fix: 'Article (with datePublished, dateModified, author) on articles; BreadcrumbList where a breadcrumb trail is shown; FAQPage where a page answers several questions. Google shows FAQ rich results only for government and health sites, but the markup still tells AI engines which text answers which question. Mark up only what is visible on the page.',
+    fix: 'Article (with datePublished, dateModified, author) on articles; BreadcrumbList where a breadcrumb trail is shown; FAQPage where a page answers several questions. Google no longer shows FAQ rich results (since May 2026), but the markup still tells AI engines which text answers which question. Mark up only what is visible on the page.',
     urls: hits,
   });
+}
+
+/**
+ * seo.snippet-controls: indexable pages that keep their text out of quoted AI answers. Google applies
+ * nosnippet, max-snippet and data-nosnippet to AI Overviews and AI Mode as well as to snippets
+ * (developers.google.com/search/docs/crawling-indexing/robots-meta-tag). `p.snippet` and
+ * `p.nosnippetWords` come from the crawl's page records.
+ */
+export function snippetControlsRow({ pages = [] }) {
+  const T = 'Snippet controls (AI Overviews, AI Mode)';
+  const idx = pages.filter((p) => p.status >= 200 && p.status < 300 && p.title !== undefined && !p.noindex);
+  if (!idx.length) return result('seo.snippet-controls', 'skip', T, 'no indexable page crawled');
+  const hiddenShare = (p) => (p.nosnippetWords && p.words ? p.nosnippetWords / Math.max(p.words, p.nosnippetWords) : 0);
+  const blocked = idx.filter((p) => p.snippet === 'nosnippet' || p.snippet === 'max-snippet:0' || hiddenShare(p) >= 0.5);
+  const limited = idx.filter((p) => !blocked.includes(p) && (/^max-snippet:\d+$/.test(p.snippet || '') || p.nosnippetWords));
+  const note = (p) => [p.snippet, p.nosnippetWords ? `${p.nosnippetWords} of ${Math.max(p.words, p.nosnippetWords)} words in data-nosnippet` : ''].filter(Boolean).join('; ');
+  const sent = [...new Set([...blocked, ...limited].map((p) => p.snippet).filter(Boolean))];
+  const usesAttr = [...blocked, ...limited].some((p) => p.nosnippetWords);
+  const what = [...sent, ...(usesAttr ? ['data-nosnippet'] : [])].join(', ');
+  if (blocked.length) return result('seo.snippet-controls', 'warn', T, `${plural(blocked.length, 'indexable page')} of ${idx.length} ${blocked.length === 1 ? 'keeps its' : 'keep their'} text out of snippets and AI answers (${what})`, { fix: `Google uses neither snippets nor AI Overviews and AI Mode input from text under ${what}. Remove it from pages that should be quoted, or keep it to the parts that must not be (a price, a login box). It is the right choice only for content that should be indexed but never shown.`, urls: [...blocked, ...limited].map((p) => ({ url: p.url, note: note(p) })) });
+  if (limited.length) return result('seo.snippet-controls', 'info', T, `${plural(limited.length, 'indexable page')} ${limited.length === 1 ? 'limits' : 'limit'} snippet text (${what}); AI Overviews and AI Mode quote no more than that`, { urls: limited.map((p) => ({ url: p.url, note: note(p) })) });
+  return result('seo.snippet-controls', 'pass', T, `no nosnippet, max-snippet or data-nosnippet on ${plural(idx.length, 'indexable page')}`);
 }
 
 /** seo.bingbot: bingbot in robots.txt, plus whether the start page carries Bing's site verification. */
@@ -385,6 +407,7 @@ export const GEO_RELATED = new Set([
   'seo.sitemap', 'seo.sitemap-noindex', 'seo.sitemap-blocked',
   'seo.canonical-host', 'seo.canonical-target',
   'seo.jsonld-parse', 'seo.jsonld-coverage', 'seo.jsonld-client-side', 'seo.schema-validator', 'seo.rich-required',
+  'seo.js-signals',
 ]);
 export const isGeoRow = (r) => r.area === 'geo' || GEO_RELATED.has(r.id);
 

@@ -210,7 +210,7 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 |---|---|
 | `--schema-only` | Structured data on the given page only: validator.schema.org, Google rich-result rules, JSON-LD added by JavaScript, every issue on its own line. No crawl. Implied for a local file. |
 | `--geo` | GEO view: `report.md` titled "GEO audit", showing the AI search rows and the indexing rows that decide what AI crawlers reach (robots.txt, noindex, sitemap, canonicals, JSON-LD coverage, titles), under a GEO readiness score in which info rows that point at something missing count ¾. `report.json` and `findings.json` keep everything. |
-| `--render-pages N` | Pages rendered in headless Chrome (start page, pages without JSON-LD, then one per section) to find JSON-LD and text that JavaScript adds; the text is compared with the served HTML that AI crawlers read (default 8, 0 to skip). Uses `CHROME_PATH` or finds Chrome. |
+| `--render-pages N` | Pages rendered in headless Chrome (start page, pages without JSON-LD, then one per section) to find JSON-LD and text that JavaScript adds; the text, robots, canonical, title, h1 and internal links are compared with the served HTML that AI crawlers read (default 8, 0 to skip). Uses `CHROME_PATH` or finds Chrome. |
 | `--bot-pages N` | Pages fetched with each AI crawler's user agent (OAI-SearchBot, ChatGPT-User, Claude-SearchBot, PerplexityBot…), bingbot and Googlebot, to find CDN or WAF rules that refuse them (default 3, 0 to skip). |
 | `--pages N` | Pages to crawl (default 150), shared across language sections. |
 | `--sitemap-sample N` | Extra sitemap URLs the crawl did not reach (default 50). |

@@ -2,6 +2,20 @@
 
 All notable changes to the `audit-seo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.8.0] - 2026-11-13
+
+### Added
+- `seo.js-signals` (Signals changed by JavaScript): each page the Chrome pass renders is compared with its served HTML. JavaScript that removes or adds noindex, or removes, adds or changes the canonical, is an error; a changed title or h1, a nofollow added or removed, and internal links that exist only after JavaScript (at least 10, and 30 % of the rendered page's links) are warnings. A page that moves the browser elsewhere (meta refresh, a script redirect) and a page whose served HTML was cut off are not compared. Counts in the GEO view. Skipped in archive mode.
+- `seo.head-conflicts` (Conflicting head tags): a page that names two or more different canonicals (in the HTML, or the HTML and a `Link` header) is an error, because search engines may ignore them all; a second, different `<title>` or meta description is a warning.
+- `seo.snippet-controls` (Snippet controls, AI Overviews and AI Mode): indexable pages with `nosnippet` or `max-snippet:0` (meta robots, meta googlebot, or an X-Robots-Tag for every agent or googlebot), or with half or more of their text inside `data-nosnippet`, are a warning: Google uses that text neither for snippets nor as input for AI Overviews and AI Mode. A positive `max-snippet` is info. GEO area.
+- `seo.sitemap-limits` (Sitemap file limits): a sitemap file with more than 50,000 URLs or more than 50 MB uncompressed, a sitemap index listed by another index, and a news sitemap with more than 1,000 entries are errors. Sitemaps are now read up to 50 MB (gzip inflated no further than that) instead of 10 MB.
+- `seo.html-size` (HTML size): a page with more HTML than the 2 MB Googlebot reads for Search is an error; one at 1.6 MB or more is info.
+- `seo.meta-refresh` (Meta refresh redirects): a page that sends the visitor to another URL with `<meta http-equiv="refresh">` is a warning; a refresh to the page itself is not.
+
+### Fixed
+- A page with two robots (or googlebot) meta tags was read from the first one only, so a `noindex` in the second was missed. Every such tag now counts, the strictest rule winning, as search engines read them.
+- The FAQPage note says Google stopped showing FAQ rich results on 7 May 2026, instead of limiting them to government and health sites. Same in the structured data opportunities fix text.
+
 ## [2.7.1] - 2026-11-10
 
 ### Changed

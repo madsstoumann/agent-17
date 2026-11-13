@@ -21,16 +21,16 @@ import { createHash } from 'node:crypto';
 import { parseCli, resolveOut, resolveState, reportsRoot, usage } from './lib/cli.mjs';
 import { claimTarget, markRun, findEarlier, readNotes } from './lib/target-state.mjs';
 import { diffRows } from './lib/diff.mjs';
-import { createHttp, isPrivateHost, isPrivateAddress, siblingHost, challengeVendor, pLimit, VERSION } from './lib/http.mjs';
-import { parseRobotsTxt, loadSitemaps } from './lib/robots.mjs';
+import { createHttp, isPrivateHost, isPrivateAddress, siblingHost, challengeVendor, pLimit, sameUrlModuloSlash, VERSION } from './lib/http.mjs';
+import { parseRobotsTxt, loadSitemaps, SITEMAP_MAX_BYTES } from './lib/robots.mjs';
 import { followChain } from './lib/redirects.mjs';
-import { crawlSite, checkExternal, checkInternal, headThenGet, normalise } from './lib/crawl.mjs';
-import { runChecks, schemaChecks, pickSchemaPages, pickRenderPages, htmlPages } from './lib/checks.mjs';
+import { crawlSite, checkExternal, checkInternal, headThenGet, normalise, internalLinks } from './lib/crawl.mjs';
+import { runChecks, schemaChecks, pickSchemaPages, pickRenderPages, htmlPages, jsDrift, jsSignalsRow } from './lib/checks.mjs';
 import { extractMeta } from './lib/html.mjs';
 import { richOf } from './lib/rich.mjs';
 import { findChrome, launch, render, TEXT_MEASURE } from './lib/render.mjs';
 import { schemaValidate } from './lib/schema.mjs';
-import { fetchGeo, geoChecks, fetchBotAccess, botAccessRow, renderedTextRow, freshnessRows, answerStructureRow, schemaOpportunitiesRow, bingRow, geoScore } from './lib/geo.mjs';
+import { fetchGeo, geoChecks, fetchBotAccess, botAccessRow, renderedTextRow, freshnessRows, answerStructureRow, schemaOpportunitiesRow, bingRow, snippetControlsRow, geoScore } from './lib/geo.mjs';
 import { renderMarkdown, renderStdout, findings, pagesCsv, consoleItems } from './lib/report.mjs';
 import { consoleList, scratchDir, removeScratch } from './lib/levels.mjs';
 import { openArchive, archiveHttp, hasMask, isSiteFile, createArchiveWriter } from './lib/archive.mjs';
@@ -144,7 +144,7 @@ async function fullAudit(opts, http, siteHosts, log, archive = null) {
   const robots = { status: robotsRes.status, parsed: robotsText ? parseRobotsTxt(robotsText) : null, error: robotsRes.error || null };
   const declared = robots.parsed?.sitemaps || [];
   const candidates = [...new Set([...declared.map((s) => { try { return new URL(s, u.origin).toString(); } catch { return null; } }).filter(Boolean), `${u.origin}/sitemap.xml`, `${u.origin}/sitemap_index.xml`])];
-  const sitemap = await loadSitemaps(http, candidates, { maxChildren: 20, maxUrls: 20000, log });
+  const sitemap = await loadSitemaps(http, candidates, { maxChildren: 20, maxUrls: 20000, maxBytes: SITEMAP_MAX_BYTES + 1, log });
   sitemap.declared = declared;
   log(`robots.txt ${robots.status}; sitemap: ${sitemap.urls.length} URLs`);
 
@@ -163,7 +163,7 @@ async function fullAudit(opts, http, siteHosts, log, archive = null) {
 
   // JSON-LD that only exists after JavaScript runs: render a few pages in Chrome and adopt what they add.
   const renderInfo = archive ? { summary: { ran: false, error: 'skipped: archive mode', pages: [] }, html: new Map() }
-    : await renderPass(pickRenderPages(crawl.pages, finalUrl, opts.renderPages), crawl.pages, { opts, siteHosts, log });
+    : await renderPass(pickRenderPages(crawl.pages, finalUrl, opts.renderPages), crawl.pages, { opts, siteHosts, log, served: crawl.served });
   const html = htmlPages(crawl.pages);
 
   // og:image: one check per distinct absolute image.
@@ -232,6 +232,8 @@ async function fullAudit(opts, http, siteHosts, log, archive = null) {
   rows.push(...geoChecks({ robots, robotsText, geo, start: startPage }));
   rows.push(botAccessRow(botAccess));
   rows.push(renderedTextRow({ pages: crawl.pages, render: renderInfo.summary }));
+  rows.push(jsSignalsRow(renderInfo.summary));
+  rows.push(snippetControlsRow({ pages: crawl.pages }));
   rows.push(...freshnessRows({ pages: crawl.pages, sitemap }));
   rows.push(...[answerStructureRow({ pages: crawl.pages }), schemaOpportunitiesRow({ pages: crawl.pages }), bingRow({ robots, start: startPage })].filter(Boolean));
 
@@ -311,7 +313,7 @@ function cachedValidator(http) {
  * the page's jsonLd is replaced by the rendered one and its DOM kept for the validator.
  * -> { summary: { ran, error, pages: [{ url, ok, added, error }] }, html: Map<url, renderedHtml> }
  */
-async function renderPass(urls, pages, { opts, siteHosts, log }) {
+async function renderPass(urls, pages, { opts, siteHosts, log, served = null }) {
   const html = new Map();
   if (!urls.length) return { summary: { ran: false, error: opts.renderPages ? 'no HTML page to render' : null, pages: [] }, html };
   if (!findChrome()) return { summary: { ran: false, error: 'no Chrome, Chromium or Edge found (install one or set CHROME_PATH)', pages: [] }, html };
@@ -323,8 +325,12 @@ async function renderPass(urls, pages, { opts, siteHosts, log }) {
     for (const url of urls) {
       const r = await render(browser, url, { headers: opts.headers, hosts: siteHosts, timeout: Math.max(opts.timeout * 2, 20000), measure: TEXT_MEASURE });
       if (!r.ok) { out.push({ url, ok: false, added: 0, error: r.error }); continue; }
-      const blocks = extractMeta(r.html, url).jsonLd;
+      const renderedMeta = extractMeta(r.html, url);
+      const blocks = renderedMeta.jsonLd;
       const page = pages.find((p) => p.url === url);
+      // A page that sends the browser elsewhere (meta refresh, a script redirect) rendered another page: not compared.
+      const moved = Boolean(page?.refresh) || [r.finalUrl, r.location].some((u) => u && !sameUrlModuloSlash(normalise(u) || u, url));
+      const drift = page && served && !moved ? jsDrift(page, renderedMeta, served.get(url) || null, internalLinks(r.html, url, new Set(siteHosts))) : [];
       if (page && r.measured && Number.isFinite(r.measured.words)) {
         page.renderedWords = r.measured.words;
         page.renderedHeadings = r.measured.headings;
@@ -337,7 +343,7 @@ async function renderPass(urls, pages, { opts, siteHosts, log }) {
         page.jsonLdClientSide = added;
         html.set(url, r.html);
       }
-      out.push({ url, ok: true, added });
+      out.push({ url, ok: true, added, ...(drift.length ? { drift } : {}) });
     }
   } finally { await browser.close(); }
   return { summary: { ran: true, error: null, pages: out }, html };

@@ -157,7 +157,9 @@ export const TEXT_MEASURE = `(() => {
 })()`;
 
 /**
- * render(browser, url, { headers, hosts, timeout, settleMs, measure }) -> { ok, url, finalUrl, status, html, measured?, error? }
+ * render(browser, url, { headers, hosts, timeout, settleMs, measure }) -> { ok, url, finalUrl, location, status, html, measured?, error? }
+ * `finalUrl` is the first document response's URL; `location` is where the page is once it settled
+ * (a meta refresh or a script redirect moves it).
  * Waits for the load event, then until the JSON-LD count has been steady for `settleMs`
  * (at most 8 s more), and returns the serialised DOM. `measure` is an expression evaluated in the
  * page after that; its value comes back as `measured`.
@@ -200,7 +202,8 @@ export async function render(browser, url, { headers = {}, hosts = [], timeout =
     const html = (await send('Runtime.evaluate', { expression: DOM, returnByValue: true })).result?.value;
     if (typeof html !== 'string') return { ok: false, url, error: 'could not read the rendered DOM' };
     const measured = measure ? (await send('Runtime.evaluate', { expression: measure, returnByValue: true }).catch(() => null))?.result?.value ?? null : null;
-    return { ok: true, url, finalUrl, status, html, measured };
+    const location = (await send('Runtime.evaluate', { expression: 'location.href', returnByValue: true }).catch(() => null))?.result?.value ?? null;
+    return { ok: true, url, finalUrl, location, status, html, measured };
   } catch (e) {
     return { ok: false, url, error: e.message };
   } finally {
