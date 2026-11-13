@@ -211,6 +211,96 @@ export const PLATFORM_FILES = [
 ];
 
 /** The platform rule for a file, or null. */
+/**
+ * Extra rules for --deep only. They point at trust boundaries the default rules leave to the
+ * "what grep cannot see" pass: browser messaging, proxy and host-header trust, secret
+ * comparison, model output, container and cloud policy, CI trust. Several of the areas follow the
+ * attack classes of cloudflare/security-audit-skill (MIT); see references/deep-classes.md.
+ * Same shape as RULES, plus `deep: true`; they keep the groups of RULES so --only still works.
+ */
+const IAC = ['tf', 'tfvars', 'json', 'yml', 'yaml', 'bicep', 'hcl'];
+export const DEEP_RULES = [
+  // ------------------------------------------------------------------ client side
+  { id: 'xss.message-no-origin', group: 'xss', severity: 'medium', langs: JS,
+    re: /addEventListener\s*\(\s*["'`]message["'`]|\bonmessage\s*=|\$\(\s*window\s*\)\.on\(\s*["']message["']/,
+    unless: /\borigin\b|MessagePort|worker|Worker/,
+    title: 'Message listener (check event.origin)', review: 'Real when the handler acts on event.data (navigates, writes HTML, stores tokens, calls an API) without comparing event.origin to an allowlist. Read the handler body; a check a few lines down is fine. Worker and MessageChannel ports are not cross-origin.', fix: 'if (event.origin !== EXPECTED_ORIGIN) return; before using event.data.' },
+  { id: 'xss.postmessage-wildcard', group: 'xss', severity: 'low', langs: JS,
+    re: /\.postMessage\s*\([^)]*,\s*["'`]\*["'`]\s*\)/,
+    title: 'postMessage to any origin', review: 'Real when the message carries a token, user data or anything a framing page should not read.', fix: 'Pass the exact target origin instead of "*".' },
+  { id: 'inject.prototype-pollution', group: 'injection', severity: 'medium', langs: JS,
+    re: /(?:\b_\.(?:merge|mergeWith|defaultsDeep|set|setWith|zipObjectDeep)|\$\.extend\s*\(\s*true|\bdeepmerge|\bmerge(?:Deep|Recursive)?|\bdefaultsDeep|\bset(?:Value|Path)?|\bdot\.(?:set|str))\s*\([^)]*\b(?:req|request|ctx\.request)\.(?:body|query|params)/,
+    title: 'Deep merge or path set from request data', review: 'Real when keys from the request reach the merge unfiltered: {"__proto__": {"isAdmin": true}} then changes every object. Check the library version and whether __proto__/constructor/prototype keys are dropped.', fix: 'Validate against a schema first; Object.create(null) targets; drop __proto__, constructor and prototype keys.' },
+  { id: 'xss.service-worker', group: 'xss', severity: 'low', langs: JS,
+    re: /navigator\.serviceWorker\.register\s*\(/,
+    title: 'Service worker registration', review: 'Check the script URL is a fixed same-origin path (never from the URL or an upload folder) and the scope is no wider than needed; a worker that caches authenticated responses must vary them per user.', fix: 'Fixed script path, narrow scope, no caching of personalised responses.' },
+
+  // ------------------------------------------------------------------ web protocol and identity
+  { id: 'request.host-header', group: 'request', severity: 'medium', langs: SERVER,
+    re: /\breq\.(?:headers\.host|hostname|get\(\s*["']host["']\s*\))|\bRequest\.Host\b|\bHttpContext\.Request\.Host\b|\$_SERVER\[\s*["']HTTP_HOST["']\s*\]|\brequest\.(?:get_host\(\)|host_url|host)\b|x-forwarded-host/i,
+    title: 'Host header used by the app', review: 'Real when the value builds an absolute URL that leaves the request: password-reset or invite links in mail, redirects, cache keys, OAuth redirect URIs. Fine when the host is checked against an allowlist (AllowedHosts, ALLOWED_HOSTS) before use.', fix: 'Build absolute URLs from configuration (PUBLIC_URL), or validate Host against an allowlist.' },
+  { id: 'request.forwarded-trust', group: 'request', severity: 'low', langs: SERVER,
+    re: /["']trust proxy["']\s*,\s*true|x-forwarded-for|ForwardedHeaders\.All|KnownNetworks\.Clear\(\)|KnownProxies\.Clear\(\)|HTTP_X_FORWARDED_FOR|getClientIp|request\.access_route/i,
+    title: 'Client IP from X-Forwarded-For', review: 'Real when the IP feeds rate limiting, lockout, allowlists or audit logs and the app is reachable without the proxy, or trusts every hop: the client then sets its own IP.', fix: 'Trust only the known proxy hops (trust proxy = 1, KnownProxies), or read the IP the edge sets.' },
+  { id: 'auth.timing-compare', group: 'crypto', severity: 'low', langs: SERVER,
+    re: /\b\w*(?:signature|hmac|digest|token|secret|api_?key|apikey)\w*\s*(?:===|!==|==|!=)\s*(?:req|request|ctx|params|headers|body|expected|computed|\w*(?:signature|hmac|digest|token|secret))/i,
+    unless: /\b(?:null|undefined|None|typeof|length)\b|===?\s*["'`]/,
+    title: 'Secret compared with ==', review: 'Real for webhook signatures, HMACs, API keys and reset tokens compared against request input: a plain compare leaks timing. Not for comparing ids or presence checks.', fix: 'crypto.timingSafeEqual (equal-length buffers), hmac.compare_digest, CryptographicOperations.FixedTimeEquals, hash_equals.' },
+  { id: 'auth.hardcoded-signing-key', group: 'crypto', severity: 'medium', langs: SERVER,
+    re: /\bjwt\.sign\s*\([^,]+,\s*["'`][^"'`]{3,}["'`]|\bcookieParser\s*\(\s*["'`][^"'`]{3,}["'`]|\bsession\s*\(\s*\{[^}]*secret\s*:\s*["'`][^"'`]{3,}["'`]|\bSymmetricSecurityKey\s*\(\s*Encoding\.\w+\.GetBytes\s*\(\s*"|\bSECRET_KEY\s*=\s*["'][^"']{3,}["']/,
+    unless: /process\.env|os\.environ|getenv|Configuration\[|config\./,
+    title: 'Signing or session key in code', review: 'Real when this key signs sessions or tokens in production: anyone with the repo can mint them. A test-only key is fine.', fix: 'Read the key from a secret store or environment variable and rotate the one in git.' },
+  { id: 'crypto.static-iv', group: 'crypto', severity: 'medium', langs: SERVER,
+    re: /createCipheriv\s*\([^,]+,[^,]+,\s*(?:["'`]|Buffer\.(?:from\s*\(\s*["'`]|alloc\s*\())|\bIV\s*=\s*(?:new\s+byte\s*\[\s*\d+\s*\]|Encoding\.\w+\.GetBytes\s*\(\s*")|\biv\s*=\s*b["']|AES\.new\([^)]*MODE_ECB|\bnonce\s*=\s*b["']/,
+    title: 'Fixed IV or nonce', review: 'Real when the same key encrypts more than one message: a fixed IV or nonce breaks CBC/GCM confidentiality (and GCM integrity).', fix: 'A random IV/nonce per message (crypto.randomBytes(12) for GCM), stored with the ciphertext.' },
+  { id: 'config.graphql-introspection', group: 'config', severity: 'low', langs: SERVER,
+    re: /\bintrospection\s*:\s*true|\bplayground\s*:\s*true|\bgraphiql\s*:\s*true|\bGraphiQL\s*=\s*True|\.AddGraphQL\w*\([^)]*EnableIntrospection/,
+    title: 'GraphQL introspection or playground on', review: 'Real when it is not gated on a development environment: the whole schema, including admin mutations, is public. Fine for a public API by design.', fix: 'Gate on NODE_ENV/ASPNETCORE_ENVIRONMENT; persisted queries for production.' },
+  { id: 'config.body-limit', group: 'config', severity: 'low', langs: JS,
+    re: /\blimit\s*:\s*["'`](?:[5-9]\d|\d{3,})\s*mb["'`]|\blimit\s*:\s*["'`]\d+\s*gb["'`]|maxFileSize\s*:\s*(?:Infinity|\d{9,})/i,
+    title: 'Very large request body limit', review: 'Real on unauthenticated routes: one client can tie up memory and workers. Uploads that need it should stream to storage on their own route.', fix: 'A small default limit (100kb–1mb); a larger one only on the upload route, streamed.' },
+  { id: 'inject.regex', group: 'injection', severity: 'low', langs: SERVER,
+    re: /new\s+RegExp\s*\(\s*(?:req|request|ctx|params|query|body|input|search|term|filter)\b|\bRegex\s*\(\s*(?:Request|input|query|search)|re\.compile\s*\(\s*request\./,
+    title: 'Regular expression built from input', review: 'Real when request input becomes the pattern: a crafted pattern can backtrack for seconds (ReDoS) or match more than intended.', fix: 'Escape the input (escapeRegExp, Regex.Escape, re.escape) or use a plain includes/indexOf; set a match timeout where the runtime has one.' },
+
+  // ------------------------------------------------------------------ AI and LLM
+  { id: 'secrets.llm-browser-key', group: 'secrets', severity: 'medium', langs: JS,
+    re: /dangerouslyAllowBrowser\s*:\s*true/,
+    title: 'Model API key used in the browser', review: 'Real when this code ships to browsers: the key is readable by every visitor and can be spent on their behalf.', fix: 'Call the model from a server route that holds the key and checks the user.' },
+  { id: 'inject.llm-output', group: 'injection', severity: 'medium', langs: [...JS, ...PY],
+    re: /(?:completion|choices\s*\[\s*0\s*\]|\.output_text|message\.content|response\.text|\.generated_text|llm\.invoke|\.invoke\s*\()[^\n]*(?:\beval\s*\(|\bexec\s*\(|innerHTML|dangerouslySetInnerHTML|child_process|subprocess\.|os\.system|\bFunction\s*\()|(?:\beval\s*\(|\bexec\s*\(|innerHTML\s*=|os\.system\s*\()[^\n]*(?:completion|choices\s*\[\s*0\s*\]|output_text|message\.content|generated_text)/,
+    title: 'Model output into code, shell or HTML', review: 'Model output is attacker-influenced whenever the prompt holds user text, retrieved pages, mail or files. Real when it reaches eval, a shell, SQL or raw HTML without a fixed allowlist or sanitiser.', fix: 'Treat model output as untrusted input: parse to a schema, allowlist actions, render as text or sanitise.' },
+  { id: 'inject.prompt-concat', group: 'injection', severity: 'low', langs: [...JS, ...PY],
+    re: /role\s*["']?\s*:\s*["']system["'][^\n]*(?:\$\{|\+\s*\w|f["'])|(?:system_prompt|systemPrompt|SYSTEM_PROMPT)\s*[+:=]\s*(?:`[^`]*\$\{|f["']|[^\n]*\+\s*(?:req|request|user|input|body|query))/,
+    title: 'User text in the system prompt', review: 'Real when untrusted text (the user, a web page, a document) is joined into the system or tool instructions and the model can act: call tools, send mail, read other users\' data.', fix: 'Keep instructions fixed; pass untrusted text as a separate user message, and enforce permissions in the tools, not in the prompt.' },
+
+  // ------------------------------------------------------------------ cloud, containers, IaC
+  { id: 'config.container-root', group: 'config', severity: 'low', langs: ['dockerfile', 'yml', 'yaml'],
+    re: /^\s*USER\s+(?:root|0)(?::\S+)?\s*$|\brunAsUser\s*:\s*0\b|\brunAsNonRoot\s*:\s*false|\ballowPrivilegeEscalation\s*:\s*true/,
+    title: 'Container runs as root', review: 'Real for the production image or pod: a code-execution bug then owns the container and its mounted secrets.', fix: 'USER with a non-root uid; runAsNonRoot: true, allowPrivilegeEscalation: false.' },
+  { id: 'config.k8s-host', group: 'config', severity: 'medium', langs: ['yml', 'yaml', 'json'],
+    re: /\bhost(?:Network|PID|IPC)\s*:\s*true|^\s*-?\s*hostPath\s*:|\bautomountServiceAccountToken\s*:\s*true/,
+    title: 'Pod shares the host', review: 'Real outside node agents (log shippers, CNI): hostNetwork/hostPID/hostPath let a compromised pod reach the node and its other pods.', fix: 'Drop the host namespaces and hostPath; mount only the volumes the workload needs.' },
+  { id: 'config.iam-wildcard', group: 'config', severity: 'medium', langs: IAC,
+    re: /["']?Action["']?\s*[:=]\s*\[?\s*["']\*["']|\bactions\s*=\s*\[\s*["']\*["']|["']?Principal["']?\s*[:=]\s*["']\*["']|["']?Principal["']?\s*[:=]\s*\{\s*["']AWS["']\s*:\s*["']\*["']|\broles\/owner\b/,
+    title: 'Wildcard IAM action or principal', review: 'Real when the policy grants every action, or lets anyone (Principal "*") use the resource, without a narrowing Condition.', fix: 'List the actions the workload calls; name the principal; add conditions (aws:SourceArn, aws:PrincipalOrgID).' },
+  { id: 'config.open-ingress', group: 'config', severity: 'medium', langs: IAC,
+    re: /0\.0\.0\.0\/0|::\/0|["']?sourceAddressPrefix["']?\s*[:=]\s*["'](?:\*|Internet)["']/,
+    unless: /egress|outbound/i,
+    title: 'Ingress open to the internet', review: 'Real for any port other than the public 80/443 of a load balancer: SSH, RDP, databases, admin ports. Read the rule\'s from_port/to_port.', fix: 'Restrict the source to the office/VPN range or a bastion; keep databases private.' },
+  { id: 'config.public-storage', group: 'config', severity: 'medium', langs: IAC,
+    re: /\bacl\s*=\s*["']public-read(?:-write)?["']|AccessControl\s*:\s*PublicRead|\bblock_public_(?:acls|policy)\s*=\s*false|BlockPublic(?:Acls|Policy)\s*:\s*false|\ballUsers\b|\ballAuthenticatedUsers\b|allowBlobPublicAccess["']?\s*[:=]\s*true/,
+    title: 'Public storage bucket or container', review: 'Real unless the bucket only serves public assets by design (a static site). Check what is written to it: uploads, exports and backups must not be public.', fix: 'Block public access; serve public files through a CDN with an origin access identity; signed URLs for private files.' },
+
+  // ------------------------------------------------------------------ CI and supply chain
+  { id: 'ci.self-hosted', group: 'ci', severity: 'medium', ci: true,
+    re: /runs-on\s*:\s*\[?\s*["']?self-hosted/,
+    title: 'Self-hosted runner', review: 'Real when the workflow runs for pull requests from forks: their code then runs on your machine, which may keep state and network access between jobs.', fix: 'GitHub-hosted runners for untrusted triggers; ephemeral, isolated self-hosted runners otherwise.' },
+  { id: 'ci.workflow-run', group: 'ci', severity: 'medium', ci: true,
+    re: /^\s*(?:-\s*)?workflow_run\s*:|^\s*on\s*:\s*\[?[^\n]*\bworkflow_run\b/,
+    title: 'workflow_run trigger', review: 'Real when the job downloads artifacts from the triggering run (built from a fork PR) and executes or trusts them with secrets or a write token.', fix: 'Treat downloaded artifacts as untrusted data: never execute them; check the triggering run\'s head repository.' },
+].map((r) => ({ ...r, deep: true }));
+
 export const platformFor = (rel) => PLATFORM_FILES.find((p) => p.test(rel)) || null;
 
 export const CI_FILE = /(^|\/)(\.github\/workflows\/[^/]+\.ya?ml|\.gitlab-ci\.ya?ml|azure-pipelines\.ya?ml|bitbucket-pipelines\.ya?ml|\.circleci\/config\.ya?ml)$/;
@@ -223,10 +313,10 @@ export function extOf(rel) {
   return i > 0 ? base.slice(i + 1).toLowerCase() : '';
 }
 
-export function rulesFor(rel) {
+export function rulesFor(rel, { deep = false } = {}) {
   const ext = extOf(rel);
   const ci = CI_FILE.test(rel);
-  return RULES.filter((r) => (r.ci ? ci : (r.langs === null || r.langs.includes(ext))));
+  return (deep ? [...RULES, ...DEEP_RULES] : RULES).filter((r) => (r.ci ? ci : (r.langs === null || r.langs.includes(ext))));
 }
 
 /** Show enough of a secret to recognise it, never the whole thing. */

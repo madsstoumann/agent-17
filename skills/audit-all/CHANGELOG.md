@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-all` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.19.0] - 2026-11-13
+
+### Added
+- `--deep` passes `--deep` to audit-security on each repo and on the site (audit-security 2.6.0): the code review follows its deep workflow before `report.md`, and site mode adds its `client` group. Confirmed deep records become tasks like other confirmed findings; needs-validation records become `human` tasks to run their check. Other audits are unchanged.
+
 ## [1.18.0] - 2026-11-10
 
 ### Added

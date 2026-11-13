@@ -2,6 +2,20 @@
 
 All notable changes to the `audit-security` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.6.0] - 2026-11-13
+
+### Added
+- `--deep`, code mode: a planned review of every trust boundary, adapted from Cloudflare's security-audit skill (MIT; `references/THIRD-PARTY-NOTICES.md`). The scanner adds about 20 rules for boundaries the default rules leave out (`DEEP_RULES`: message listeners without an origin check, `postMessage` to `*`, prototype pollution from request data, service workers, Host and X-Forwarded-For trust, secrets compared with `==`, signing keys in code, fixed IVs, GraphQL introspection, huge body limits, regexes from input, model output into code or HTML, user text in system prompts, browser model keys, containers as root, pods sharing the host, wildcard IAM, open ingress, public buckets, self-hosted runners, `workflow_run`), reads git history (as `--history 1000`), prints an inventory of entry surfaces, auth controls, subsystems and review areas, and seeds `<out>/deep/ledger.json` (eight core areas, injection and access control per subsystem, plus `web`, `client`, `supply`, `cloud`, `ai`, `protocols`, `resources`, `data`, `native`, `apps` when the code shows the boundary). Claude writes `deep/architecture.md`, works through every unit, has a fresh agent try to refute every candidate and writes `deep/verdicts.json` (`confirmed` with the whole boundary, a `file:line` trace, severity and fix; `needs-validation` with the blocker and the check, no severity; `rejected` with the reason). `references/deep.md` and `references/deep-classes.md` hold the workflow and the attack classes.
+- `--deep`: Semgrep (`p/owasp-top-ten`, `p/security-audit`, `p/secrets`), osv-scanner, Gitleaks and TruffleHog (`--no-verification`) run when they are on PATH; their results are scanner rules (`semgrep:…`, `osv-scanner:…`, `gitleaks:…`, `trufflehog:…`) with fingerprints, triage and levels. Secrets are redacted (Gitleaks `--redact`, TruffleHog reduced to a prefix, Semgrep's line dropped for secrets rules); hits the scanner already has are merged away, and osv-scanner only adds advisories the lockfile lookup missed. A tool that is not installed, `--offline` (Semgrep, osv-scanner), a timeout or a failure is a "not checked" row with the install line. Nothing is installed.
+- `scripts/deep-check.mjs <run>/deep [--save]`: checks the ledger and the verdicts (every unit in a final status with its evidence, trace lines that exist in the repo, severity only on confirmed records, no secrets in records), and with `--save` adds a fingerprint per record, compares with the last saved deep run and keeps `last-deep-ledger.json` and `last-deep-verdicts.json` in the target folder; the next deep run's ledger carries their status as `prior`.
+- `--deep`, site mode: a `client` group. The start page and up to four same-site pages, the scripts and styles they load and nine well-known API paths, each fetched once: third-party files without Subresource Integrity, public source maps (warn with the original source), secrets in the site's JavaScript, front-end library versions (banners) against OSV, `message` listeners without an origin check, and public OpenAPI/Swagger documents, Swagger UI and GraphQL IDEs, judged on the body so a single-page app's catch-all page is not a hit. `--only client` needs `--deep`.
+
+### Fixed
+- "Since last run" no longer lists the last run's git-history secrets as fixed when this run did not scan history, or a deep run's extra hits as fixed after a run without `--deep`.
+
+### Changed
+- The description is under the 1,024-character limit again.
+
 ## [2.5.1] - 2026-11-10
 
 ### Fixed

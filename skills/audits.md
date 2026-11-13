@@ -65,7 +65,7 @@ cd agent-17 && git checkout <commit>   # pin it
 
 | Audit | Command |
 | --- | --- |
-| audit-security | `node skills/audit-security/scripts/scan.mjs <repo path>`, or `<url>` for site mode |
+| audit-security | `node skills/audit-security/scripts/scan.mjs <repo path>`, or `<url>` for site mode; `--deep` adds the extra rules, the installed scanners and (site mode) the client-side checks |
 | audit-solution-health | `node skills/audit-solution-health/scripts/check.mjs --root <solution path>`, then `finalize.mjs` (see below) |
 | audit-launch | `node skills/audit-launch/scripts/audit.mjs <url>` |
 | audit-a11y | `node skills/audit-a11y/scripts/a11y.mjs <url>` |
@@ -96,7 +96,11 @@ Two things to know:
 
 - **audit-security's script finds candidates, not findings.** It lists every place a rule matched, many
   of them harmless. Deciding which are real is Claude's job (next section), and the verdicts are
-  remembered so the same line is never judged twice.
+  remembered so the same line is never judged twice. Its `--deep` review (a threat model and a
+  coverage ledger worked through unit by unit, every finding challenged by a second agent) is
+  Claude's work from start to end, so run it in Claude Code, not unattended; in CI the script's
+  `--deep` still adds the extra rules and runs Semgrep, osv-scanner, Gitleaks and TruffleHog if the
+  runner has them.
 - **audit-solution-health needs one interactive run first.** Its first run builds a list of the external
   APIs the project calls, and a developer must confirm it. Do that once in Claude Code with
   `/skills:audit-solution-health --in-repo`, then commit `.audit-solution-health/manifest.json` (and add

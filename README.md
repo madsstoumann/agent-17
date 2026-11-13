@@ -156,6 +156,7 @@ audit-infra and audit-privacy take `--out`, `--baseline`, `--header`, `--level`,
 | `--url URL` / `--no-site` | The live site to audit, or code audits only. |
 | `--only`, `--skip`, `--add` | Which audits run: `a11y`, `infra`, `launch`, `privacy`, `security`, `seo`, `health`, `eco` (or `all`). Default: infra, launch, privacy, security, health. `security` runs on each repo and on the site; audit-launch then leaves the header and exposed-file checks to it (and TLS to `infra`, cookies and trackers to `privacy`), so each finding appears once. |
 | `--geo` | A GEO audit: SEO / GEO (audit-seo `--geo`, with its GEO readiness score) plus Launch, and a summary that leads with AI search. |
+| `--deep` | Passes `--deep` to audit-security (repos and site): the deep code review and the site's client-side checks. Much slower; other audits are unchanged. |
 | `--yes` | No questions: the default audits, Editorial, level all, the detected URL. |
 | `--style serif\|sans` | Report look: Editorial (`serif`, default) or Modern (`sans`). |
 | `--level`, `--console` | As above. The level is passed to every audit and applied to `fix/TODO.md`; `--console` prints the fix plan as a list instead of the combined report and PDFs. |
@@ -263,7 +264,8 @@ Give it a URL for the site-wide audit, or a local HTML file to check that file's
 |---|---|
 | `[path]` | The repo to scan (default: the current folder). |
 | `<url>` / `--url URL` | Site mode: the live site instead of a repo (headers, clickjacking via `frame-ancestors`, cookie flags, CORS, redirects, exposed files and admin paths, security.txt, blocklists; passive). Needs audit-launch next to it for the header, redirect and exposed-file checks. Its state is `<reports>/audit-security/<host>/`. |
-| `--only` / `--skip` | Groups: `deps secrets xss injection request crypto config ci`; in site mode `headers redirects exposed blocklists`. |
+| `--only` / `--skip` | Groups: `deps secrets xss injection request crypto config ci`; in site mode `headers redirects exposed blocklists` (and `client` with `--deep`). |
+| `--deep` | The deep review. Code mode: extra trust-boundary rules, git history, an inventory of entry points and auth controls, Semgrep, osv-scanner, Gitleaks and TruffleHog when installed (a missing one is a "not checked" row; nothing is installed), and a coverage ledger Claude works through with a fresh agent checking every finding (`deep/`, checked by `scripts/deep-check.mjs`). Site mode: adds the `client` group (Subresource Integrity, public source maps, secrets in the JavaScript, vulnerable front-end libraries, public API descriptions). Method adapted from Cloudflare's security-audit skill (MIT). |
 | `--header "Name: value"` / `--insecure` | Site mode: send a WAF bypass header (repeatable; also `AUDIT_HEADERS`) / accept a self-signed certificate. |
 | `--history [N]` | Also scan the last N commits (default 1000) for removed secrets. |
 | `--offline` | No vulnerability lookup, dependency inventory only (site mode: no blocklist lookups). |

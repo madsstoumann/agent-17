@@ -18,17 +18,21 @@ import { parseTarget } from './target.mjs';
 import { openPhish, safeBrowsing, urlhaus, virusTotal } from './sources.mjs';
 import { shows, levelNote, levelOf } from './levels.mjs';
 import { isPublicSuffix, stagingLabel, isPreviewPlatform } from './hosts.mjs';
+import { clientChecks } from './client.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const LAUNCH_SCRIPT = path.resolve(HERE, '..', '..', '..', 'audit-launch', 'scripts', 'audit.mjs');
 
-export const SITE_GROUPS = ['headers', 'redirects', 'exposed', 'blocklists'];
+export const SITE_GROUPS = ['headers', 'redirects', 'exposed', 'blocklists', 'client'];
+/** Groups that run only with --deep. */
+export const DEEP_SITE_GROUPS = ['client'];
 const LAUNCH_GROUPS = ['redirects', 'exposed', 'headers'];
 const SECTION = {
   headers: 'Security headers',
   redirects: 'HTTPS and redirects',
   exposed: 'Exposed files and admin paths',
   blocklists: 'Blocklists',
+  client: 'Client-side code (--deep)',
 };
 const GLYPH = { pass: '✅', warn: '⚠️', fail: '❌', info: 'ℹ️', skip: '⏭️' };
 const RANK = { fail: 0, warn: 1, info: 2, skip: 3, pass: 4 };
@@ -277,7 +281,7 @@ export async function pageHeaders(url, { fetch: f = globalThis.fetch, headers = 
  */
 export async function runSite(args, { version, outDir, stateDir, log = () => {}, deps = {} } = {}) {
   const url = siteUrl(args.root);
-  const on = (g) => (args.only ? args.only.includes(g) : true) && !args.skip.includes(g);
+  const on = (g) => (args.only ? args.only.includes(g) : true) && !args.skip.includes(g) && (args.deep || !DEEP_SITE_GROUPS.includes(g));
   const groups = LAUNCH_GROUPS.filter(on);
   const headerLines = Object.entries(args.headers || {}).map(([k, v]) => `${k}: ${v}`);
   const results = [];
@@ -305,10 +309,15 @@ export async function runSite(args, { version, outDir, stateDir, log = () => {},
     if (args.offline) results.push(row('blocklists.offline', 'skip', 'Blocklists', 'not checked: --offline'));
     else { log('blocklists'); results.push(...await (deps.checkBlocklists || checkBlocklists)(finalUrl)); }
   }
+  if (on('client')) {
+    log('client (--deep)');
+    const headers = { ...envHeaders(deps.env || process.env), ...(args.headers || {}) };
+    results.push(...await (deps.clientChecks || clientChecks)(finalUrl, { headers, offline: args.offline, log, deps: deps.client || {} }));
+  }
   const host = (() => { try { return new URL(finalUrl).host; } catch { return url; } })();
   return {
     tool: 'audit-security', mode: 'site', version, generatedAt: new Date().toISOString(),
-    input: { url, env: launch?.input?.env || null, production: launch?.input?.production ?? null, groups: SITE_GROUPS.filter(on) },
+    input: { url, env: launch?.input?.env || null, production: launch?.input?.production ?? null, groups: SITE_GROUPS.filter(on), ...(args.deep ? { deep: true } : {}) },
     site: { finalUrl, host },
     launch: launch ? { version: launch.version, report: path.join('audit-launch', 'report.json') } : null,
     counts: countStatuses(results),
@@ -352,7 +361,7 @@ export function renderSiteMarkdown(report, { levels } = {}) {
     L.push('');
   }
   L.push('## Not covered', '');
-  L.push('Passive checks only: one request per well-known path, no fuzzing, login attempts, load or exploitation. The code, its git history and its dependencies are code mode (`scan.mjs <repo>`); TLS, DNS and mail are audit-infra; cookies and trackers set before consent are audit-privacy.', '');
+  L.push(`Passive checks only: one request per well-known path, no fuzzing, login attempts, load or exploitation.${input.deep ? ' --deep read the scripts and styles a few pages load and a short list of API description paths; it sends no API calls or queries.' : ''} The code, its git history and its dependencies are code mode (\`scan.mjs <repo>\`); TLS, DNS and mail are audit-infra; cookies and trackers set before consent are audit-privacy.`, '');
   return L.join('\n');
 }
 
