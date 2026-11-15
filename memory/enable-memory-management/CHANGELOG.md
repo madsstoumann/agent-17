@@ -2,6 +2,12 @@
 
 All notable changes to the `enable-memory-management` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md#versioning) for the versioning convention.
 
+## [2.2.1] - 2026-11-15
+
+### Added
+- `scripts/test/versions.test.mjs`: every memory skill's SKILL.md version is its newest CHANGELOG entry, and `plugin.json`, the marketplace entry and `memory/README.md` name every memory skill on disk.
+- The root README's Parameters section lists the memory skills' main flags.
+
 ## [2.2.0] - 2026-11-15
 
 ### Added

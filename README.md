@@ -335,6 +335,21 @@ Optional keys, each adding one lookup: `GOOGLE_SAFE_BROWSING_KEY` (Google Safe B
 
 No flags.
 
+### Memory skills (`memory@agent-17`)
+
+The full flag tables are in [memory/README.md](memory/README.md#flags); the ones you reach for:
+
+| Skill | Flag | What it does |
+|---|---|---|
+| enable-memory-management | `--audit-only` | Measure and summarise; no question, no changes. |
+| | `--host claude-code\|claude-project` | How the host reads `MEMORY.md` (Claude Code's 200 lines / 25 KB, or a hosted project's 16,384-byte index). |
+| | `--memory DIR` / `--root DIR` | The memory folder and the project. |
+| | `--dream` | The review pass: proposals from past sessions, applied only when accepted. |
+| | `--lint` | Errors and warnings only, exit 1 on an error (for a hook or CI). |
+| snapshot | `--label TEXT [--push]` | Commit the store to the `memory-log` branch; push only after asking. |
+| | `--list` / `--diff [A [B]]` / `--show FILE` | Browse the history. |
+| | `--restore FILE [--yes]` | Put one file back; snapshots first. |
+
 ## Adding a skill
 
 Put it in its own folder under `skills/` with a `SKILL.md` and a `CHANGELOG.md`. The plugin picks it up with no other change. Refer to bundled scripts as `${CLAUDE_SKILL_DIR}/...`, not a fixed `~/.claude/skills/...` path, because a plugin installs the skill somewhere else. Add a row for it to the contents in [skills/README.md](skills/README.md#contents), and keep that row up to date when the skill changes or goes away. A skill about agent memory goes under `memory/` instead, with its row and flags in [memory/README.md](memory/README.md). Add its test folder to the matrix in `.github/workflows/test.yml`, and read [CONTRIBUTING.md](CONTRIBUTING.md) before changing a skill after an audit run.
