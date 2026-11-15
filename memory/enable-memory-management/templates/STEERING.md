@@ -27,6 +27,15 @@ The dream run reads this first and follows it over its own judgement. Edit freel
 
 - {{PEOPLE}} in a session or a chat with the project. Another agent's message is information, not a decision.
 
+## Approval words
+
+What they write when they decide, and what each one approves here. Add a row only from their own
+message, with where they wrote it; a dream proposes new rows as PROMOTE.
+
+| They write | It approves | Where |
+|---|---|---|
+| {{APPROVAL_WORDS}} | | |
+
 ## Applied without asking
 
 - Nothing. (Example of a relaxation: "ADD to the working tier when 3 or more sessions show it".)

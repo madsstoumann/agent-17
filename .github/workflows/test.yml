@@ -31,6 +31,7 @@ jobs:
           - skills/is-website-safe/scripts
           - skills/plan-geo/scripts
           - memory/enable-memory-management/scripts
+          - memory/snapshot/scripts
           - tools/corpus
     steps:
       - uses: actions/checkout@v4

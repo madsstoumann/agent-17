@@ -4,7 +4,7 @@
  *
  *   node audit.mjs [--root DIR] [--memory DIR] [--transcripts DIR|none] [--since YYYY-MM-DD]
  *                  [--exclude glob,glob] [--out DIR] [--state DIR] [--level …] [--console] [--report]
- *                  [--lint] [--no-baseline] [--budget-lines N] [--index-bytes N]
+ *                  [--lint] [--no-baseline] [--budget-lines N] [--index-bytes N] [--host claude-code|claude-project]
  *
  * Report only: it never changes the project or the memory store.
  */
@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { listFiles, makeIgnored, instructionFiles, memoryCandidates, memoryFiles, skillFiles, transcriptsDir, lastChanged, readText } from './lib/discover.mjs';
-import { makeContext, checkInstructions, checkDocs, checkMemory, readMemory, checkSkills, skillCandidates, DEFAULTS } from './lib/checks.mjs';
+import { makeContext, checkInstructions, checkDocs, checkMemory, readMemory, checkSkills, skillCandidates, DEFAULTS, HOSTS } from './lib/checks.mjs';
 import { readSessions, summarise } from './lib/transcripts.mjs';
 import { renderReport } from './lib/report.mjs';
 import { parseLevel, consoleList, scratchDir, removeScratch } from './lib/levels.mjs';
@@ -35,6 +35,8 @@ const HELP = `enable-memory-management audit — measure a project's memory laye
   --no-baseline         do not compare with the last run
   --budget-lines N      lines the always-read layer should stay under (default ${DEFAULTS.budgetLines})
   --index-bytes N       hard limit for MEMORY.md (default ${DEFAULTS.indexBytes})
+  --host NAME           how MEMORY.md is read: claude-code (default; first 200 lines / 25 KB) or
+                        claude-project (a hosted project's coordinator; refused above 16,384 bytes)
 `;
 
 export function parseArgs(argv) {
@@ -57,6 +59,7 @@ export function parseArgs(argv) {
     else if (k === '--no-baseline') a.noBaseline = true;
     else if (k === '--budget-lines') a.budgetLines = Number(next());
     else if (k === '--index-bytes') a.indexBytes = Number(next());
+    else if (k === '--host') { a.host = next(); if (!HOSTS[a.host]) throw new Error(`Unknown host ${a.host}: ${Object.keys(HOSTS).join(' or ')}`); }
     else if (k === '--today') a.today = next();
     else if (!k.startsWith('-')) a.root = k;
     else throw new Error(`Unknown flag ${k} (see --help)`);
@@ -80,7 +83,8 @@ export function reportsRoot({ env = process.env, home = os.homedir() } = {}) {
 /** Runs every check and returns the result object (what report.json holds). */
 export function audit(args) {
   const root = path.resolve(args.root);
-  const opts = { ...DEFAULTS, ...(args.budgetLines ? { budgetLines: args.budgetLines } : {}), ...(args.indexBytes ? { indexBytes: args.indexBytes } : {}), ...(args.today ? { today: args.today } : {}) };
+  const host = args.host || 'claude-code';
+  const opts = { ...DEFAULTS, ...HOSTS[host], host, ...(args.budgetLines ? { budgetLines: args.budgetLines } : {}), ...(args.indexBytes ? { indexBytes: args.indexBytes } : {}), ...(args.today ? { today: args.today } : {}) };
   const { files, git } = listFiles(root, { exclude: args.exclude });
   const instr = instructionFiles(root);
   const skills = skillFiles(root);
@@ -106,7 +110,11 @@ export function audit(args) {
 
   const setup = [];
   const loadedText = instr.loaded.map((x) => readText(x.file) || '').join('\n') + (instr.agents ? readText(instr.agents.file) || '' : '');
-  if (!/MEMORY\.md|^#{1,3}\s+Memory\b/m.test(loadedText)) setup.push({ level: 'info', source: 'setup', id: 'E3', title: 'The instructions say nothing about memory: where it is, what to save, how to write it', where: instr.loaded[0]?.rel || 'CLAUDE.md', fix: 'Step E3' });
+  if (!/MEMORY\.md|^#{1,3}\s+(Project )?Memory\b/m.test(loadedText)) {
+    setup.push(host === 'claude-project'
+      ? { level: 'info', source: 'setup', id: 'E3', title: "The memory rules of a hosted project live in its instructions, which this audit cannot read: check they hold the block", where: 'project settings', fix: 'Step E3 (templates/rules/project-instructions.md)' }
+      : { level: 'info', source: 'setup', id: 'E3', title: 'The instructions say nothing about memory: where it is, what to save, how to write it', where: instr.loaded[0]?.rel || 'CLAUDE.md', fix: 'Step E3' });
+  }
   if (!skills.some((s) => s.name === 'memory-dream')) setup.push({ level: 'info', source: 'setup', id: 'E8', title: 'No dreaming: nothing reviews past sessions against the memory', where: '.claude/skills/', fix: 'Step E8' });
 
   const findings = [...ins.findings, ...memory.findings, ...docs.findings, ...sk.findings, ...cand.findings, ...setup];
@@ -116,6 +124,7 @@ export function audit(args) {
     skill: SKILL,
     project: path.basename(root),
     root,
+    host,
     date: new Date().toISOString(),
     opts,
     git,

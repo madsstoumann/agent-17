@@ -15,7 +15,7 @@
     {
       "name": "memory",
       "source": "./memory",
-      "description": "Memory management for a project's AI agents, in memory/: enable-memory-management and any memory skill added there later"
+      "description": "Memory management for a project's AI agents, in memory/: enable-memory-management, snapshot and any memory skill added there later"
     }
   ],
   "renames": {

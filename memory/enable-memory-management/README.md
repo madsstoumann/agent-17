@@ -12,12 +12,12 @@ Claude Managed Agents.
 | In this folder | What it is |
 |---|---|
 | [SKILL.md](SKILL.md) | The skill: measure, ask once, snapshot, the steps, dreaming |
-| [references/](references/) | The store format, the in-band rules block, the dreaming method, the sources |
-| [templates/](templates/) | `STEERING.md` for the store, and the project's own `memory-dream` skill |
+| [references/](references/) | The store format and the index limits per host, which memory-rules form goes where, the dreaming method, the sources |
+| [templates/](templates/) | The memory rules in three forms (`rules/`), `STEERING.md` for the store, and the project's own `memory-dream` and `archive-a-plan` skills |
 | `scripts/audit.mjs` | Measures the four layers and lists the steps that apply (`--lint` for hooks and CI) |
 | `scripts/transcripts.mjs` | Counts what sessions did: commands, files, skills, corrections. Reads Claude Code transcripts and Managed Agents session events |
 | `scripts/sessions-export.mjs` | Saves a Managed Agents agent's recent sessions as event files (read-only API calls) |
-| `scripts/snapshot.mjs` | Snapshots a store with a sha256 manifest, diffs, restores, checks a hash before a write |
+| `scripts/snapshot.mjs` | Snapshots a store with a sha256 manifest, diffs, restores, checks a hash before a write. History on a git branch the team can read: the sibling skill [`snapshot`](../snapshot/SKILL.md) |
 
 ## Run it in Claude Code
 
@@ -228,12 +228,13 @@ names (letters, digits, `-`, `_`, `.`).
 
 ### 4. Attach the store to the working sessions
 
-Read-write, with the in-band rules as the store's `instructions`. Take the block in
-[references/in-band-rules.md](references/in-band-rules.md) and change four lines: `<MEMORY DIR>`
-is `/mnt/memory/project-memory/`; the format line points at a copy of
+Read-write, with the in-band rules as the store's `instructions`. Take
+[templates/rules/claude-md.md](templates/rules/claude-md.md) ([which form, and why each
+rule](references/in-band-rules.md)) and fill it in: `{{MEMORY_DIR}}` is
+`/mnt/memory/project-memory/`; the format line points at a copy of
 [store-format.md](references/store-format.md) seeded into the store (`/store-format.md`); the
-`--check` line goes (memory versions keep every write), and the last line names the weekly
-memory-dreamer instead of the `memory-dream` skill.
+hash part of the writing line goes (memory versions keep every write), `{{SNAPSHOT}}` is "memory
+versions", and the last line names the weekly memory-dreamer instead of the `memory-dream` skill.
 
 ```python
 session = client.beta.sessions.create(
@@ -244,7 +245,7 @@ session = client.beta.sessions.create(
             "type": "memory_store",
             "memory_store_id": STORE_ID,
             "access": "read_write",
-            "instructions": IN_BAND_RULES,  # the block from references/in-band-rules.md
+            "instructions": IN_BAND_RULES,  # templates/rules/claude-md.md, filled in
         }
     ],
 )
