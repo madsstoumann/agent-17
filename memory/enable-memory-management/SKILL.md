@@ -4,7 +4,7 @@ description: Sets up and maintains memory management for a project's AI agents. 
 argument-hint: "[--root DIR] [--memory DIR] [--host claude-code|claude-project] [--transcripts DIR] [--exclude a/,b/] [--audit-only | --dream | --lint] [--level error|warn|info|all] [--console]"
 allowed-tools: Bash(node:*), Bash(git:*), Read, Write, Edit, Grep, Glob, Agent
 metadata:
-  version: "2.2.0"
+  version: "2.2.1"
 ---
 
 # Enable memory management
