@@ -158,3 +158,41 @@ test('resolveRef: of several files with the same name, the nearest folder wins, 
   assert.equal(tie.missing, true);
   assert.equal(tie.moved, undefined);
 });
+
+test('memory: an archived file is history and a log may be long; both still read for secrets', () => {
+  const dir = memoryCopy();
+  const fm = (name, extra) => `---\nname: ${name}\ndescription: x\nmetadata:\n  type: feedback\n${extra}---\n\n`;
+  fs.writeFileSync(path.join(dir, 'old-rule.md'), fm('old-rule', '  status: archived\n') + 'Replaced by [[feedback-tone]] on 2026-11-01. It named `scripts/gone.py` today.\n');
+  fs.writeFileSync(path.join(dir, 'decisions-2026-11.md'), fm('decisions-2026-11', '  kind: log\n') + '**Why:** a log.\n\n' + '- 2026-11-02 a decision, one line of it\n'.repeat(140) + '\nSee [[user-role]].\n');
+  const r = run({ memory: dir });
+  const m = Object.fromEntries(r.findings.filter((x) => x.source === 'memory').map((x) => [x.id, x]));
+  assert.ok(!m.M4.detail.files.includes('old-rule.md'), 'an archived file need not be indexed');
+  assert.ok(!m.M5 || !m.M5.detail.files.includes('old-rule.md'), 'nor linked');
+  assert.doesNotMatch(m.M10.where, /old-rule/);
+  assert.ok(!m.M11 || !/decisions-2026-11|old-rule/.test(m.M11.where), 'a log passes the size limit');
+  assert.doesNotMatch(m.M12.where, /old-rule/);
+  assert.ok(m.M14.detail.files.every((x) => x.file !== 'old-rule.md'), 'nor its old paths');
+  assert.equal(r.memory.archived, 1);
+  assert.equal(r.memory.logs, 1);
+  fs.writeFileSync(path.join(dir, 'old-rule.md'), fm('old-rule', '  status: archived\n') + `key ${'sk-' + 'ant-' + 'y'.repeat(32)}\n`);
+  assert.match(run({ memory: dir }).findings.find((x) => x.id === 'M7').where, /old-rule/, 'an archived file is still checked for secrets');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('resolveRef: a Claude Code location and a path in a checkout beside the project are not dead', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'emm-sib-'));
+  const proj = path.join(base, 'proj');
+  const sib = path.join(base, 'upstream');
+  fs.mkdirSync(path.join(proj, 'scripts'), { recursive: true });
+  fs.mkdirSync(path.join(sib, '.git'), { recursive: true });
+  fs.mkdirSync(path.join(sib, 'scripts'), { recursive: true });
+  fs.writeFileSync(path.join(sib, 'scripts', 'check.mjs'), '');
+  const files = ['CLAUDE.md', 'scripts/run.mjs'];
+  const ctx = makeContext({ root: proj, files, instr: { loaded: [], rules: [] }, skills: [] });
+  assert.equal(resolveRef(ctx, '.claude/CLAUDE.md', 'docs/a.md'), 'skip');
+  assert.equal(resolveRef(ctx, 'scripts/check.mjs', '', { external: true }), 'skip');
+  assert.equal(resolveRef(ctx, 'scripts/never.mjs', '', { external: true }).missing, true);
+  const off = makeContext({ root: proj, files, instr: { loaded: [], rules: [] }, skills: [], opts: { siblings: false } });
+  assert.equal(resolveRef(off, 'scripts/check.mjs', '', { external: true }).missing, true);
+  fs.rmSync(base, { recursive: true, force: true });
+});
