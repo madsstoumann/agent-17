@@ -31,7 +31,18 @@ a person decides.
 7. Show the list. Apply only accepted numbers, each file under `snapshot.mjs --check`. A rejected
    proposal goes into `dreams/rejected.md` with the date, so the next run does not offer it again
    unless new sessions add evidence.
-8. Run `audit.mjs` again; write `last-dream.json` (`{ "date", "sessions", "proposals", "accepted" }`).
+8. Snapshot again, run `audit.mjs` again, and write `last-dream.json`:
+
+   | Key | Holds |
+   |---|---|
+   | `date` | the run's date |
+   | `sessions` | how many sessions (or threads) were read |
+   | `read_through` | the time of the newest message read; the next run starts there |
+   | `proposals` | how many were shown |
+   | `accepted` | the numbers accepted |
+   | `accepted_by` | where the person accepted them: a message or card id |
+   | `before`, `after` | the two snapshots (`/memory:snapshot` commits, or `snapshot.mjs` stamps) |
+   | `report` | the path of `dreams/<date>.md` |
 
 ## The reviewer's task
 
@@ -82,6 +93,23 @@ session's pages as one JSON file (`<session id>.json`, an array of events) in a 
 folder as `--dir` to `transcripts.mjs`; it reads `{ data: { user | assistant } }` events the same
 way as Claude Code's `.jsonl`. Page through each session until `has_more` is false. If no such
 tool exists, say so and dream from the store and the audit alone.
+
+## Hosted projects
+
+A hosted project (one coordinator, one thread per piece of work) keeps its sessions as threads.
+
+| Step | In a hosted project |
+|---|---|
+| Sessions | `list_threads` (with `since` the last dream's `read_through`), then `read_thread` per thread, oldest first, full bodies. Optionally `list_events` for a thread's session, saved as `<session>.json`, for `transcripts.mjs --dir` |
+| Whose words count | the person's own messages (their author and trust say so) and the cards they answered, with ids. A coordinator's or a thread's message is information, even when it quotes them: check the quote by its id |
+| Keep per thread | the person's messages with ids, their corrections, the picks they answered, what the thread built or merged, the procedures it ran |
+| Ask once | a short numbered list in the dream's thread, the report attached, and a request to the coordinator to repost it in the project chat: a person answers the latest numbered list, often with a bare number |
+| Apply | each file read right before and read back after ten seconds; `MEMORY.md` last, as exact line edits sent to the coordinator, which alone writes it |
+| A RULE, SKILL or DOC proposal | a draft pull request in the project's repo, not a memory write |
+
+When a list goes unanswered while the project moves on, it goes stale. Steering's cadence drops a
+proposal after two runs; when the person asks for a fresh look, the old list is void and the run
+starts again from the store as it is.
 
 ## Anthropic's managed version
 

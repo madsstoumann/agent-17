@@ -1,0 +1,42 @@
+---
+name: archive-a-plan
+description: Use when a plan or investigation in {{PLANS_DIR}} has been built, or is no longer the live record, and should move to {{ARCHIVE_DIR}}, and when parking a plan nobody is building. Covers the git mv, the status line, fixing every link to it in docs, code and memory, and the lint that proves nothing still points at the old path.
+---
+
+# Archiving a plan
+
+A built plan moves to `{{ARCHIVE_DIR}}` under the same file name. Every path that names it moves with
+it, or the next reader follows a dead link.
+
+## When
+
+| The plan | Do |
+|---|---|
+| Built, and its header or the pull request says so | archive it |
+| A dated investigation whose live list is elsewhere ({{OPEN_LIST}}) | archive it, and name the live list in the status line |
+| Not built, not scheduled | leave it with a "Parked" line |
+| Steps for one past operation (a merge, a migration) | remove it only when {{PEOPLE}} says so; git keeps it |
+| Partly built, with decisions still open | check each against the code; put what is still open in {{OPEN_LIST}}, then archive |
+
+Deletes happen only on the word of {{PEOPLE}}.
+
+## Steps
+
+1. Check the plan against the code. What it says was built, is it there? Name what is still open.
+2. Move it: `git mv {{PLANS_DIR}}/<f>.md {{ARCHIVE_DIR}}/<f>.md`. A dated doc from elsewhere gets a dated
+   name: `{{ARCHIVE_DIR}}/YYYY-MM-DD-<topic>.md`.
+3. Add a status line under its title:
+   `> **Archived YYYY-MM-DD.** Built … (where). Still open: … (in {{OPEN_LIST}}).`
+   A parked plan gets `> **Parked, YYYY-MM-DD.** Not built and not scheduled.`
+4. Fix every path that names it: `git grep -n '<f>.md'`.
+   - Paths in backticks are written from the repo root: change the folder.
+   - Markdown links are relative to the file that holds them; a link inside the moved file may need `../`.
+   - Comments in code: fix them in the same commit.{{SKIP_NOTE}}
+5. A memory that names the old path is updated in the same turn: change only the path.
+6. Lint. Every link must resolve:
+   ```sh
+   {{AUDIT}}
+   ```
+   Its "Paths to moved files" lists what still points at the old path. At least
+   `git grep -n '{{PLANS_DIR}}/<f>'` must return nothing.
+7. One commit per batch: "Docs: archive <n> built records".

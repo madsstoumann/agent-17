@@ -27,6 +27,12 @@ export const DEFAULTS = {
   today: new Date().toISOString().slice(0, 10),
 };
 
+/** How a host reads MEMORY.md, and what happens past its limit (references/store-format.md#index-limits-by-host). */
+export const HOSTS = {
+  'claude-code': { indexLines: 200, indexBytes: 25_000, indexWarnBytes: 12 * 1024, longLine: 300, past: 'the rest is not loaded' },
+  'claude-project': { indexLines: Infinity, indexBytes: 16_384, indexWarnBytes: 14 * 1024, longLine: 800, past: "the coordinator's update is refused and it must rewrite the index" },
+};
+
 const MEMORY_TYPES = new Set(['user', 'feedback', 'project', 'reference']);
 const NOT_ORPHANS = /^(README|CHANGELOG|LICENSE|LICENCE|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY|SKILL|AGENTS|CLAUDE|CLAUDE\.local|MEMORY|index)\.md$/i;
 const SECRET = /(sk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[0-9A-Za-z_-]{35})/;
@@ -269,8 +275,9 @@ export function checkMemory(ctx, mem = readMemory(ctx)) {
     const longLines = lines.filter((l) => l.length > o.longLine);
     const n = lineCount(index.text);
     index$ = { lines: n, bytes: index.bytes, longLines: longLines.length };
-    if (n > o.indexLines || index.bytes > o.indexBytes) findings.push(f('error', 'memory', 'M2', `MEMORY.md is ${n} lines, ${kb(index.bytes)}: past ${o.indexLines} lines or ${kb(o.indexBytes)} the rest is not loaded`, 'MEMORY.md', 'Step E2: one pointer line per file; rules move into their files'));
-    else if (index.bytes > o.indexWarnBytes) findings.push(f('warn', 'memory', 'M2', `MEMORY.md is ${kb(index.bytes)}, loaded into every session; aim for under ${kb(o.indexWarnBytes)}`, 'MEMORY.md', 'Step E2'));
+    const limit = Number.isFinite(o.indexLines) ? `${o.indexLines} lines or ${kb(o.indexBytes)}` : kb(o.indexBytes);
+    if (n > o.indexLines || index.bytes > o.indexBytes) findings.push(f('error', 'memory', 'M2', `MEMORY.md is ${n} lines, ${kb(index.bytes)}: past ${limit} ${o.past || HOSTS['claude-code'].past}`, 'MEMORY.md', o.host === 'claude-project' ? 'Snapshot, then move detail into topic files; one line per area stays' : 'Step E2: one pointer line per file; rules move into their files'));
+    else if (index.bytes > o.indexWarnBytes) findings.push(f('warn', 'memory', 'M2', `MEMORY.md is ${kb(index.bytes)}, loaded into every session; aim for under ${kb(o.indexWarnBytes)}${o.host === 'claude-project' ? ': move detail into topic files now, after a snapshot' : ''}`, 'MEMORY.md', 'Step E2'));
     if (longLines.length) findings.push(f('warn', 'memory', 'M3', `${plural(longLines.length, 'line')} in the index ${verb(longLines.length, 'is', 'are')} longer than ${o.longLine} characters: rule text, not pointers`, 'MEMORY.md', 'Step E2 moves the text into the file the line points at'));
   }
   const indexed = new Set(index ? linksOf(index).map((l) => names.get(l)?.name).filter(Boolean) : []);

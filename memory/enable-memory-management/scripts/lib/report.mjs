@@ -57,7 +57,7 @@ export function renderReport(r, { levels } = {}) {
   const m = r.memory;
   if (m) {
     L.push(`| Memory files | ${m.files} files, ${kb(m.bytes)}; types ${Object.entries(m.types).filter(([, n]) => n).map(([t, n]) => `${t} ${n}`).join(', ')} | under ${kb(r.opts.memoryFileBytes)} each |`);
-    if (m.index) L.push(`| MEMORY.md | ${m.index.lines} lines, ${kb(m.index.bytes)}, ${m.index.longLines} lines over ${r.opts.longLine} characters | under ${r.opts.indexLines} lines and ${kb(r.opts.indexWarnBytes)} |`);
+    if (m.index) L.push(`| MEMORY.md${r.host && r.host !== 'claude-code' ? ` (${r.host})` : ''} | ${m.index.lines} lines, ${kb(m.index.bytes)}, ${m.index.longLines} lines over ${r.opts.longLine} characters | under ${Number.isFinite(r.opts.indexLines) ? `${r.opts.indexLines} lines and ` : ''}${kb(r.opts.indexWarnBytes)} |`);
     L.push(`| Memory links | ${m.indexed} indexed, ${m.unindexed} not in the index, ${m.orphans} linked from nowhere, ${m.broken} broken links, ${m.duplicates} near-duplicate pairs | none |`);
   } else L.push('| Memory | no memory folder found | |');
   if (r.transcripts) L.push(`| Sessions read | ${r.transcripts.sessions} (${String(r.transcripts.from || '').slice(0, 10)} to ${String(r.transcripts.to || '').slice(0, 10)}), ${r.transcripts.prompts} prompts, ${r.transcripts.corrections.length} corrections | |`);

@@ -10,6 +10,7 @@ import { parseFrontmatter, meta, wikiLinks, mdLinks, codePaths, prosePaths, bold
 import { planStatus, makeContext, resolveRef } from '../lib/checks.mjs';
 import { stepsFor, renderReport } from '../lib/report.mjs';
 import { projectSlug, imports } from '../lib/discover.mjs';
+import { parseLevel } from '../lib/levels.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FIX = path.join(here, 'fixtures');
@@ -195,4 +196,29 @@ test('resolveRef: a Claude Code location and a path in a checkout beside the pro
   const off = makeContext({ root: proj, files, instr: { loaded: [], rules: [] }, skills: [], opts: { siblings: false } });
   assert.equal(resolveRef(off, 'scripts/check.mjs', '', { external: true }).missing, true);
   fs.rmSync(base, { recursive: true, force: true });
+});
+
+test('--host: the index limits and the memory-rules check follow how the host reads MEMORY.md', () => {
+  const dir = memoryCopy();
+  const line = (i) => `- [[note-${i}]]: routing line for area ${i}, its owner and what is open there ${'x'.repeat(400)}\n`;
+  const index = (bytes) => { let s = '# Memory\n\n'; for (let i = 0; s.length < bytes; i++) s += line(i); return s; };
+  const m2 = (r) => r.findings.find((x) => x.id === 'M2');
+  fs.writeFileSync(path.join(dir, 'MEMORY.md'), index(13 * 1024));
+  assert.equal(m2(run({ memory: dir })).level, 'warn', 'Claude Code: over 12 KB is a warning');
+  assert.ok(!m2(run({ memory: dir, host: 'claude-project' })), 'a coordinator: 13 KB is fine');
+  assert.ok(!run({ memory: dir, host: 'claude-project' }).findings.some((x) => x.id === 'M3'), 'routing lines may run to 800 characters');
+  assert.ok(run({ memory: dir }).findings.some((x) => x.id === 'M3'), 'for Claude Code they are rule text');
+  fs.writeFileSync(path.join(dir, 'MEMORY.md'), index(15 * 1024));
+  assert.match(m2(run({ memory: dir, host: 'claude-project' })).title, /move detail into topic files/);
+  fs.writeFileSync(path.join(dir, 'MEMORY.md'), index(17 * 1024));
+  const hosted = m2(run({ memory: dir, host: 'claude-project' }));
+  assert.equal(hosted.level, 'error');
+  assert.match(hosted.title, /past 16\.0 KB the coordinator's update is refused/);
+  assert.equal(m2(run({ memory: dir })).level, 'warn', 'Claude Code still loads 17 KB');
+  const r = run({ memory: dir, host: 'claude-project' });
+  assert.equal(r.host, 'claude-project');
+  assert.match(renderReport(r, { levels: parseLevel('all') }), /\| MEMORY\.md \(claude-project\) \|.*\| under 14\.0 KB \|/);
+  assert.equal(parseArgs(['--host', 'claude-project']).host, 'claude-project');
+  assert.throws(() => parseArgs(['--host', 'elsewhere']), /Unknown host/);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
