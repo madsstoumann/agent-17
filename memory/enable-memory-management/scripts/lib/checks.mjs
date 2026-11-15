@@ -31,6 +31,19 @@ const MEMORY_TYPES = new Set(['user', 'feedback', 'project', 'reference']);
 const NOT_ORPHANS = /^(README|CHANGELOG|LICENSE|LICENCE|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY|SKILL|AGENTS|CLAUDE|CLAUDE\.local|MEMORY|index)\.md$/i;
 const SECRET = /(sk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[0-9A-Za-z_-]{35})/;
 const RELATIVE_DATE = /\b(today|yesterday|tomorrow|last week|next week|this week|last month|next month)\b/i;
+// Places Claude Code reads when they exist. A doc or skill that names one is describing the convention,
+// not pointing at a file this project has to hold.
+const CONVENTIONS = new Set(['CLAUDE.md', '.claude/CLAUDE.md', 'CLAUDE.local.md', '.claude/settings.json', '.claude/settings.local.json', '.mcp.json', '.claude/rules', '.claude/skills', '.claude/agents', '.claude/commands']);
+
+/** Checkouts beside the project (folders next to it that hold a .git), where a named path may live instead. */
+function siblingCheckouts(root) {
+  if (!root) return [];
+  const parent = path.dirname(path.resolve(root));
+  const self = path.resolve(root);
+  let names = [];
+  try { names = fs.readdirSync(parent, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { return []; }
+  return names.map((n) => path.join(parent, n)).filter((d) => d !== self && fs.existsSync(path.join(d, '.git')));
+}
 
 const posix = path.posix;
 export const lineCount = (t) => { const s = String(t ?? ''); return s ? s.split('\n').length - (s.endsWith('\n') ? 1 : 0) : 0; };
@@ -51,7 +64,9 @@ export function makeContext({ root, files, git, ignored, lastChanged, instr, ski
   const instrRels = new Set([...instr.loaded.map((x) => x.rel), ...instr.rules.map((x) => x.rel), ...(instr.agents ? ['AGENTS.md'] : [])]);
   const skillRels = new Set(skills.map((s) => s.rel));
   const docs = files.filter((p) => p.endsWith('.md') && !instrRels.has(p) && !skillRels.has(p) && !p.startsWith('.claude/'));
-  return { root, files, fileSet, byBase, top, git, ignored: ignored || (() => false), lastChanged: lastChanged || new Map(), instr, skills, docs, memoryDir, memoryList: memoryList || [], opts: { ...DEFAULTS, ...opts } };
+  const options = { ...DEFAULTS, ...opts };
+  const siblings = options.siblings === false ? [] : siblingCheckouts(root);
+  return { root, files, fileSet, byBase, top, git, ignored: ignored || (() => false), lastChanged: lastChanged || new Map(), instr, skills, docs, memoryDir, memoryList: memoryList || [], siblings, opts: options };
 }
 
 /** 'ok' | 'skip' | { moved: path } | { missing: true } for one reference written in `fromRel`. */
@@ -68,6 +83,9 @@ export function resolveRef(ctx, ref, fromRel, { kind = 'code', external = false 
     if (ctx.fileSet.has(c)) return 'ok';
     try { if (fs.existsSync(path.join(ctx.root, c))) return 'ok'; } catch { /* ignore */ }
   }
+  if (inside.some((c) => CONVENTIONS.has(c))) return 'skip';
+  // A path that exists in a checkout beside this one (a sibling repo the text is about) is not ours to check.
+  for (const c of inside) for (const s of ctx.siblings || []) { try { if (fs.existsSync(path.join(s, c))) return 'skip'; } catch { /* ignore */ } }
   // A path in backticks is only ours when it starts at a top-level name of the project, or sits
   // beside the file that names it. Anything else (an upstream file, another repo) is not checked.
   if (kind === 'code') {
@@ -234,6 +252,12 @@ export function checkMemory(ctx, mem = readMemory(ctx)) {
   if (!ctx.memoryDir) return { findings: [f('info', 'memory', 'M0', 'No memory folder found for this project', '.', 'Pass --memory DIR, or step E1 creates one')], summary: null };
   const index = mem.find((m) => m.name === 'MEMORY.md');
   const notes = mem.filter((m) => m !== index);
+  // An archived file is history: it keeps its frontmatter and is still read for secrets, but it is not
+  // counted as an orphan, a duplicate, a stale record or a file without Why. A log (metadata.kind: log)
+  // is dated lines, newest first, and may pass the size limit on purpose.
+  const archived = (m) => String(meta(m.fm.data, 'status') || '').toLowerCase() === 'archived';
+  const isLog = (m) => String(meta(m.fm.data, 'kind') || '').toLowerCase() === 'log';
+  const live = notes.filter((m) => !archived(m));
   const names = new Map();
   for (const m of notes) { names.set(m.stem, m); const n = meta(m.fm.data, 'name'); if (n) names.set(String(n), m); }
   const linksOf = (m) => [...wikiLinks(m.text), ...mdLinks(m.text).filter((l) => l.endsWith('.md')).map((l) => posix.basename(l, '.md'))];
@@ -258,8 +282,8 @@ export function checkMemory(ctx, mem = readMemory(ctx)) {
       if (target) { if (m !== target) linkedFrom.set(target.name, (linkedFrom.get(target.name) || 0) + 1); } else broken.push([m.name, l]);
     }
   }
-  const unindexed = notes.filter((m) => !indexed.has(m.name));
-  const orphans = notes.filter((m) => !linkedFrom.get(m.name));
+  const unindexed = live.filter((m) => !indexed.has(m.name));
+  const orphans = live.filter((m) => !linkedFrom.get(m.name));
   if (index && unindexed.length) findings.push(f('info', 'memory', 'M4', `${plural(unindexed.length, 'file')} not named in the index (found only by a link or a search)`, unindexed.map((m) => m.name).slice(0, 8).join(', ') + (unindexed.length > 8 ? ', …' : ''), 'Step E2 adds a pointer line for each', { files: unindexed.map((m) => m.name) }));
   if (orphans.length) findings.push(f('warn', 'memory', 'M5', `${plural(orphans.length, 'file')} nothing links to, not even the index`, orphans.map((m) => m.name).join(', '), 'Link or index each; a dream run proposes retiring the stale ones', { files: orphans.map((m) => m.name) }));
   if (broken.length) findings.push(f('warn', 'memory', 'M6', `${plural(broken.length, 'link')} to ${verb(broken.length, 'a memory that does', 'memories that do')} not exist`, [...new Set(broken.map((b) => b[0]))].join(', '), 'Write the missing memory or drop the link', { links: broken }));
@@ -274,19 +298,21 @@ export function checkMemory(ctx, mem = readMemory(ctx)) {
   const stale = [];
   const deadPaths = [];
   for (const m of notes) {
+    const old = archived(m);
     if (!m.fm.raw) { noFm.push(m.name); } else {
       const miss = ['name', 'description', 'type'].filter((k) => !meta(m.fm.data, k));
       if (miss.length) missingKeys.push(`${m.name} (${miss.join(', ')})`);
       const type = meta(m.fm.data, 'type');
       if (type && !MEMORY_TYPES.has(String(type))) badType.push(`${m.name} (${type})`);
-      if (type === 'feedback' && !/\*\*Why:?\*\*/i.test(m.fm.body)) noWhy.push(m.name);
+      if (type === 'feedback' && !old && !/\*\*Why:?\*\*/i.test(m.fm.body)) noWhy.push(m.name);
       const review = meta(m.fm.data, 'review_by');
       const checked = String(meta(m.fm.data, 'verified') || meta(m.fm.data, 'modified') || '').slice(0, 10) || m.mtime;
-      if (review && String(review) < o.today) stale.push(`${m.name} (review by ${review})`);
+      if (old) { /* history: never due */ } else if (review && String(review) < o.today) stale.push(`${m.name} (review by ${review})`);
       else if (type === 'project' && checked && daysBetween(checked, o.today) > o.staleDays) stale.push(`${m.name} (last checked ${checked})`);
     }
-    if (m.bytes > o.memoryFileBytes) big.push(`${m.name} (${kb(m.bytes)})`);
     if (SECRET.test(m.text)) secrets.push(m.name);
+    if (old) continue;
+    if (m.bytes > o.memoryFileBytes && !isLog(m)) big.push(`${m.name} (${kb(m.bytes)})`);
     if (RELATIVE_DATE.test(m.fm.body)) relDates.push(m.name);
     if (ctx.root) {
       const dead = deadRefs(ctx, m.text, '', { external: true });
@@ -304,7 +330,7 @@ export function checkMemory(ctx, mem = readMemory(ctx)) {
   if (deadPaths.length) findings.push(f('warn', 'memory', 'M14', `${plural(deadPaths.length, 'file')} ${verb(deadPaths.length, 'names', 'name')} project paths that moved or do not exist`, deadPaths.map((d) => d.file).join(', '), 'Update the path, or the memory is out of date', { files: deadPaths }));
 
   const dups = [];
-  const sh = notes.map((m) => ({ m, s: shingles(m.fm.body) }));
+  const sh = live.map((m) => ({ m, s: shingles(m.fm.body) }));
   for (let i = 0; i < sh.length; i++) for (let j = i + 1; j < sh.length; j++) {
     const score = jaccard(sh[i].s, sh[j].s);
     if (score >= o.dupThreshold) dups.push([sh[i].m.name, sh[j].m.name, Math.round(score * 100)]);
@@ -314,7 +340,7 @@ export function checkMemory(ctx, mem = readMemory(ctx)) {
   return {
     findings,
     summary: {
-      dir: ctx.memoryDir, files: notes.length, bytes: mem.reduce((a, m) => a + m.bytes, 0), index: index$, indexed: indexed.size, unindexed: unindexed.length, orphans: orphans.length, broken: broken.length, duplicates: dups.length,
+      dir: ctx.memoryDir, files: notes.length, archived: notes.length - live.length, logs: live.filter(isLog).length, bytes: mem.reduce((a, m) => a + m.bytes, 0), index: index$, indexed: indexed.size, unindexed: unindexed.length, orphans: orphans.length, broken: broken.length, duplicates: dups.length,
       types: Object.fromEntries([...MEMORY_TYPES, 'none'].map((t) => [t, notes.filter((m) => (meta(m.fm.data, 'type') || 'none') === t).length])),
       overSize: big.length, noFrontmatter: noFm.length,
     },

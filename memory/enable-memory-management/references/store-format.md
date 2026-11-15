@@ -21,6 +21,7 @@ a Managed Agents store and the API memory tool.
 |---|---|---|
 | `MEMORY.md` | The index: one line per file, `- [[name]]: description`, grouped by type (User · Feedback · Project · Reference). No rule text | under 12 KB and 200 lines; Claude Code loads only the first 200 lines / 25 KB |
 | one file per subject | One person, one rule set, one area, one external system | under 4 KB; split when it grows |
+| a log (`metadata.kind: log`) | Dated lines for one period, newest first: `decisions-2026-11.md` | may pass 4 KB; a new period starts a new file |
 | `STEERING.md` | What the dream run keeps, never stores, and whose words count (from `templates/STEERING.md`) | short |
 
 Subfolders are fine (`decisions/2026-11.md`); links use the file's `name`, not its path.
@@ -50,7 +51,8 @@ metadata:
 | `metadata.source` | for curated | where it was learned: message ids, PR, session id | provenance |
 | `metadata.verified` | for project | date and the commit it was checked against | staleness |
 | `metadata.review_by` | optional | a date; the audit lists files past it | staleness |
-| `metadata.status` | optional | `active` · `done` · `archived` | archive instead of delete |
+| `metadata.status` | optional | `active` · `done` · `archived` | archive instead of delete; the audit counts an archived file only for secrets and frontmatter |
+| `metadata.kind` | optional | `log` | a dated log, newest first (one month of decisions); may pass 4 KB, the audit does not flag its size |
 
 Extra keys sit under `metadata:` because the Agent Skills spec and some hosts reject unknown
 top-level keys. Hosts that stamp their own keys (`modified`) keep them.
