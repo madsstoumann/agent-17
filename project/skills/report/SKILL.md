@@ -13,7 +13,7 @@ A report is where a project's files meet people who will never open them. This s
 what the files and the change records say, and from nothing else: if a thing was not recorded, it
 is not in the report, and the report says where the record is thin.
 
-Scripts are in `${CLAUDE_SKILL_DIR}/../scripts/`. If `project/memory/state.md` is missing, the
+Scripts are in `${CLAUDE_SKILL_DIR}/../../scripts/`. If `project/memory/state.md` is missing, the
 project is not set up: say so and point to `/project:new`.
 
 ## 1. Who it is for, and which period
@@ -25,7 +25,7 @@ project as it stands; with one (`7d`, `30d` or a date) it covers that period.
 ## 2. Collect
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/../scripts/report.mjs" --root . --for <audience> [--since <period>]
+node "${CLAUDE_SKILL_DIR}/../../scripts/report.mjs" --root . --for <audience> [--since <period>]
 ```
 
 It returns, already selected for that reader: the decisions and other changes in the period, with

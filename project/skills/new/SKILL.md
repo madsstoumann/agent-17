@@ -14,10 +14,10 @@ skill puts it in a handful of files in the project's own repo, where every role 
 reads the same thing, and it gets there by asking, not by guessing.
 
 It writes only what someone said or what the repo shows. A section nobody has answered stays empty
-with its question open. Scripts are in `${CLAUDE_SKILL_DIR}/../scripts/`; the file rules are in
-[references/files.md](../references/files.md), the method in
-[references/interviewing.md](../references/interviewing.md), and how changes are recorded in
-[references/changes.md](../references/changes.md).
+with its question open. Scripts are in `${CLAUDE_SKILL_DIR}/../../scripts/`; the file rules are in
+[references/files.md](../../references/files.md), the method in
+[references/interviewing.md](../../references/interviewing.md), and how changes are recorded in
+[references/changes.md](../../references/changes.md).
 
 ## 0. New or resuming?
 
@@ -37,8 +37,8 @@ every question is asked.
 ## 2. Scaffold
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/../scripts/scaffold.mjs" --root . --name "<name>" --size <size> --kind <kind>
-node "${CLAUDE_SKILL_DIR}/../scripts/build.mjs" --root .
+node "${CLAUDE_SKILL_DIR}/../../scripts/scaffold.mjs" --root . --name "<name>" --size <size> --kind <kind>
+node "${CLAUDE_SKILL_DIR}/../../scripts/build.mjs" --root .
 ```
 
 The first prints what it wrote and what it kept. It never overwrites.
@@ -56,14 +56,14 @@ many questions the size asks.
 
 ## 3. Read before asking
 
-Read what already answers a question ([interviewing.md](../references/interviewing.md#read-before-asking)):
+Read what already answers a question ([interviewing.md](../../references/interviewing.md#read-before-asking)):
 the repo (manifests, CI, config samples, existing docs) and every file passed with `--from` or
 attached (briefs, kick-off and discovery transcripts). For each question in `state.md` that a
 source answers, write the answer under its heading with a line naming the source, and record it
 as a draft:
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/../scripts/answer.mjs" --root . --id <id> --status draft --note "from <source>"
+node "${CLAUDE_SKILL_DIR}/../../scripts/answer.mjs" --root . --id <id> --status draft --note "from <source>"
 ```
 
 A draft is not an answer. It keeps its file a draft until a person confirms it, and it does not
@@ -76,7 +76,7 @@ code cannot show.
 ## 4. Interview
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/../scripts/check.mjs" --root . --next
+node "${CLAUDE_SKILL_DIR}/../../scripts/check.mjs" --root . --next
 ```
 
 That is the round: the drafts waiting to be confirmed first, then every open question whose
@@ -90,7 +90,7 @@ Add `--role <role>` for one role's questions. For each one:
    The `agents` questions go under "Rules" in `AGENTS.md`, one line per rule.
 3. Record it:
    ```bash
-   node "${CLAUDE_SKILL_DIR}/../scripts/answer.mjs" --root . --id <id> --status answered
+   node "${CLAUDE_SKILL_DIR}/../../scripts/answer.mjs" --root . --id <id> --status answered
    ```
    or `--status skipped --note "<who should answer>"`, or `--status parked --note "<what would settle it>"`.
 
@@ -122,7 +122,7 @@ Stop whenever the person wants to. Nothing is lost: go to step 6.
 ## 5. Resuming
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/../scripts/check.mjs" --root .
+node "${CLAUDE_SKILL_DIR}/../../scripts/check.mjs" --root .
 ```
 
 Read "People and roles" in `product-context.md` to know who holds which role, and ask who is here
@@ -138,7 +138,7 @@ role named in their note is the one answering.
 Every session that wrote an answer ends the same way:
 
 1. Write one change record from `templates/change.md` to
-   `project/memory/changes/<date>-<slug>.md` ([changes.md](../references/changes.md)): what was
+   `project/memory/changes/<date>-<slug>.md` ([changes.md](../../references/changes.md)): what was
    answered and by which roles under "Asked", "Setting up the project" under "Why", one line per
    file under "Deltas". The slug is `setup-` plus the files' names (`setup-product-boundaries`);
    `asked_by` is the one role that answered most. The record is `applied` at once, without the
@@ -148,8 +148,8 @@ Every session that wrote an answer ends the same way:
    gained answers but still has open ones gets `minor`.
 2. Rebuild and check:
    ```bash
-   node "${CLAUDE_SKILL_DIR}/../scripts/build.mjs" --root .
-   node "${CLAUDE_SKILL_DIR}/../scripts/check.mjs" --root . --console
+   node "${CLAUDE_SKILL_DIR}/../../scripts/build.mjs" --root .
+   node "${CLAUDE_SKILL_DIR}/../../scripts/check.mjs" --root . --console
    ```
 3. Report, from the per-role lines `--console` prints: files now active, files still draft, questions left per role, anything parked and what
    would settle it. Give the one command that continues: `/project:new`.

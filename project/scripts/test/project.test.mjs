@@ -403,7 +403,7 @@ test('bad records and bad files are caught', () => {
 
 test('no client data: templates use only documented placeholders, and nothing names a real project', () => {
   const allowed = ['PROJECT', 'DATE', 'SIZE', 'KIND', 'QUESTIONS', 'SLUG', 'TITLE', 'ROLE', 'BUMPS'];
-  const docs = fs.readFileSync(path.join(PLUGIN, 'references/files.md'), 'utf8') + fs.readFileSync(path.join(PLUGIN, 'new/SKILL.md'), 'utf8');
+  const docs = fs.readFileSync(path.join(PLUGIN, 'references/files.md'), 'utf8') + fs.readFileSync(path.join(PLUGIN, 'skills/new/SKILL.md'), 'utf8');
   const hosts = ['example.com', 'example.dk', 'github.com', 'semver.org', 'keepachangelog.com', 'www.designtokens.org', 'www.aihero.dev', 'arxiv.org', 'www.atlassian.com', 'www.martinfowler.com', 'www.thoughtworks.com', 'asantos2000.github.io', 'code.claude.com', 'aws.amazon.com', 'claude.ai'];
   for (const p of walk(PLUGIN).filter((f) => /\.(md|json|mjs|html)$/.test(f) && !f.includes(`${path.sep}test${path.sep}`))) {
     const t = fs.readFileSync(p, 'utf8');
