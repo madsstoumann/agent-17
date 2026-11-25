@@ -13,6 +13,7 @@ import { answer, addQuestion } from '../answer.mjs';
 import { create, set, listRecords } from '../record.mjs';
 import { addFile, sizes } from '../file.mjs';
 import { status, setPhase } from '../status.mjs';
+import { report, period } from '../report.mjs';
 
 const PLUGIN = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BANK = JSON.parse(fs.readFileSync(path.join(PLUGIN, 'templates/questions.json'), 'utf8')).questions;
@@ -350,6 +351,41 @@ test('status: what waits on whom, what is stale, what has drifted, and the phase
   assert.equal(status(root, { today: '2026-12-10' }).phase, 'planning');
   assert.deepEqual(check(root, { today: '2026-12-10' }).findings, []);
   assert.throws(() => setPhase(root, 'holiday'));
+});
+
+test('report: each reader gets the changes to the files they read, every decision, and what waits on them', () => {
+  const root = fresh('small');
+  const apply = (o, delta) => { const r = create(root, { askedBy: 'pm', status: 'applied', ...o }); const p = path.join(root, r.path); fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace('## Deltas\n', `## Deltas\n\n- ${delta}\n`).replace('## Why\n', '## Why\n\nBecause the owner asked.\n')); build(root); return r; };
+  apply({ slug: 'old', title: 'An older change to scope', bumps: ['boundaries:minor'], date: '2026-11-01' }, 'boundaries: ADDED a line');
+  apply({ slug: 'tech-only', title: 'The build runs on push', bumps: ['technical-context:minor'], date: '2026-12-02' }, 'technical-context: ADDED');
+  apply({ slug: 'scope', title: 'Gift cards are out of scope', bumps: ['boundaries:minor'], date: '2026-12-03' }, 'boundaries: ADDED');
+  apply({ slug: 'host', title: 'The shop runs on a managed platform', bumps: ['technical-context:minor'], decision: 'accepted', askedBy: 'tech-lead', date: '2026-12-03' }, 'technical-context: MODIFIED');
+  addQuestion(root, { id: 'gift-wrap', file: 'boundaries', role: 'client', ask: 'Should orders offer gift wrapping?', status: 'parked', note: 'the owner decides' });
+  answer(root, { id: 'hosting', status: 'parked', note: 'after the vendor replies' });
+  addQuestion(root, { id: 'opening-hours', file: 'product-context', role: 'client-contact', ask: 'Which opening hours are shown?', status: 'skipped', note: 'the shop' });
+  const opt = { since: '7d', today: '2026-12-04' };
+  const c = report(root, { audience: 'client', ...opt });
+  assert.deepEqual(c.period, { since: '2026-11-27', until: '2026-12-04' });
+  assert.deepEqual(c.changes.map((x) => x.title), ['Gift cards are out of scope'], 'not the technical change, not the one before the period');
+  assert.deepEqual(c.decisions.map((x) => x.title), ['The shop runs on a managed platform'], 'a decision reaches every reader');
+  assert.equal(c.changes[0].why, 'Because the owner asked.');
+  assert.deepEqual(c.waiting.onClient.map((q) => q.id).sort(), ['gift-wrap', 'opening-hours'], 'any role on the client side');
+  assert.ok(!c.waiting.parked.some((q) => q.id === 'hosting'), 'a technical question is not the client\'s');
+  assert.deepEqual(c.attention, {});
+  assert.equal(c.saveAs, 'project/memory/reports/2026-12-04-client.md');
+  const t = report(root, { audience: 'tech', ...opt });
+  assert.deepEqual(t.changes.map((x) => x.title), ['The build runs on push', 'Gift cards are out of scope'], 'boundaries bind the tech team too');
+  assert.ok(t.waiting.parked.some((q) => q.id === 'hosting') && 'missingPaths' in t.attention);
+  const p = report(root, { audience: 'pm', today: '2026-12-04' });
+  assert.equal(p.changes.length, 3, 'no period: everything, as an outline');
+  assert.equal(report(root, { audience: 'pm', since: '2026-12-04', today: '2026-12-04' }).empty, true);
+  fs.writeFileSync(path.join(root, c.saveAs), '---\nname: 2026-12-04-client\ndescription: "Client report"\nmetadata:\n  type: report\n---\n\nHello.\n');
+  assert.equal(report(root, { audience: 'client', ...opt }).exists, true);
+  assert.deepEqual(check(root, { today: '2026-12-04' }).findings, [], 'a saved report is not a project file');
+  assert.throws(() => report(root, { audience: 'everyone' }));
+  assert.throws(() => period('soon', null, '2026-12-04'));
+  assert.throws(() => period('2027-01-01', null, '2026-12-04'));
+  assert.throws(() => report(tmp(), { audience: 'pm' }), /no project here/);
 });
 
 test('bad records and bad files are caught', () => {
