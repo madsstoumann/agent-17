@@ -13,12 +13,12 @@ The answer to "where are we" should not need a meeting. Everything this skill sa
 project's files and its change records; it adds nothing of its own and changes nothing, except the
 phase when asked.
 
-Scripts are in `${CLAUDE_SKILL_DIR}/../scripts/`.
+Scripts are in `${CLAUDE_SKILL_DIR}/../../scripts/`.
 
 ## 1. Read
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/../scripts/status.mjs" --root .
+node "${CLAUDE_SKILL_DIR}/../../scripts/status.mjs" --root .
 ```
 
 If it says the project is not set up, say so and point to `/project:new`. If it reports errors,
@@ -58,10 +58,10 @@ it does, not when a checklist is full. When asked to move:
    proposed records. Ask whether to move anyway.
 2. On yes:
    ```bash
-   node "${CLAUDE_SKILL_DIR}/../scripts/status.mjs" --root . --phase <phase>
+   node "${CLAUDE_SKILL_DIR}/../../scripts/status.mjs" --root . --phase <phase>
    ```
 3. Name the optional files the new phase usually calls for, from
-   [docs/file-map.md](../docs/file-map.md#optional-files-and-their-triggers) (planning: an
+   [docs/file-map.md](../../docs/file-map.md#optional-files-and-their-triggers) (planning: an
    architecture file, guardrails; QA: a QA file), and that `/project:add` creates them when there
    is something to put in them. Do not create them here.
 

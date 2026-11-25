@@ -14,10 +14,10 @@ reaches the files the team and the agents read, or it is pasted in whole and bur
 This skill takes the new material, works out which sentences in which files it changes, and changes
 those, with one record of what happened and why.
 
-The files, their headers and budgets are in [references/files.md](../references/files.md); change
-records in [references/changes.md](../references/changes.md); the optional files and what triggers
-them in [docs/file-map.md](../docs/file-map.md#optional-files-and-their-triggers). Scripts are in
-`${CLAUDE_SKILL_DIR}/../scripts/`. If `project/memory/state.md` is missing, the project is not set
+The files, their headers and budgets are in [references/files.md](../../references/files.md); change
+records in [references/changes.md](../../references/changes.md); the optional files and what triggers
+them in [docs/file-map.md](../../docs/file-map.md#optional-files-and-their-triggers). Scripts are in
+`${CLAUDE_SKILL_DIR}/../../scripts/`. If `project/memory/state.md` is missing, the project is not set
 up: say so and point to `/project:new`.
 
 ## 1. Read the input and the project
@@ -26,8 +26,8 @@ Read everything passed: the prompt, each `--from` file, anything attached. Then 
 project stands:
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/../scripts/check.mjs" --root .
-node "${CLAUDE_SKILL_DIR}/../scripts/record.mjs" --root . --list
+node "${CLAUDE_SKILL_DIR}/../../scripts/check.mjs" --root .
+node "${CLAUDE_SKILL_DIR}/../../scripts/record.mjs" --root . --list
 ```
 
 and `project/INDEX.md`, opening only the files the input is about.
@@ -95,7 +95,7 @@ it meets, and ask which holds. Three outcomes:
 - Nobody in the room can say: add it as a parked question for the role that can, and go on with
   the rest:
   ```bash
-  node "${CLAUDE_SKILL_DIR}/../scripts/answer.mjs" --root . --add <id> --file <file> --role <role> \
+  node "${CLAUDE_SKILL_DIR}/../../scripts/answer.mjs" --root . --add <id> --file <file> --role <role> \
     --ask "<the question>" --status parked --note "<who is thinking about it, and what would settle it>"
   ```
   A role is one word; the client's side is `client`.
@@ -117,21 +117,21 @@ stop here. Take corrections, then proceed; do not ask again per item.
 The starting set is small on purpose. Add a file when one of these is true, and say which:
 
 - The input brings a subject that has a trigger in
-  [file-map.md](../docs/file-map.md#optional-files-and-their-triggers) (dark mode or a second theme:
+  [file-map.md](../../docs/file-map.md#optional-files-and-their-triggers) (dark mode or a second theme:
   `design/themes.md`; animation: `design/motion.md`; an outside API or tracker:
   `tech/integrations.md`; a term two people use differently: `foundation/glossary.md`), **and**
   brings more about it than a line or two. A trigger with one line of content stays a line in the
   parent file; the file comes when there is something to put in it.
 - Writing the change would take its file past its budget:
   ```bash
-  node "${CLAUDE_SKILL_DIR}/../scripts/file.mjs" --root . --sizes
+  node "${CLAUDE_SKILL_DIR}/../../scripts/file.mjs" --root . --sizes
   ```
 - A section now has a different owner than its file.
 
 Then, after the yes in step 5:
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/../scripts/file.mjs" --root . --path project/<folder>/<name>.md \
+node "${CLAUDE_SKILL_DIR}/../../scripts/file.mjs" --root . --path project/<folder>/<name>.md \
   --description "<one line>" --owner <role> --parent <parent file's name>
 ```
 
@@ -155,7 +155,7 @@ and a change that waits for a yes nobody in the room can give goes in a second r
 `proposed`, so that it does not hold up the rest.
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/../scripts/record.mjs" --root . --slug <slug> --title "<what changed, as a sentence>" \
+node "${CLAUDE_SKILL_DIR}/../../scripts/record.mjs" --root . --slug <slug> --title "<what changed, as a sentence>" \
   --asked-by <role> --bumps <file:level,...>
 ```
 
@@ -174,13 +174,13 @@ or `REMOVED`; under **Hooks**, step 8. Then:
    go in the section's fenced `yaml` block and the section comes off the `omitted:` list.
 3. Close and add questions:
    ```bash
-   node "${CLAUDE_SKILL_DIR}/../scripts/answer.mjs" --root . --id <id> --status answered
-   node "${CLAUDE_SKILL_DIR}/../scripts/answer.mjs" --root . --add <id> --file <file> --role <role> --ask "<question>"
+   node "${CLAUDE_SKILL_DIR}/../../scripts/answer.mjs" --root . --id <id> --status answered
+   node "${CLAUDE_SKILL_DIR}/../../scripts/answer.mjs" --root . --add <id> --file <file> --role <role> --ask "<question>"
    ```
 4. Apply and check:
    ```bash
-   node "${CLAUDE_SKILL_DIR}/../scripts/record.mjs" --root . --set <name> --status applied
-   node "${CLAUDE_SKILL_DIR}/../scripts/check.mjs" --root . --console
+   node "${CLAUDE_SKILL_DIR}/../../scripts/record.mjs" --root . --set <name> --status applied
+   node "${CLAUDE_SKILL_DIR}/../../scripts/check.mjs" --root . --console
    ```
    Fix every error before reporting. A budget warning on a file you just grew means step 6.
 
