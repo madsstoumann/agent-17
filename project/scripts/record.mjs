@@ -21,6 +21,8 @@ const STATUS = ['proposed', 'applied', 'rejected'];
 const DECISION = ['none', 'proposed', 'accepted', 'superseded'];
 const csv = (v) => (v ? String(v).split(',').map((s) => s.trim()).filter(Boolean) : []);
 
+const norm = (b) => { const [file, level] = String(b).split(':'); return `${(file ?? '').replace(/\.md$/i, '').toLowerCase()}:${level ?? ''}`; };
+
 function checkBumps(root, items) {
   const { written } = load(root);
   const keys = new Set(written.map((f) => f.key));
@@ -34,6 +36,8 @@ function checkBumps(root, items) {
 export function create(root, { slug, title, askedBy, bumps = [], decision = 'none', supersedes = [], status = 'proposed', date = new Date().toISOString().slice(0, 10) }) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug ?? '')) throw new Error('--slug is lowercase letters, digits and hyphens');
   if (!title || /[{}\n"\\]/.test(title)) throw new Error('--title is required, on one line, without quotes or braces');
+  if (title.length > 100) throw new Error(`--title is ${title.length} characters: it is the one line people read in the changelog, keep it under 100`);
+  bumps = bumps.map(norm);
   if (!/^[a-z0-9-]+$/.test(askedBy ?? '')) throw new Error('--asked-by is one role, as a word (pm, designer, tech-lead)');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('--date is YYYY-MM-DD');
   if (!['proposed', 'applied'].includes(status)) throw new Error('--status is proposed or applied');

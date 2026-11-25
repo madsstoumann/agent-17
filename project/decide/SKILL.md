@@ -4,7 +4,7 @@ description: Records a project decision so it can be found, questioned and repla
 argument-hint: "[what was decided] [--propose] [--accept NAME | --reject NAME] [--list] [--root DIR]"
 allowed-tools: Bash(node:*), Bash(git:*), Read, Write, Edit, Grep, Glob
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # Decide
@@ -58,7 +58,8 @@ one at a time. Never fill one in yourself.
 | Who decided | Which role made the call, and who was heard? |
 | What it changes | Which of the project files say something different now? |
 
-"There was no other option" is an answer; write it as one. If the person cannot say who decided, or
+"There was no other option" is an answer; write it as one. A choice with no reason given: ask
+once. If nobody offers one, write "No reason was given" under the choice; do not supply one. If the person cannot say who decided, or
 the one who decides is not in the room, this is not a decision yet: record it as open (`--propose`),
 with who decides and what they are waiting for.
 
@@ -106,8 +107,9 @@ leave the record proposed and say whose yes is missing.
 ## 6. Apply
 
 1. Edit the files as the "Deltas" say. Change the sentence that is now wrong; do not append a note
-   beside it. `technical-context.md` gets the choice and its reason under "Choices and their
-   reasons", in one or two lines, never the full record.
+   beside it. State the choice once, with its reason in the same line or two, under the heading
+   that owns the subject ("Hosting and environments" for a hosting choice). "Choices and their
+   reasons" in `technical-context.md` is for choices no other heading owns. Never the full record.
 2. Close the questions it settles:
    ```bash
    node "${CLAUDE_SKILL_DIR}/../scripts/answer.mjs" --root . --id <id> --status answered
@@ -136,6 +138,10 @@ Never edit the audit manifest or a tracker yourself.
 
 Three lines: what was decided, what it replaced, which files changed and to which version. Then
 what is still waiting, from the "Open" and "Waiting" sections of `decisions.md`.
+
+In a git repo, commit on the branch `project-changes` (reuse it while it is unmerged), one commit
+per record, holding only the files under `project/` and `AGENTS.md` that this run changed. Do not
+push or open a pull request without being asked.
 
 ## Rules
 

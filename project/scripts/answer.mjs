@@ -11,7 +11,7 @@ import { setMeta, list, cell, parseFrontmatter } from './lib/md.mjs';
 import { load, args, ANSWERS as STATUSES } from './lib/project.mjs';
 import { build } from './build.mjs';
 
-const USAGE = 'Usage: answer.mjs --root DIR --id QUESTION --status answered|draft|skipped|parked|open [--note TEXT] [--role ROLE] [--date YYYY-MM-DD]\n       answer.mjs --root DIR --add ID --file KEY --role ROLE --ask "Question"';
+const USAGE = 'Usage: answer.mjs --root DIR --id QUESTION --status answered|draft|skipped|parked|open [--note TEXT] [--role ROLE] [--date YYYY-MM-DD]\n       answer.mjs --root DIR --add ID --file KEY --role ROLE --ask "Question" [--status parked|skipped --note TEXT]';
 
 export function answer(root, { id, status, note = '', role = '', date = new Date().toISOString().slice(0, 10) }) {
   if (!STATUSES.includes(status)) throw new Error(`--status must be one of ${STATUSES.join(', ')}`);
@@ -25,6 +25,7 @@ export function answer(root, { id, status, note = '', role = '', date = new Date
   if (role) cells[2] = role; // the team has no such role, or someone else owns this one
   cells[3] = status;
   if (note) cells[5] = cell(note);
+  else if (status === 'answered') cells[5] = ''; // what it was waiting for no longer applies
   lines[at] = `| ${cells.join(' | ')} |`;
   fs.writeFileSync(statePath, setMeta(lines.join('\n'), 'updated', date));
 
@@ -46,7 +47,7 @@ export function answer(root, { id, status, note = '', role = '', date = new Date
 }
 
 /** A question the interview found on the way: added as open, to state.md and to its file. */
-export function addQuestion(root, { id, file, role, ask }) {
+export function addQuestion(root, { id, file, role, ask, status = 'open', note = '' }) {
   if (!/^[a-z0-9-]+$/.test(id ?? '')) throw new Error('--add takes an id of lowercase letters, digits and hyphens');
   const statePath = path.join(root, 'project', 'memory', 'state.md');
   const lines = fs.readFileSync(statePath, 'utf8').replace(/\n+$/, '').split('\n');
@@ -55,14 +56,15 @@ export function addQuestion(root, { id, file, role, ask }) {
   lines.forEach((l, i) => { if (l.startsWith('|')) last = i; });
   lines.splice(last + 1, 0, `| ${id} | ${file} | ${role} | open | ${cell(ask)} | |`);
   fs.writeFileSync(statePath, lines.join('\n') + '\n');
-  return answer(root, { id, status: 'open' });
+  if (!['open', 'skipped', 'parked'].includes(status)) throw new Error('a new question is open, skipped or parked');
+  return answer(root, { id, status, note });
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const a = args(process.argv.slice(2), { help: 'bool' });
   if (a.help || !a.root || (!a.id && !a.add)) { console.log(USAGE); process.exit(a.help ? 0 : 2); }
   try {
-    const r = a.add ? addQuestion(path.resolve(a.root), { id: a.add, file: a.file, role: a.role, ask: a.ask }) : answer(path.resolve(a.root), a);
+    const r = a.add ? addQuestion(path.resolve(a.root), { id: a.add, file: a.file, role: a.role, ask: a.ask, status: a.status, note: a.note }) : answer(path.resolve(a.root), a);
     console.log(JSON.stringify(r, null, 2));
   } catch (e) { console.error(e.message); process.exit(2); }
 }

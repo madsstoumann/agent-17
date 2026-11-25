@@ -267,6 +267,8 @@ test('record.mjs refuses what a person would get wrong by hand', () => {
   assert.throws(() => create(root, { ...ok, bumps: ['pricing:minor'] }), /not a project file/);
   assert.throws(() => create(root, { ...ok, bumps: ['design:huge'] }), /level/);
   assert.throws(() => create(root, { ...ok, slug: 'Not A Slug' }));
+  assert.throws(() => create(root, { ...ok, title: 'x'.repeat(101) }), /under 100/);
+  assert.equal(listRecords(root).length, 0);
   assert.throws(() => create(root, { ...ok, title: 'A "quoted" title' }));
   assert.throws(() => create(root, { ...ok, decision: 'accepted' }), /applied/);
   assert.throws(() => create(root, { ...ok, decision: 'proposed', supersedes: ['2026-01-01-nothing'] }), /no such record/);
@@ -282,6 +284,10 @@ test('parked questions show as waiting decisions; a question can move to another
   answer(root, { id: 'what', status: 'answered' });
   answer(root, { id: 'hosting', status: 'parked', note: 'after the vendor replies' });
   assert.match(read(root, 'project/memory/decisions.md').split('## Waiting')[1].split('## Standing')[0], /Where will it run.*after the vendor replies/);
+  answer(root, { id: 'hosting', status: 'answered' });
+  assert.equal(table(parseFrontmatter(read(root, 'project/memory/state.md')).body, 'Questions').find((q) => q.id === 'hosting').note, '', 'an answered question drops the note that said what it waited for');
+  addQuestion(root, { id: 'gift-cards', file: 'boundaries', role: 'client', ask: 'May the shop sell gift cards?', status: 'parked', note: 'the owner is thinking about it' });
+  assert.match(read(root, 'project/memory/decisions.md').split('## Waiting')[1], /gift cards.*the owner is thinking/);
   answer(root, { id: 'audiences', status: 'open', role: 'designer' });
   const r = check(root);
   assert.deepEqual(r.findings, []);
@@ -305,6 +311,8 @@ test('a file added on a trigger: header, parent, a `new` bump, and it shows in t
   assert.match(read(root, 'project/INDEX.md'), /building-blocks\/design\/themes\.md/);
   assert.ok(fs.existsSync(path.join(root, 'project/memory/changelog/themes.md')));
   const ok = { description: 'x', owner: 'designer' };
+  assert.equal(addFile(root, { ...ok, path: 'project/building-blocks/design/motion.md', parent: 'DESIGN.md' }).depends_on[0], 'design', 'the parent can be given as its file name');
+  assert.deepEqual(check(root, { today: '2026-12-02' }).findings, [], 'the index is rebuilt when a file is added');
   assert.throws(() => addFile(root, { ...ok, path: 'project/building-blocks/design/themes.md' }), /exists/);
   assert.throws(() => addFile(root, { ...ok, path: 'project/intent/themes.md' }), /unique/);
   assert.throws(() => addFile(root, { ...ok, path: 'project/memory/notes.md' }), /kept by the skills/);

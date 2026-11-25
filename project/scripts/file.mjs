@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load, args, AUDIENCES, BUDGET } from './lib/project.mjs';
+import { build } from './build.mjs';
 
 const USAGE = `Usage: file.mjs --root DIR --path project/<folder>/<name>.md --description "One line" --owner ROLE
                 [--parent KEY] [--depends-on a,b] [--audience people|agents|people-and-agents] [--title "Heading"] [--date YYYY-MM-DD]
@@ -26,7 +27,7 @@ export function addFile(root, { path: rel, description, owner, parent = '', depe
   const { written } = load(root);
   const keys = new Map(written.map((f) => [f.key, f.rel]));
   if (keys.has(name)) throw new Error(`a file named "${name}" exists (${keys.get(name)}): names are unique, links use them`);
-  const deps = [...new Set([...(parent ? [parent] : []), ...dependsOn])];
+  const deps = [...new Set([...(parent ? [parent] : []), ...dependsOn].map((d) => d.replace(/\.md$/i, '').toLowerCase()))]; // DESIGN.md is `design`
   for (const d of deps) if (!keys.has(d)) throw new Error(`"${d}" is not a project file (${[...keys.keys()].join(', ')})`);
   const target = path.join(root, rel);
   if (fs.existsSync(target)) throw new Error(`${rel} exists`);
@@ -34,6 +35,7 @@ export function addFile(root, { path: rel, description, owner, parent = '', depe
   const text = `---\nname: ${name}\ndescription: "${description}"\nmetadata:\n  type: project\n  version: "0.1.0"\n  status: active\n  audience: ${audience}\n  owner: ${owner}\n  contributors: []\n  depends_on: [${deps.join(', ')}]\n  open: []\n  changelog: memory/changelog/${name}.md\n  updated: ${date}\n---\n\n# ${heading}\n`;
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, text);
+  build(root); // the index lists it at once
   return { name, path: rel, owner, depends_on: deps, bump: `${name}:new` };
 }
 
