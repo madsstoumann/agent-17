@@ -56,6 +56,7 @@ metadata:
 | `{{PROJECT}}` | every template | the project's name, from `--name` |
 | `{{DATE}}` | every template | the day, `YYYY-MM-DD` |
 | `{{SIZE}}` | `state.md` | `small`, `medium` or `large` |
+| `{{KIND}}` | `state.md` | `client`, `product` or `library` |
 | `{{QUESTIONS}}` | `state.md` | the question rows for that size, from `templates/questions.json` |
 | `{{SLUG}}`, `{{TITLE}}`, `{{ROLE}}`, `{{BUMPS}}` | `change.md` | a change record's file name, its one-line title, the role that asked, and the `file:level` list |
 
@@ -68,6 +69,6 @@ Zero-dependency Node 18+, in `scripts/` beside the skills. They print JSON.
 | `scaffold.mjs --root DIR --name NAME [--size S]` | Writes the starting set. Never overwrites |
 | `check.mjs --root DIR [--console]` | Lints headers, budgets, secrets and views; counts open questions per role. Exit 1 on an error |
 | `check.mjs --root DIR --next` | The questions that can be asked now |
-| `answer.mjs --root DIR --id Q --status answered\|skipped\|parked [--note T]` | Records a question's outcome in `state.md` and its file |
+| `answer.mjs --root DIR --id Q --status answered\|draft\|skipped\|parked [--note T]` | Records a question's outcome in `state.md` and its file |
 | `answer.mjs --root DIR --add ID --file KEY --role ROLE --ask TEXT` | Adds a question the interview found |
 | `build.mjs --root DIR [--check]` | Rebuilds versions, changelogs, decisions and the index from the change records and headers |

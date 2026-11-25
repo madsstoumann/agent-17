@@ -9,10 +9,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { list, table, section } from './lib/md.mjs';
-import { load, args, key, STATUSES, AUDIENCES, BUDGET } from './lib/project.mjs';
+import { load, args, key, STATUSES, AUDIENCES, BUDGET, ANSWERS } from './lib/project.mjs';
 import { build } from './build.mjs';
 
-const USAGE = 'Usage: check.mjs --root DIR [--today YYYY-MM-DD] [--console]';
+const USAGE = 'Usage: check.mjs --root DIR [--today YYYY-MM-DD] [--console]\n       check.mjs --root DIR --next [--role ROLE]';
 const SECRET = /(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{16,}|\bAKIA[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{30,}|\b(?:password|passwd|secret|api[_-]?key|token)\s*[:=]\s*["']?[A-Za-z0-9/+_-]{12,})/i;
 
 export function check(root, { today = new Date().toISOString().slice(0, 10) } = {}) {
@@ -69,7 +69,7 @@ export function check(root, { today = new Date().toISOString().slice(0, 10) } = 
   if (!state) add('error', 'project/memory/state.md', 'missing');
   const openIn = new Map();
   for (const q of questions) {
-    if (!['open', 'answered', 'skipped', 'parked'].includes(q.status)) add('error', 'project/memory/state.md', `question ${q.id}: status "${q.status}" is not open, answered, skipped or parked`);
+    if (!ANSWERS.includes(q.status)) add('error', 'project/memory/state.md', `question ${q.id}: status "${q.status}" is not one of ${ANSWERS.join(', ')}`);
     if (q.status !== 'answered') openIn.set(q.id, q);
   }
   for (const f of written) {
@@ -87,7 +87,7 @@ export function check(root, { today = new Date().toISOString().slice(0, 10) } = 
 function finish(root, findings, questions, written = [], state = null) {
   const byRole = {};
   for (const q of questions) {
-    const r = (byRole[q.role] ??= { open: [], skipped: [], parked: [], answered: 0 });
+    const r = (byRole[q.role] ??= { open: [], draft: [], skipped: [], parked: [], answered: 0 });
     if (q.status === 'answered') r.answered++; else (r[q.status] ?? r.open).push(q.id);
   }
   const count = (l) => findings.filter((f) => f.level === l).length;
@@ -95,37 +95,48 @@ function finish(root, findings, questions, written = [], state = null) {
     root,
     phase: state?.meta.phase ?? null,
     size: state?.meta.size ?? null,
+    kind: state?.meta.kind ?? null,
     files: { total: written.length, draft: written.filter((f) => f.meta.status === 'draft').map((f) => f.key) },
-    questions: { total: questions.length, answered: questions.filter((q) => q.status === 'answered').length, byRole },
+    questions: { total: questions.length, answered: questions.filter((q) => q.status === 'answered').length, draft: questions.filter((q) => q.status === 'draft').length, byRole },
     errors: count('error'),
     warnings: count('warn'),
     findings,
   };
 }
 
-/** The questions whose prerequisites are all answered: the next round of the interview. */
-export function frontier(root, bank) {
+/**
+ * The next round of the interview: drafts waiting for a person to confirm them, then the open
+ * questions whose prerequisites are answered. A draft counts as a prerequisite met, so one
+ * unconfirmed answer does not hold up everything after it.
+ */
+export function frontier(root, bank, role = null) {
   const { files } = load(root);
   const state = files.find((f) => f.rel === 'project/memory/state.md');
   const rows = state ? table(state.body, 'Questions') : [];
-  const done = new Set(rows.filter((q) => q.status === 'answered').map((q) => q.id));
+  // Only a question nobody has dealt with holds up what follows: a parked or skipped one is settled for now.
+  const done = new Set(rows.filter((q) => q.status !== 'open').map((q) => q.id));
   const known = new Map(bank.map((q) => [q.id, q]));
-  return rows.filter((q) => q.status === 'open' && (known.get(q.id)?.after ?? []).every((id) => done.has(id) || !rows.some((r) => r.id === id)))
-    .map((q) => ({ ...q, section: known.get(q.id)?.section ?? null }));
+  return rows.filter((q) => !role || q.role === role).filter((q) => q.status === 'draft' || q.status === 'open' && (known.get(q.id)?.after ?? []).every((id) => done.has(id) || !rows.some((r) => r.id === id)))
+    .map((q) => ({ ...q, section: known.get(q.id)?.section ?? null }))
+    .sort((a, b) => (b.status === 'draft') - (a.status === 'draft'));
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const a = args(process.argv.slice(2), { console: 'bool', help: 'bool', next: 'bool' });
-  if (a.help || !a.root) { console.log(USAGE + ' | --next'); process.exit(a.help ? 0 : 2); }
+  if (a.help || !a.root) { console.log(USAGE); process.exit(a.help ? 0 : 2); }
   const root = path.resolve(a.root);
   if (a.next) {
     const bank = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates', 'questions.json'), 'utf8')).questions;
-    console.log(JSON.stringify(frontier(root, bank), null, 2));
+    console.log(JSON.stringify(frontier(root, bank, a.role ?? null), null, 2));
     process.exit(0);
   }
   const r = check(root, { today: a.today });
   if (a.console) {
-    console.log(`${r.errors} error(s), ${r.warnings} warning(s); ${r.questions.answered} of ${r.questions.total} questions answered`);
+    console.log(`${r.errors} error(s), ${r.warnings} warning(s); ${r.questions.answered} of ${r.questions.total} questions answered${r.questions.draft ? `, ${r.questions.draft} draft(s) to confirm` : ''}`);
+    for (const [role, q] of Object.entries(r.questions.byRole)) {
+      const left = ['draft', 'open', 'skipped', 'parked'].filter((k) => q[k].length).map((k) => `${k}: ${q[k].join(', ')}`);
+      console.log(`${role}: ${q.answered} answered${left.length ? '; ' + left.join('; ') : ''}`);
+    }
     for (const f of [...r.findings].sort((x, y) => x.level.localeCompare(y.level))) console.log(`${f.level.padEnd(5)} ${f.file}: ${f.message}`);
   } else console.log(JSON.stringify(r, null, 2));
   process.exit(r.errors ? 1 : 0);
