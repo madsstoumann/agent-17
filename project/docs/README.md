@@ -7,7 +7,7 @@ Status: plan, second version (2026-11-25). Built so far: the templates, the scri
 | This file | What the plugin is, the files it manages, the commands, how it is tested |
 | [file-map.md](file-map.md) | Every file, who is accountable, which phase touches it, what triggers the optional ones |
 | [research.md](research.md) | The evidence and prior art the plan was tested against, and what each changed |
-| [artifacts/](artifacts/) | Sources of the published artifacts (the interactive file map) |
+| [artifacts/](artifacts/) | The published artifacts as standalone pages, each with a picture GitHub can show (the interactive file map) |
 
 `docs/` is for people and for sessions that work on the plugin. Skills never load it; what a skill needs at run time goes in `references/` once the plugin exists.
 

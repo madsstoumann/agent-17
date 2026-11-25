@@ -15,6 +15,13 @@ On claude.ai, add the `agent-17` marketplace under [Customize > Plugins](https:/
 
 The skills share the scripts in `scripts/`, so install the plugin; copying one skill folder is not enough.
 
+### What comes with it
+
+| Plugin | Installed with `project`? | Why |
+|---|---|---|
+| `memory` | Yes, in Claude Code: it is a declared dependency, so it is installed and enabled alongside. On claude.ai, add **memory** yourself; whether dependencies resolve there is not confirmed | The project files follow the memory store's rules, and the weekly dream reviews them |
+| `skills` (the audits) | No | The project skills only propose things to the audits. Install it where the audits will run; without it, a hook that would have fired is reported and skipped |
+
 ## Contents
 
 **Keep this list current.** A pull request that adds, removes or renames a skill here, or changes what it does or how it is called, updates this table in the same PR.
