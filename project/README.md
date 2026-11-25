@@ -28,7 +28,7 @@ The skills share the scripts in `scripts/`, so install the plugin; copying one s
 
 | Skill | What it does | How to use it |
 | --- | --- | --- |
-| [new](new/SKILL.md) | Writes the starting set into a project (`AGENTS.md` with rules only, product context, technical context, experience, boundaries, `DESIGN.md`, plus an index, a state file and a decision list the scripts keep), reads what the repo and any briefs or transcripts already say, then interviews each role on what is missing, one question at a time, writing every answer into the file that owns it. Stops after any answer and resumes later. | `/project:new` in the project's repo · `--size small\|medium\|large` · `--role designer` for one role's questions · `--from kickoff.txt` for a brief or transcript · run it again to continue |
+| [new](new/SKILL.md) | Writes the starting set into a project (`AGENTS.md` with rules only, product context, technical context, experience, boundaries, `DESIGN.md`, plus an index, a state file and a decision list the scripts keep), reads what the repo and any briefs or transcripts already say, then interviews each role on what is missing, one question at a time, writing every answer into the file that owns it. Stops after any answer and resumes later. | `/project:new` in the project's repo · `--size small\|medium\|large` · `--kind client\|product\|library` · `--role designer` for one role's questions · `--from kickoff.txt` for a brief or transcript · run it again to continue |
 
 Planned, in this order: `add` (a prompt, file or transcript becomes one change record), `decide`, `status`, `report`. See [docs/README.md](docs/README.md#commands).
 
@@ -54,7 +54,7 @@ Zero-dependency Node 18+. Each answers `--help` and prints JSON.
 
 | Script | Does |
 |---|---|
-| `scripts/scaffold.mjs --root DIR --name NAME [--size S] [--dry-run]` | Writes the starting set; never overwrites |
+| `scripts/scaffold.mjs --root DIR --name NAME [--size S] [--kind K] [--date D] [--dry-run]` | Writes the starting set; never overwrites |
 | `scripts/check.mjs --root DIR [--console] [--today DATE]` | Lints headers, budgets, secrets and generated views; counts open questions per role; exit 1 on an error. Use it in CI |
 | `scripts/check.mjs --root DIR --next` | The questions that can be asked now |
 | `scripts/answer.mjs --root DIR --id Q --status answered\|skipped\|parked\|open [--note T]` | Records a question's outcome; `--add ID --file KEY --role ROLE --ask TEXT` adds one |

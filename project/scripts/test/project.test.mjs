@@ -121,6 +121,69 @@ test('skipped and parked questions stay open on their file; the last answer make
   assert.throws(() => answer(root, { id: 'nope', status: 'answered' }));
 });
 
+test('the kind of project changes the wording, never the number of questions', () => {
+  const ask = (kind, id) => questionsFor('medium', kind).find((q) => q.id === id).ask;
+  assert.ok(/client contact/.test(ask('client', 'roles')) && !/client/.test(ask('library', 'roles')));
+  assert.ok(/pays/.test(ask('client', 'who')) && !/pays/.test(ask('library', 'who')));
+  assert.ok(/licence/.test(ask('library', 'compliance')));
+  for (const k of ['product', 'library']) {
+    assert.equal(questionsFor('large', k).length, BANK.length);
+    assert.ok(!questionsFor('large', k).some((q) => /\bclient/i.test(q.ask)), `${k}: no question mentions a client`);
+  }
+  const root = tmp();
+  assert.equal(scaffold({ root, name: NAME, kind: 'library', date: '2026-11-25' }).kind, 'library');
+  build(root);
+  assert.equal(check(root).kind, 'library');
+  assert.ok(!/client/.test(read(root, 'project/memory/state.md').split('## Questions')[1]));
+  assert.throws(() => scaffold({ root: tmp(), name: NAME, kind: 'hobby' }));
+  for (const q of BANK) for (const k of Object.keys(q.askFor ?? {})) assert.ok(['product', 'library'].includes(k), `${q.id}: askFor.${k}`);
+});
+
+test('a draft from the repo unlocks the next round, is asked first, and keeps its file a draft', () => {
+  const root = fresh('small');
+  answer(root, { id: 'what', status: 'draft', note: 'from the README' });
+  const round = frontier(root, BANK);
+  assert.equal(round[0].id, 'what', 'the draft comes first, to be confirmed');
+  assert.equal(round[0].status, 'draft');
+  assert.ok(round.some((q) => q.id === 'who'), 'what depends on it is no longer held up');
+  const r = check(root);
+  assert.deepEqual(r.findings, []);
+  assert.equal(r.questions.draft, 1);
+  assert.equal(r.questions.answered, 0, 'a draft is not an answer');
+  assert.deepEqual(r.questions.byRole.pm.draft, ['what']);
+  assert.ok(list(header(root, 'project/foundation/product-context.md').metadata.open).includes('what'));
+  answer(root, { id: 'what', status: 'answered' });
+  assert.ok(!frontier(root, BANK).some((q) => q.id === 'what'));
+  assert.throws(() => answer(root, { id: 'what', status: 'maybe' }));
+});
+
+test('a DESIGN.md the repo already has is kept as the design file: no second one, no questions about it', () => {
+  const root = tmp();
+  fs.writeFileSync(path.join(root, 'DESIGN.md'), '# Design\n');
+  const r = scaffold({ root, name: NAME, size: 'large', date: '2026-11-25' });
+  assert.equal(r.designMd, 'DESIGN.md');
+  assert.ok(!fs.existsSync(path.join(root, 'project/building-blocks/DESIGN.md')));
+  assert.ok(!r.written.some((w) => /DESIGN/.test(w)));
+  build(root);
+  const c = check(root);
+  assert.deepEqual(c.findings, []);
+  assert.ok(!c.questions.byRole.designer, 'the designer is asked nothing by the scaffold');
+  assert.equal(read(root, 'DESIGN.md'), '# Design\n', 'the existing file is not touched');
+  assert.equal(scaffold({ root: tmp(), name: NAME }).designMd, null);
+});
+
+test('a parked or skipped question does not hold up what follows; --role narrows the round', () => {
+  const root = fresh('medium');
+  for (const id of ['what', 'starting-point', 'systems', 'who', 'compliance']) answer(root, { id, status: 'answered' });
+  assert.ok(!frontier(root, BANK).some((q) => q.id === 'choices'), '"choices" waits while hosting is open');
+  answer(root, { id: 'hosting', status: 'parked', note: 'after the vendor replies' });
+  const round = frontier(root, BANK).map((q) => q.id);
+  assert.ok(round.includes('choices') && round.includes('tech-constraints'));
+  assert.ok(!round.includes('hosting'), 'a parked question is not asked in a round');
+  const mine = frontier(root, BANK, 'tech-lead');
+  assert.ok(mine.length && mine.every((q) => q.role === 'tech-lead'));
+});
+
 test('a question found on the way is tracked like the others', () => {
   const root = fresh('small');
   const r = addQuestion(root, { id: 'legacy-urls', file: 'technical-context', role: 'tech-lead', ask: 'Which old URLs must keep working?' });
@@ -184,7 +247,7 @@ test('bad records and bad files are caught', () => {
 });
 
 test('no client data: templates use only documented placeholders, and nothing names a real project', () => {
-  const allowed = ['PROJECT', 'DATE', 'SIZE', 'QUESTIONS', 'SLUG', 'TITLE', 'ROLE', 'BUMPS'];
+  const allowed = ['PROJECT', 'DATE', 'SIZE', 'KIND', 'QUESTIONS', 'SLUG', 'TITLE', 'ROLE', 'BUMPS'];
   const docs = fs.readFileSync(path.join(PLUGIN, 'references/files.md'), 'utf8') + fs.readFileSync(path.join(PLUGIN, 'new/SKILL.md'), 'utf8');
   const hosts = ['example.com', 'example.dk', 'github.com', 'semver.org', 'keepachangelog.com', 'www.designtokens.org', 'www.aihero.dev', 'arxiv.org', 'www.atlassian.com', 'www.martinfowler.com', 'www.thoughtworks.com', 'asantos2000.github.io', 'code.claude.com', 'aws.amazon.com', 'claude.ai'];
   for (const p of walk(PLUGIN).filter((f) => /\.(md|json|mjs|html)$/.test(f) && !f.includes(`${path.sep}test${path.sep}`))) {

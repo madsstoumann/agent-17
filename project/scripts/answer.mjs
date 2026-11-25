@@ -8,11 +8,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setMeta, list, cell, parseFrontmatter } from './lib/md.mjs';
-import { load, args } from './lib/project.mjs';
+import { load, args, ANSWERS as STATUSES } from './lib/project.mjs';
 import { build } from './build.mjs';
 
-const USAGE = 'Usage: answer.mjs --root DIR --id QUESTION --status answered|skipped|parked|open [--note TEXT] [--date YYYY-MM-DD]\n       answer.mjs --root DIR --add ID --file KEY --role ROLE --ask "Question"';
-const STATUSES = ['answered', 'skipped', 'parked', 'open'];
+const USAGE = 'Usage: answer.mjs --root DIR --id QUESTION --status answered|draft|skipped|parked|open [--note TEXT] [--date YYYY-MM-DD]\n       answer.mjs --root DIR --add ID --file KEY --role ROLE --ask "Question"';
 
 export function answer(root, { id, status, note = '', date = new Date().toISOString().slice(0, 10) }) {
   if (!STATUSES.includes(status)) throw new Error(`--status must be one of ${STATUSES.join(', ')}`);

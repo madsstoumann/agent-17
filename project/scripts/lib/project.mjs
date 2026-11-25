@@ -4,6 +4,10 @@ import path from 'node:path';
 import { parseFrontmatter, list } from './md.mjs';
 
 export const SIZES = ['small', 'medium', 'large'];
+/** What the project is: work for a client, the team's own product, or a library others build on. Changes how some questions are worded. */
+export const KINDS = ['client', 'product', 'library'];
+/** A question's status. `draft` is an answer read from the repo or a brief that no person has confirmed yet. */
+export const ANSWERS = ['open', 'draft', 'answered', 'skipped', 'parked'];
 export const STATUSES = ['draft', 'active', 'superseded'];
 export const AUDIENCES = ['people', 'agents', 'people-and-agents'];
 /** Size budgets in bytes. A file past its budget is split, not grown. */

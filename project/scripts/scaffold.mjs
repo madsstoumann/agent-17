@@ -8,27 +8,34 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setMeta, cell } from './lib/md.mjs';
-import { SIZES, args, key } from './lib/project.mjs';
+import { SIZES, KINDS, args, key } from './lib/project.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATES = path.join(HERE, '..', 'templates');
-const USAGE = 'Usage: scaffold.mjs --root DIR --name "Project name" [--size small|medium|large] [--date YYYY-MM-DD] [--dry-run]';
+const USAGE = 'Usage: scaffold.mjs --root DIR --name "Project name" [--size small|medium|large] [--kind client|product|library] [--date YYYY-MM-DD] [--dry-run]';
 
-export function questionsFor(size) {
+/** The questions for a size, each worded for the kind of project. `skip` drops whole files' questions. */
+export function questionsFor(size, kind = 'client', skip = []) {
   const all = JSON.parse(fs.readFileSync(path.join(TEMPLATES, 'questions.json'), 'utf8')).questions;
-  return all.filter((q) => SIZES.indexOf(q.size) <= SIZES.indexOf(size));
+  return all.filter((q) => SIZES.indexOf(q.size) <= SIZES.indexOf(size) && !skip.includes(q.file))
+    .map((q) => ({ ...q, ask: q.askFor?.[kind] ?? q.ask }));
 }
 
-export function scaffold({ root, name, size = 'medium', date = new Date().toISOString().slice(0, 10), dryRun = false }) {
+export function scaffold({ root, name, size = 'medium', kind = 'client', date = new Date().toISOString().slice(0, 10), dryRun = false }) {
   if (!SIZES.includes(size)) throw new Error(`--size must be one of ${SIZES.join(', ')}`);
   if (!name || /[{}\n"\\]/.test(name)) throw new Error('--name is required, on one line, without quotes or braces');
-  const questions = questionsFor(size);
+  if (!KINDS.includes(kind)) throw new Error(`--kind must be one of ${KINDS.join(', ')}`);
+  // A DESIGN.md the repo already has stays the design file: no second one, and no questions about it.
+  const designMd = ['DESIGN.md', 'design.md', 'docs/DESIGN.md'].find((f) => fs.existsSync(path.join(root, f))) ?? null;
+  const ours = path.join('project', 'building-blocks', 'DESIGN.md');
+  const adopt = designMd && !fs.existsSync(path.join(root, ours));
+  const questions = questionsFor(size, kind, adopt ? ['design'] : []);
   const rows = questions.map((q) => `| ${q.id} | ${q.file} | ${q.role} | open | ${cell(q.ask)} | |`).join('\n');
-  const fill = (t) => t.replaceAll('{{PROJECT}}', name).replaceAll('{{DATE}}', date).replaceAll('{{SIZE}}', size).replaceAll('{{QUESTIONS}}', rows);
-  const result = { root, size, written: [], kept: [], folders: [], claudeMd: null, questions: questions.length };
+  const fill = (t) => t.replaceAll('{{PROJECT}}', name).replaceAll('{{DATE}}', date).replaceAll('{{SIZE}}', size).replaceAll('{{KIND}}', kind).replaceAll('{{QUESTIONS}}', rows);
+  const result = { root, size, kind, written: [], kept: [], folders: [], claudeMd: null, designMd: adopt ? designMd : null, questions: questions.length };
 
   const plan = [['AGENTS.md', 'AGENTS.md']];
-  const walk = (d) => { for (const e of fs.readdirSync(path.join(TEMPLATES, d), { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else plan.push([p, p]); } };
+  const walk = (d) => { for (const e of fs.readdirSync(path.join(TEMPLATES, d), { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (!(adopt && p === ours)) plan.push([p, p]); } };
   walk('project');
 
   for (const [from, to] of plan) {
@@ -56,6 +63,6 @@ export function scaffold({ root, name, size = 'medium', date = new Date().toISOS
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const a = args(process.argv.slice(2), { 'dry-run': 'bool', help: 'bool' });
   if (a.help || !a.root) { console.log(USAGE); process.exit(a.help ? 0 : 2); }
-  try { console.log(JSON.stringify(scaffold({ root: path.resolve(a.root), name: a.name, size: a.size, date: a.date, dryRun: a['dry-run'] }), null, 2)); }
+  try { console.log(JSON.stringify(scaffold({ root: path.resolve(a.root), name: a.name, size: a.size, kind: a.kind, date: a.date, dryRun: a['dry-run'] }), null, 2)); }
   catch (e) { console.error(e.message); console.error(USAGE); process.exit(2); }
 }
