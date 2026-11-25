@@ -70,6 +70,7 @@ export function report(root, { audience, since = null, until = null, today = iso
       parked: s.waiting.parked.filter(forMe),
       skipped: s.waiting.skipped.filter(forMe),
     },
+    milestones: s.timeline ? { next: s.timeline.next, overdue: s.timeline.overdue } : null,
     attention: audience === 'client' ? {} : { stale: s.stale, nearBudget: s.nearBudget, ...(audience === 'tech' ? { missingPaths: s.drift.missingPaths } : {}), errors: s.findings.filter((f) => f.level === 'error') },
     empty: !applied.length,
     saveAs: out,

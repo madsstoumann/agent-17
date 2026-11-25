@@ -82,7 +82,8 @@ A written file is created only after the skill asks. Three kinds of trigger: som
 | building-blocks | `components/<name>.md`, `components/<name>/<sub>.md` | A component designed or built; a part with its own rules | integrations, if it calls an API |
 | tech | `tech/qa.md`, `qa/manual/<case>.md` | QA starts; a case a person must run by hand | Audit schedule |
 | tech | `tech/release.md` | Release starts | audit-all |
-| memory | `memory/timeline.md`, `memory/reports/<date>-<audience>.md` | Planning starts; each report run | |
+| product-context | `foundation/timeline.md` | The first date someone gives; kept by `/project:timeline` | Status and reports read it |
+| memory | `memory/reports/<date>-<audience>.md` | Each report run | |
 
 ## Across every phase
 

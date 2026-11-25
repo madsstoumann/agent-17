@@ -11,6 +11,7 @@ import { setMeta, list, table } from './lib/md.mjs';
 import { load, args } from './lib/project.mjs';
 import { check } from './check.mjs';
 import { sizes } from './file.mjs';
+import { timeline } from './timeline.mjs';
 
 export const PHASES = ['context', 'planning', 'design', 'dev', 'qa', 'release'];
 const USAGE = `Usage: status.mjs --root DIR [--today YYYY-MM-DD] [--stale-days N] [--console]
@@ -42,6 +43,7 @@ export function status(root, { today = new Date().toISOString().slice(0, 10), st
   const note = (q) => ({ id: q.id, role: q.role, file: q.file, question: q.question, note: q.note });
   const agents = path.join(root, 'AGENTS.md');
   const scan = [...written, ...(fs.existsSync(agents) ? [{ rel: 'AGENTS.md', path: agents, text: fs.readFileSync(agents, 'utf8') }] : [])];
+  const tl = timeline(root, { today });
   const recent = changes.filter((x) => x.meta.status === 'applied').slice(-5).reverse();
   return {
     root, setUp: true, today,
@@ -62,6 +64,7 @@ export function status(root, { today = new Date().toISOString().slice(0, 10), st
       return why.length ? [{ file: f.rel, owner: f.meta.owner, why }] : [];
     }),
     nearBudget: sizes(root).filter((s) => s.used >= 80),
+    timeline: tl.exists ? { next: tl.next, overdue: tl.overdue, problems: tl.problems } : null,
     drift: { missingPaths: missingPaths(root, scan) },
     recent: recent.map((x) => ({ date: x.meta.date, title: x.data.description, name: x.key })),
     errors: c.errors, warnings: c.warnings, findings: c.findings,
@@ -89,6 +92,8 @@ function print(s) {
   const block = (title, rows, f) => { if (rows.length) { line(`${title}:`); for (const r of rows) line(`  - ${f(r)}`); } };
   block('Waiting on a decision', [...s.waiting.proposed.map((p) => `${p.title} (proposed ${p.days} day(s) ago by ${p.asked_by})`), ...s.waiting.parked.map((q) => `${q.question} (${q.role}${q.note ? `; ${q.note}` : ''})`)], (x) => x);
   block('Waiting on a person', s.waiting.skipped, (q) => `${q.question} (${q.note || q.role})`);
+  if (s.timeline?.next) line(`Next milestone: ${s.timeline.next.name}, ${s.timeline.next.date} (${s.timeline.next.days} day(s), ${s.timeline.next.owner})`);
+  block('Milestones past their date', s.timeline?.overdue ?? [], (m) => `${m.name}: ${m.date} (${m.owner})`);
   block('Going stale', s.stale, (f) => `${f.file} (${f.owner}): ${f.why.join('; ')}`);
   block('Near or over budget', s.nearBudget, (b) => `${b.file}: ${b.used}% of ${b.budget} bytes`);
   block('Names a path that is not in the repo', s.drift.missingPaths, (m) => `${m.file}: ${m.path}`);

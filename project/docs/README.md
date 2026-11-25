@@ -101,7 +101,22 @@ A change is proposed, reviewed by the accountable roles of the files it touches,
 | `/project:report` | Outline the project now or over a period, `--for client`, `--for pm`, `--for tech`, one or several |
 | `/project:status` | Phase, open questions per role, stale and unread files, drift between files and code |
 
-Later, once the five have run on a real project: token export, timeline, tracker sync. The weekly client report is `/project:report --for client --since 7d` on a schedule. The weekly dream is the memory plugin's, with steering that also proposes files to split, merge or retire.
+Those five are the core. Ten more were added on request, against this plan's own advice to keep the list short, so each is either a real gap or one of the five under the name people reach for:
+
+| Command | What it is |
+|---|---|
+| `/project:tokens` | New: exports `DESIGN.md` tokens as custom properties and design-tokens JSON, and checks for drift |
+| `/project:timeline` | New: milestones in one file, moved dates kept |
+| `/project:pr` | New: a pull request description from the branch's change records |
+| `/project:meeting` | `add`, with a meeting as the input |
+| `/project:check` | The check every skill runs when it finishes |
+| `/project:phase` | The phase part of `status` |
+| `/project:grill` | The interview method of `new`, pointed at one file or plan |
+| `/project:onboard` | A reading order and an outline for one role |
+| `/project:component` | New and **untested**: one guidance file per component; needs a design tool to prove |
+| `/project:sync` | New and **untested**: questions, decisions and milestones to a tracker; needs a tracker to prove |
+
+If the aliases turn out to split people's habits instead of matching them, they are the first to go. The weekly client report is `/project:report --for client --since 7d` on a schedule. The weekly dream is the memory plugin's, with steering that also proposes files to split, merge or retire.
 
 ### How /project:new runs
 
@@ -143,6 +158,8 @@ The project skill proposes; a developer approves. It never writes an audit's own
 `DESIGN.md` holds direction and tokens only. Component guidance lives in `components/<name>.md`, loaded when that component is the task, and each names the real component to import. A rule that can be enforced becomes a lint rule.
 
 The interview asks where tokens originate: `DESIGN.md`, the design tool or code. The other forms are generated from that one: [W3C design tokens](https://www.designtokens.org/tr/2025.10/) JSON, a Tailwind 4 `@theme` file or plain custom properties.
+
+`/project:tokens` covers the first and the last of these today: design-tokens JSON and plain custom properties. The Tailwind theme and the per-breakpoint formulas below are not built.
 
 Neither format holds a formula. A rule such as "page margin is the spacing unit times a multiplier that grows with the breakpoint" is stored as its inputs (`spacing.unit`, a `margin-multiplier` per breakpoint group), stated in words in the Layout section, and multiplied in the generated CSS with `calc()` inside a media query per breakpoint. Google's exporter does not write those media queries, so the plugin's own export must.
 
