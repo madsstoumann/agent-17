@@ -20,7 +20,7 @@
     {
       "name": "project",
       "source": "./project",
-      "description": "A small folder of structured markdown for a project and the skills that keep it true for the whole team, in project/skills/: new (scaffold, interview, fill, resume), add (file a prompt, document or transcript into the right files as one change record), decide (record, supersede, accept a decision), status (where the project stands, what waits on whom, what has drifted), report (for the client, the PM or the tech team, over a period) and any project skill added there later"
+      "description": "A small folder of structured markdown for a project and the skills that keep it true for the whole team, in project/skills/: new (scaffold, interview, fill, resume), add (file a prompt, document or transcript into the right files as one change record), decide (record, supersede, accept a decision), status (where the project stands, what waits on whom, what has drifted), report (for the client, the PM or the tech team, over a period), tokens (DESIGN.md tokens to CSS and JSON), timeline (milestones), pr (pull request text from the change records), meeting (file a meeting), check (lint the files), phase (move phase), grill (question a file or plan), onboard (a way in for one role), component and sync (untested: need a design tool and a tracker) and any project skill added there later"
     }
   ],
   "renames": {

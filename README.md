@@ -4,7 +4,7 @@ Agent skills, in three plugins:
 
 - [`skills/`](skills/): audits, checks and plans for websites and code. See [skills/README.md](skills/README.md) for the list and how they are versioned.
 - [`memory/`](memory/): memory management for a project's AI agents. See [memory/README.md](memory/README.md).
-- [`project/`](project/): a small set of structured files for a project and the skills that fill and keep them, for the whole team. See [project/README.md](project/README.md). First version, not yet run on a real project.
+- [`project/`](project/): a small set of structured files for a project and the skills that fill and keep them, for the whole team. See [project/README.md](project/README.md). Fifteen skills in early versions; two of them, `component` and `sync`, are untested.
 
 [CONTRIBUTING.md](CONTRIBUTING.md) says which reported issues become a fix and how a fix is checked against saved sites (`tools/corpus/`) before it ships.
 
