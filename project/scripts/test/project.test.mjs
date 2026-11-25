@@ -11,6 +11,8 @@ import { build } from '../build.mjs';
 import { check, frontier } from '../check.mjs';
 import { answer, addQuestion } from '../answer.mjs';
 import { create, set, listRecords } from '../record.mjs';
+import { addFile, sizes } from '../file.mjs';
+import { status, setPhase } from '../status.mjs';
 
 const PLUGIN = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BANK = JSON.parse(fs.readFileSync(path.join(PLUGIN, 'templates/questions.json'), 'utf8')).questions;
@@ -265,6 +267,8 @@ test('record.mjs refuses what a person would get wrong by hand', () => {
   assert.throws(() => create(root, { ...ok, bumps: ['pricing:minor'] }), /not a project file/);
   assert.throws(() => create(root, { ...ok, bumps: ['design:huge'] }), /level/);
   assert.throws(() => create(root, { ...ok, slug: 'Not A Slug' }));
+  assert.throws(() => create(root, { ...ok, title: 'x'.repeat(101) }), /under 100/);
+  assert.equal(listRecords(root).length, 0);
   assert.throws(() => create(root, { ...ok, title: 'A "quoted" title' }));
   assert.throws(() => create(root, { ...ok, decision: 'accepted' }), /applied/);
   assert.throws(() => create(root, { ...ok, decision: 'proposed', supersedes: ['2026-01-01-nothing'] }), /no such record/);
@@ -280,12 +284,72 @@ test('parked questions show as waiting decisions; a question can move to another
   answer(root, { id: 'what', status: 'answered' });
   answer(root, { id: 'hosting', status: 'parked', note: 'after the vendor replies' });
   assert.match(read(root, 'project/memory/decisions.md').split('## Waiting')[1].split('## Standing')[0], /Where will it run.*after the vendor replies/);
+  answer(root, { id: 'hosting', status: 'answered' });
+  assert.equal(table(parseFrontmatter(read(root, 'project/memory/state.md')).body, 'Questions').find((q) => q.id === 'hosting').note, '', 'an answered question drops the note that said what it waited for');
+  addQuestion(root, { id: 'gift-cards', file: 'boundaries', role: 'client', ask: 'May the shop sell gift cards?', status: 'parked', note: 'the owner is thinking about it' });
+  assert.match(read(root, 'project/memory/decisions.md').split('## Waiting')[1], /gift cards.*the owner is thinking/);
   answer(root, { id: 'audiences', status: 'open', role: 'designer' });
   const r = check(root);
   assert.deepEqual(r.findings, []);
   assert.ok(r.questions.byRole.designer.open.includes('audiences'));
   assert.ok(!r.questions.byRole['experience-lead'].open.includes('audiences'));
   assert.throws(() => answer(root, { id: 'audiences', status: 'open', role: 'Not A Role' }));
+});
+
+test('a file added on a trigger: header, parent, a `new` bump, and it shows in the index', () => {
+  const root = fresh('small');
+  const f = addFile(root, { path: 'project/building-blocks/design/themes.md', description: 'Light and dark themes and how a colour is chosen for each', owner: 'designer', parent: 'design', date: '2026-12-02' });
+  assert.deepEqual([f.name, f.bump, f.depends_on], ['themes', 'themes:new', ['design']]);
+  fs.appendFileSync(path.join(root, f.path), '\n## Dark\n\nA second colour group.\n');
+  const r = create(root, { slug: 'dark-theme', title: 'A dark theme is added', askedBy: 'designer', bumps: [f.bump, 'design:minor'], status: 'applied', date: '2026-12-02' });
+  const p = path.join(root, r.path);
+  fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace('## Deltas\n', '## Deltas\n\n- themes: ADDED\n- design: MODIFIED colours point to themes\n'));
+  build(root);
+  assert.deepEqual(check(root, { today: '2026-12-02' }).findings, []);
+  assert.equal(header(root, f.path).metadata.version, '0.1.0');
+  assert.equal(header(root, 'project/building-blocks/DESIGN.md').metadata.version, '0.2.0');
+  assert.match(read(root, 'project/INDEX.md'), /building-blocks\/design\/themes\.md/);
+  assert.ok(fs.existsSync(path.join(root, 'project/memory/changelog/themes.md')));
+  const ok = { description: 'x', owner: 'designer' };
+  assert.equal(addFile(root, { ...ok, path: 'project/building-blocks/design/motion.md', parent: 'DESIGN.md' }).depends_on[0], 'design', 'the parent can be given as its file name');
+  assert.deepEqual(check(root, { today: '2026-12-02' }).findings, [], 'the index is rebuilt when a file is added');
+  assert.throws(() => addFile(root, { ...ok, path: 'project/building-blocks/design/themes.md' }), /exists/);
+  assert.throws(() => addFile(root, { ...ok, path: 'project/intent/themes.md' }), /unique/);
+  assert.throws(() => addFile(root, { ...ok, path: 'project/memory/notes.md' }), /kept by the skills/);
+  assert.throws(() => addFile(root, { ...ok, path: 'docs/notes.md' }));
+  assert.throws(() => addFile(root, { ...ok, path: 'project/tech/Data Model.md' }));
+  assert.throws(() => addFile(root, { ...ok, path: 'project/tech/security.md', parent: 'nothing' }), /not a project file/);
+  assert.throws(() => addFile(root, { ...ok, path: 'project/tech/security.md', owner: 'Two People' }));
+  const s = sizes(root);
+  assert.ok(s.some((x) => x.key === 'agents') && s.every((x) => x.used >= 0 && x.budget > 0));
+  assert.ok(s[0].used >= s[s.length - 1].used, 'fullest first');
+});
+
+test('status: what waits on whom, what is stale, what has drifted, and the phase', () => {
+  assert.equal(status(tmp()).setUp, false);
+  const root = fresh('small');
+  answer(root, { id: 'what', status: 'answered' });
+  answer(root, { id: 'hosting', status: 'parked', note: 'after the vendor replies' });
+  answer(root, { id: 'who', status: 'skipped', note: 'ask the owner' });
+  create(root, { slug: 'pickup-only', title: 'Orders are for pickup only at launch', askedBy: 'pm', bumps: ['boundaries:minor'], decision: 'proposed', date: '2026-11-26' });
+  fs.mkdirSync(path.join(root, 'src'));
+  fs.writeFileSync(path.join(root, 'src/app.js'), '');
+  const p = path.join(root, 'project/foundation/technical-context.md');
+  fs.writeFileSync(p, fs.readFileSync(p, 'utf8') + '\nThe entry point is `src/app.js`; the old one was `src/legacy/main.js`. See `https://example.com/a/b.html` and `npm run build`.\n');
+  const s = status(root, { today: '2026-12-10' });
+  assert.equal(s.phase, 'context');
+  assert.deepEqual(s.waiting.parked.map((q) => q.id), ['hosting']);
+  assert.deepEqual(s.waiting.skipped.map((q) => q.id), ['who']);
+  assert.deepEqual(s.waiting.proposed.map((x) => [x.name, x.days]), [['2026-11-26-pickup-only', 14]]);
+  assert.deepEqual(s.drift.missingPaths, [{ file: 'project/foundation/technical-context.md', path: 'src/legacy/main.js' }], 'only the path that is gone; not the URL, the command or the one that exists');
+  assert.deepEqual(s.stale, []);
+  assert.equal(s.errors, 0);
+  const later = status(root, { today: '2027-06-01' });
+  assert.ok(later.stale.some((f) => f.file === 'project/intent/experience.md' && f.why.some((w) => /draft/.test(w))));
+  assert.deepEqual(setPhase(root, 'planning', '2026-12-10'), { from: 'context', to: 'planning' });
+  assert.equal(status(root, { today: '2026-12-10' }).phase, 'planning');
+  assert.deepEqual(check(root, { today: '2026-12-10' }).findings, []);
+  assert.throws(() => setPhase(root, 'holiday'));
 });
 
 test('bad records and bad files are caught', () => {

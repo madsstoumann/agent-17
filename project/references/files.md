@@ -72,4 +72,6 @@ Zero-dependency Node 18+, in `scripts/` beside the skills. They print JSON.
 | `answer.mjs --root DIR --id Q --status answered\|draft\|skipped\|parked [--note T]` | Records a question's outcome in `state.md` and its file |
 | `answer.mjs --root DIR --add ID --file KEY --role ROLE --ask TEXT` | Adds a question the interview found |
 | `record.mjs --root DIR --slug S --title T --asked-by ROLE [--bumps ...] [--decision D] [--supersedes NAME]` | Creates a change record from the template; `--set NAME` moves one along; `--list` |
+| `file.mjs --root DIR --path project/F/NAME.md --description T --owner ROLE [--parent KEY]` | Adds one written file with the header above; `--sizes` lists files against their budgets |
+| `status.mjs --root DIR [--console]` | Where the project stands; `--phase P` sets the phase |
 | `build.mjs --root DIR [--check]` | Rebuilds versions, changelogs, decisions and the index from the change records and headers |

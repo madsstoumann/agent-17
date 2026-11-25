@@ -54,6 +54,11 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.86em}
 .chip .mono{font-size:12.5px}
 .living-band{grid-column:1/-1;background:var(--living);color:var(--living-ink);padding:10px 12px;display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;font-size:14px}
 .living-band b{margin-right:6px}
+.living-band.memory{border-top:1.5px dashed var(--living-ink)}
+.living-band .opt-note{font-size:12.5px;opacity:.85}
+.record-band{grid-column:1/-1;background:var(--panel);border:1.5px dotted var(--quiet);border-top:0;padding:10px 12px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:14px}
+.record-band b{margin-right:6px}
+.record-band .to{color:var(--quiet);font-size:12.5px}
 .flow{display:flex;flex-direction:column;gap:7px}
 .flow .arrow{font-size:12px;color:var(--quiet);padding-left:9px}
 /* filter */
@@ -97,12 +102,12 @@ code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.86em}
 <body>
 <div class="band"><div class="wrap">
 <h1>Six files to start, more by trigger</h1>
-<p class="lead">A project scaffolded by <code>/project:new</code> starts with six files people write and three the system keeps. Phases set the focus and the client output; they do not lock files. Colours follow the planning board, and purple files live across every phase.</p>
+<p class="lead">A project scaffolded by <code>/project:new</code> starts with six files people write and three the system keeps. Phases set the focus and the client output; they do not lock files. Colours follow the planning board, and purple files live across every phase. A change is written once, as a change record; versions, changelogs and the decision list are built from it.</p>
 <ul class="legend">
 <li><span class="sw" style="background:var(--living)"></span>Living file, every phase</li>
 <li><span class="sw" style="background:var(--file)"></span>File owned by one phase</li>
 <li><span class="sw opt"></span>Optional, added on a trigger</li>
-<li><span class="sw" style="background:var(--panel);border:1.5px dotted var(--quiet)"></span>Generated or kept by the system</li>
+<li><span class="sw" style="background:var(--panel);border:1.5px dotted var(--quiet)"></span>Generated or kept by the system, from the change records</li>
 <li><span class="sw" style="background:var(--skill)"></span>Skill</li>
 <li><span class="sw" style="background:var(--session)"></span>Session or meeting</li>
 <li><span class="sw" style="background:var(--input)"></span>Input: recordings, notes</li>
@@ -145,7 +150,7 @@ const G=[
  {n:'Root',p:'repo root',f:[
   {id:'agents',nm:'AGENTS.md',k:'core',d:'Rules and non-standard practices only, plus one line pointing to the project skills. No overview, no index',o:['tech lead'],add:'context',up:['planning'],dep:[]}]},
  {n:'Index and state',p:'project/',f:[
-  {id:'index',nm:'INDEX.md',k:'gen',d:'Generated list of every project file, owner, audience and version. Loaded by the skills, not at every session start',o:['generated'],add:'context',up:['planning','design','dev','qa','release'],dep:[]},
+  {id:'index',nm:'INDEX.md',k:'gen',d:'Generated list of every project file, owner, audience and version. Built from the file headers and the change records. Loaded by the skills, not at every session start',o:['generated'],add:'context',up:['planning','design','dev','qa','release'],dep:[]},
   {id:'state',nm:'memory/state.md',k:'gen',d:'Current phase, position, blockers and open grill questions per role. Lets a grill stop and resume',o:['kept by the skills'],add:'context',up:['planning','design','dev','qa','release'],dep:[]}]},
  {n:'Foundation',p:'project/foundation/',f:[
   {id:'product',nm:'product-context.md',k:'core',d:'What the project is and why: business context, client goals, success measures',o:['PM'],add:'context',up:['planning'],dep:[],
@@ -158,7 +163,7 @@ const G=[
   {id:'boundaries',nm:'boundaries.md',k:'living',d:'Must, must not, compliance, out of scope',o:['PM'],add:'context',up:['planning','qa'],dep:['product'],
    c:[['compliance.md','GDPR, accessibility law or sector rules named; adds audit-privacy and audit-a11y to the QA cadence']]}]},
  {n:'Memory',p:'project/memory/',f:[
-  {id:'decisions',nm:'decisions.md',k:'gen',d:'The living ADR: one line per standing or open decision, linking the change record that holds it',o:['everyone adds','kept by the skills'],add:'context',up:['planning','design','dev','qa','release'],dep:[],
+  {id:'decisions',nm:'decisions.md',k:'gen',d:'The living ADR: one line per open, waiting, standing or superseded decision, linking the change record that holds it',o:['everyone adds','kept by the skills'],add:'context',up:['planning','design','dev','qa','release'],dep:[],
    c:[['changes/<date>-<slug>.md','Every change: what was asked, why, the deltas per file, the decision. The one page people review'],['CHANGELOG.md (generated)','Rollup built from the change records'],['changelog/<file>.md (generated)','Per-file history built from the change records; each file header points here'],['timeline.md','Planning phase; phases, gates and dates'],['reports/<date>-<audience>.md','Each /project:report run (client, pm, tech)']]}]},
  {n:'Building blocks',p:'project/building-blocks/',f:[
   {id:'design',nm:'DESIGN.md',k:'living',d:'Direction and tokens in Google DESIGN.md format, under a size budget. Not the whole design system',o:['designer'],add:'context',up:['design','dev','qa'],dep:['experience','boundaries'],
@@ -193,7 +198,9 @@ document.getElementById('board').innerHTML=PH.map(p=>{
  ${adds.length?`<p class="tag">${p.id==='context'?'Adds the starting set: the purple living files below, plus':'Adds'}</p>${adds.map(f=>`<span class="chip file"><span class="mono">${esc(f.nm)}</span></span>`).join('')}`:''}
  <p class="tag">Skills</p>${p.skills.map(s=>`<span class="chip skill"><span class="mono">${esc(s)}</span></span>`).join('')}
  <p class="tag">Client output</p><span class="chip out">${esc(p.out)}</span></div>`}).join('')+
- `<div class="living-band"><b>Living across all phases</b>${living.map(f=>`<span class="mono">${esc(f.nm)}</span>`).join('')}</div>`;
+ `<div class="living-band"><b>Living across all phases</b>${living.map(f=>`<span class="mono">${esc(f.nm)}</span>`).join('')}</div>`+
+ `<div class="living-band memory"><b>Memory across all phases</b><span>Agent memory and the weekly dream, from the memory plugin</span><span class="opt-note">Optional. Installed with the project plugin, not yet set up by /project:new</span></div>`+
+ `<div class="record-band"><b>Every change, in any phase</b><span class="mono">memory/changes/&lt;date&gt;-&lt;slug&gt;.md</span><span class="to">one record, and from it the system builds</span>${['each file\'s version','changelog/<file>.md','CHANGELOG.md','decisions.md','INDEX.md'].map(t=>`<span class="mono">${esc(t)}</span>`).join('')}</div>`;
 // filters
 let phase='all',sel='design';const open=new Set(['design']);
 const F=document.getElementById('filters');

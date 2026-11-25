@@ -2,6 +2,11 @@
 
 All notable changes to the `decide` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md#versioning) for the versioning convention.
 
+## [0.1.1] - 2026-11-25
+
+### Changed
+- After a simulated run on a meeting transcript: a choice is stated once, under the heading that owns its subject; a choice with no reason given is recorded as such, never supplied; the git branch and commit are spelled out.
+
 ## [0.1.0] - 2026-11-25
 
 ### Added

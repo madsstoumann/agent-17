@@ -2,7 +2,7 @@
 
 A small set of structured markdown files for a project, and the skills that fill them and keep them true, so PMs, designers, developers, QA and the client work from the same thing. This folder is its own plugin, `project`, beside the audits in [`skills/`](../skills/) and the memory setup in [`memory/`](../memory/).
 
-**Early versions.** `/project:new` has been run on an established repo and on a blank one with simulated answers; `/project:decide` is built and tested against an invented project. The plan for the rest, and the research behind it, is in [docs/](docs/README.md).
+**Early versions.** `/project:new` has been run on an established repo and on a blank one with simulated answers; `/project:add`, `/project:decide` and `/project:status` are built and tested against an invented project. The plan for the rest, and the research behind it, is in [docs/](docs/README.md).
 
 ## Install
 
@@ -29,9 +29,11 @@ The skills share the scripts in `scripts/`, so install the plugin; copying one s
 | Skill | What it does | How to use it |
 | --- | --- | --- |
 | [new](new/SKILL.md) | Writes the starting set into a project (`AGENTS.md` with rules only, product context, technical context, experience, boundaries, `DESIGN.md`, plus an index, a state file and a decision list the scripts keep), reads what the repo and any briefs or transcripts already say, then interviews each role on what is missing, one question at a time, writing every answer into the file that owns it. Stops after any answer and resumes later. | `/project:new` in the project's repo · `--size small\|medium\|large` · `--kind client\|product\|library` · `--role designer` for one role's questions · `--from kickoff.txt` for a brief or transcript · run it again to continue |
+| [add](add/SKILL.md) | Takes a sentence, a document or a meeting transcript and files each part where it belongs: answers to open questions, changes to what a file says, decisions, new questions. A wording fix is written straight through; a reversal or a boundary gets questions and the owner's yes. One change record per input. Adds a file only when a subject calls for one (a second theme, motion, an integration), and offers the follow-ups for the audits. | `/project:add "what is new"` · `--from notes.txt` for a file or transcript · `--dry-run` to see the plan only |
 | [decide](decide/SKILL.md) | Records a decision as one change record: context, the options weighed, the choice, the reason and who made it. Marks the decision it replaces as superseded, updates the project files it changes, closes the interview questions it settles, and can hold a decision open until the person who decides says yes. | `/project:decide "what was decided"` · `--propose` for one still open · `--accept NAME` · `--reject NAME` · `--list` |
+| [status](status/SKILL.md) | Says where the project stands from its files alone: phase, what each role still owes, what waits on a decision or a person, files going stale or outgrowing their budget, paths a file names that are gone, and the last changes. Moves the project to its next phase when the team says so. | `/project:status` · `--role designer` for one role · `--phase planning` to move on |
 
-Planned, in this order: `add` (a prompt, file or transcript becomes one change record), `status`, `report`. See [docs/README.md](docs/README.md#commands).
+Planned: `report` (an outline for the client, the PM or the tech team), once a project has some history to report on. See [docs/README.md](docs/README.md#commands).
 
 ## What a project gets
 
@@ -60,6 +62,8 @@ Zero-dependency Node 18+. Each answers `--help` and prints JSON.
 | `scripts/check.mjs --root DIR --next` | The questions that can be asked now |
 | `scripts/answer.mjs --root DIR --id Q --status answered\|skipped\|parked\|open [--note T]` | Records a question's outcome; `--add ID --file KEY --role ROLE --ask TEXT` adds one |
 | `scripts/record.mjs --root DIR --slug S --title T --asked-by ROLE [--bumps file:level,...] [--decision D] [--supersedes NAME]` | Creates a change record; `--set NAME --status applied\|rejected [--decision accepted]` moves one along; `--list` |
+| `scripts/file.mjs --root DIR --path project/F/NAME.md --description T --owner ROLE [--parent KEY]` | Adds one written file with the standard header; `--sizes` lists every file against its budget |
+| `scripts/status.mjs --root DIR [--console] [--today DATE] [--stale-days N]` | Phase, open questions per role, what is waiting, stale files, budgets, missing paths, last changes; `--phase P` sets the phase |
 | `scripts/build.mjs --root DIR [--check]` | Rebuilds versions, changelogs, decisions and the index |
 
 Tests: `cd project/scripts && node --test test/*.test.mjs`.

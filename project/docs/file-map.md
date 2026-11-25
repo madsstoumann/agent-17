@@ -84,6 +84,14 @@ A written file is created only after the skill asks. Three kinds of trigger: som
 | tech | `tech/release.md` | Release starts | audit-all |
 | memory | `memory/timeline.md`, `memory/reports/<date>-<audience>.md` | Planning starts; each report run | |
 
+## Across every phase
+
+Two things run under all six phases and are shown as bands on the board.
+
+**One change record per change.** Whatever the phase, a change is written once, in `memory/changes/<date>-<slug>.md`. From the records the scripts build each file's version, `memory/changelog/<file>.md`, `memory/CHANGELOG.md`, `memory/decisions.md` and `INDEX.md`. Nobody edits those by hand.
+
+**Memory and the weekly dream (optional).** The memory plugin is installed with this one. It keeps the agents' own memory under the same rules as the project files and, once a week, reviews past sessions and proposes changes, including files to split, merge or retire. `/project:new` does not set it up yet; run `/memory:enable-memory-management` in the repo to turn it on.
+
 ## Generated, never written by hand
 
 | File | Built from |
