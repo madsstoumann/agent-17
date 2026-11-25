@@ -1,6 +1,10 @@
 # File map
 
-Every file the project skills manage, in the project's own repo. An interactive version is in [artifacts/project-file-map.html](artifacts/project-file-map.html).
+Every file the project skills manage, in the project's own repo.
+
+[![The six phases, what each adds, and the files that live across all of them](artifacts/project-file-map.png)](artifacts/project-file-map.html)
+
+The picture is the top of the interactive map, [artifacts/project-file-map.html](artifacts/project-file-map.html). GitHub shows an HTML file as source: download it and open it in a browser, or, with GitHub Pages turned on for this repo, open it at `/project/docs/artifacts/project-file-map.html` on the Pages site. Regenerate the picture when the map changes.
 
 Kinds: **written** by people through the skills · **living**, written and updated in every phase · **optional**, added on a trigger · **generated** or kept by the skills.
 
