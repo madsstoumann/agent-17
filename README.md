@@ -1,15 +1,16 @@
 # agent-17
 
-Agent skills, in two plugins:
+Agent skills, in three plugins:
 
 - [`skills/`](skills/): audits, checks and plans for websites and code. See [skills/README.md](skills/README.md) for the list and how they are versioned.
 - [`memory/`](memory/): memory management for a project's AI agents. See [memory/README.md](memory/README.md).
+- [`project/`](project/): a small set of structured files for a project and the skills that fill and keep them, for the whole team. See [project/README.md](project/README.md). First version, not yet run on a real project.
 
 [CONTRIBUTING.md](CONTRIBUTING.md) says which reported issues become a fix and how a fix is checked against saved sites (`tools/corpus/`) before it ships.
 
 ## Install the skills
 
-The repository is a plugin marketplace with two plugins: `skills`, which holds every skill in `skills/`, and `memory`, which holds the memory setup in `memory/`. Install one or both and you get new skills and fixes as they land here.
+The repository is a plugin marketplace with three plugins: `skills`, which holds every skill in `skills/`, `memory`, which holds the memory setup in `memory/`, and `project`, which holds the project setup in `project/`. Install any of them and you get new skills and fixes as they land here.
 
 ### Claude Code
 
@@ -17,6 +18,7 @@ The repository is a plugin marketplace with two plugins: `skills`, which holds e
 /plugin marketplace add madsstoumann/agent-17
 /plugin install skills@agent-17
 /plugin install memory@agent-17
+/plugin install project@agent-17
 ```
 
 Or from your shell: `claude plugin install skills --marketplace madsstoumann/agent-17`.
@@ -27,7 +29,7 @@ The skills show up as `/skills:audit-launch`, `/skills:audit-seo` and so on, and
 
 1. Open [Customize > Plugins](https://claude.ai/customize/plugins).
 2. Choose **Add > Add marketplace** and enter `madsstoumann/agent-17`.
-3. Add **skills** (and **memory** if you want it). Turn on **Sync automatically** for the marketplace to get updates.
+3. Add **skills** (and **memory** and **project** if you want them). Turn on **Sync automatically** for the marketplace to get updates.
 
 A plugin added on claude.ai is saved to your account, so it also loads in Cowork and in Claude Code when you are signed in with the same account. If you already uploaded some of these skills one by one under Customize > Skills, remove those copies so they don't trigger twice.
 

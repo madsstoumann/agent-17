@@ -1,6 +1,6 @@
 # Project skills: the plan
 
-Status: plan, second version (2026-11-25). Nothing here is built yet. This folder is the design record for a third plugin in this repo, `project`, beside [`skills/`](../../skills/) and [`memory/`](../../memory/).
+Status: plan, second version (2026-11-25). Built so far: the templates, the scripts and `/project:new` (see [../README.md](../README.md)). The rest is still a plan. This folder is the design record for a third plugin in this repo, `project`, beside [`skills/`](../../skills/) and [`memory/`](../../memory/).
 
 | Doc | Holds |
 |---|---|
@@ -154,7 +154,7 @@ Two sessions writing the same file is the known risk: the skill re-reads the fil
 
 ## Testing
 
-One invented project in `examples/`, never a real one. Each test names what must be true afterwards, so it can fail.
+One invented project, made by the tests in a temporary folder, never a real one. Each test names what must be true afterwards, so it can fail.
 
 | # | Test | Passes when |
 |---|---|---|
@@ -203,12 +203,11 @@ project/
   docs/                 this folder
   references/           what the skills load
   templates/            skeletons, {{placeholders}} only
-  examples/             one invented project
   new/ add/ decide/ report/ status/    SKILL.md + CHANGELOG.md each
-  scripts/              zero-dependency Node, with tests
+  scripts/              zero-dependency Node, with tests, shared by the skills
 ```
 
-The plugin is added to `.claude-plugin/marketplace.json` when the first skill lands, not with this folder.
+The scripts are shared: skills call them as `${CLAUDE_SKILL_DIR}/../scripts/`, so these skills install as the plugin, not one folder at a time.
 
 ## Open questions
 
