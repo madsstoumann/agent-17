@@ -32,6 +32,7 @@ jobs:
           - skills/plan-geo/scripts
           - memory/enable-memory-management/scripts
           - memory/snapshot/scripts
+          - project/scripts
           - tools/corpus
     steps:
       - uses: actions/checkout@v4
@@ -49,8 +50,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: compare
         run: |
-          found=$(find skills memory tools -type d -name test -not -path '*/fixtures/*' | sed 's#/test$##' | sort)
-          listed=$(grep -E '^\s+- (skills|memory|tools)/' .github/workflows/test.yml | sed -E 's/^\s+- //' | sort)
+          found=$(find skills memory project tools -type d -name test -not -path '*/fixtures/*' | sed 's#/test$##' | sort)
+          listed=$(grep -E '^\s+- (skills|memory|project|tools)/' .github/workflows/test.yml | sed -E 's/^\s+- //' | sort)
           if [ "$found" != "$listed" ]; then
             echo "Test folders and the workflow matrix differ:"; diff <(echo "$listed") <(echo "$found"); exit 1
           fi

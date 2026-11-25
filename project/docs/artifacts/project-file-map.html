@@ -1,0 +1,220 @@
+<title>Project file map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* VOICE work: a planning board shown to a mixed team
+   IDEA the team's own sticky-note board, tidied into a printed plan: same sticky colours, same phase columns
+   PICTURE the phase board (six columns, purple living band across all) and the expandable file map below
+   COLOUR white ground, ink, the board's sticky colours: purple living, green files, light blue skills, deep blue sessions, orange inputs
+   TYPE Hanken Grotesk + IBM Plex Mono for file names
+   LAYOUT laptop: title, legend, board across full width, file map in 3 columns with a sticky detail panel; phone: stacked */
+:root{color-scheme:light dark;
+--bg:light-dark(#ffffff,#121417);--ink:light-dark(#15171a,#eceef1);--quiet:light-dark(#5d636b,#9aa1aa);--rule:light-dark(#e3e5e8,#2a2e34);--panel:light-dark(#f6f7f8,#1a1d21);
+--living:light-dark(#c9c1f7,#4a3f8f);--living-ink:light-dark(#3b2d9a,#d9d3ff);
+--file:light-dark(#bfe5bd,#2f5a33);--file-ink:light-dark(#1f5a24,#cdeccb);
+--skill:light-dark(#c4dcf6,#27466b);--skill-ink:light-dark(#184a82,#cfe3fb);
+--session:light-dark(#3d7fe0,#3d7fe0);--session-ink:#ffffff;
+--input:light-dark(#f4c89f,#6b4421);--input-ink:light-dark(#6b3a0c,#ffdcbc);
+--phase:light-dark(#f2cf3e,#b89510);--opt:light-dark(#ffffff,#121417)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Hanken Grotesk",system-ui,sans-serif;overflow-x:clip}
+.band{padding-block:clamp(24px,3.5vw,48px);padding-left:max(5vw,16px,env(safe-area-inset-left,0px));padding-right:max(5vw,16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:clamp(30px,4vw,46px);line-height:1.05;letter-spacing:-.02em;font-weight:700;margin:0 0 10px}
+h2{font-size:24px;letter-spacing:-.01em;margin:0 0 6px}
+.lead{max-width:68ch;color:var(--quiet);margin:0}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.86em}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin:18px 0 0;padding:0;list-style:none;font-size:14px}
+.legend li{display:flex;align-items:center;gap:7px}
+.sw{width:16px;height:16px;border-radius:4px;flex:none}
+.sw.opt{background:var(--opt);border:1.5px dashed var(--quiet)}
+/* board */
+.board-scroll{overflow-x:auto;margin-top:22px}
+.board{display:grid;grid-template-columns:1.35fr repeat(5,minmax(0,1fr));gap:0;min-width:900px;border-top:1px solid var(--rule)}
+.col{padding:12px 10px 14px;border-right:1px solid var(--rule);display:flex;flex-direction:column;gap:7px}
+.col:last-child{border-right:0}
+.col.ctx{background:color-mix(in srgb,var(--phase) 10%,transparent)}
+.ph{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.ph b{font-size:17px}
+.ph span{font-size:12.5px;color:var(--quiet)}
+.tag{font-size:13px;color:var(--quiet);margin:4px 0 0}
+.chip{display:block;border-radius:6px;padding:6px 9px;font-size:13.5px;line-height:1.3;border:0;text-align:left;font-family:inherit;color:inherit;width:100%}
+.chip.session{background:var(--session);color:var(--session-ink);font-weight:600}
+.chip.input{background:var(--input);color:var(--input-ink)}
+.chip.file{background:var(--file);color:var(--file-ink)}
+.chip.skill{background:var(--skill);color:var(--skill-ink)}
+.chip.out{background:transparent;border:1.5px solid var(--session);color:var(--ink);font-weight:600}
+.chip .mono{font-size:12.5px}
+.living-band{grid-column:1/-1;background:var(--living);color:var(--living-ink);padding:10px 12px;display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;font-size:14px}
+.living-band b{margin-right:6px}
+.flow{display:flex;flex-direction:column;gap:7px}
+.flow .arrow{font-size:12px;color:var(--quiet);padding-left:9px}
+/* filter */
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin:16px 0 4px}
+.filters button{font:600 14px/1 "Hanken Grotesk",sans-serif;padding:9px 13px;border-radius:999px;border:1.5px solid var(--rule);background:var(--bg);color:var(--ink);cursor:pointer;min-height:38px}
+.filters button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.filters button:focus-visible,.node:focus-visible,.toggle:focus-visible{outline:2px solid var(--session);outline-offset:2px}
+.hint{font-size:14px;color:var(--quiet);margin:4px 0 16px}
+/* map */
+.map{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,340px);gap:24px;align-items:start}
+.groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
+.group{border:1px solid var(--rule);border-radius:10px;padding:12px;background:var(--bg)}
+.group h3{margin:0 0 2px;font-size:16px}
+.group .gp{font-size:12.5px;color:var(--quiet);margin:0 0 10px}
+.item{margin-bottom:6px}
+.row{display:flex;gap:4px;align-items:stretch}
+.node{flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;border-radius:7px;border:1.5px solid transparent;padding:7px 9px;cursor:pointer;font:inherit;color:inherit;transition:opacity .15s}
+.node .nm{font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:500;overflow-wrap:anywhere}
+.node .ds{font-size:12.5px;line-height:1.35;opacity:.85}
+.node.core{background:var(--file);color:var(--file-ink)}
+.node.living{background:var(--living);color:var(--living-ink)}
+.node.opt{background:var(--opt);border:1.5px dashed var(--quiet);color:var(--ink)}
+.node.gen{background:var(--panel);border:1.5px dotted var(--quiet);color:var(--ink)}
+.node.sel{box-shadow:0 0 0 2.5px var(--ink)}
+.toggle{flex:none;width:40px;border-radius:7px;border:1.5px solid var(--rule);background:var(--bg);color:var(--ink);cursor:pointer;font:600 13px/1 "Hanken Grotesk",sans-serif}
+.toggle[aria-expanded=true]{background:var(--ink);color:var(--bg)}
+.kids{margin:6px 0 4px 14px;padding-left:10px;border-left:2px solid var(--rule);display:flex;flex-direction:column;gap:5px}
+.trig{font-size:12px;color:var(--quiet);line-height:1.35}
+.dim .node:not(.hit){opacity:.28}
+.badge{white-space:nowrap;display:inline-block;font-size:11px;font-weight:600;border-radius:4px;padding:1px 5px;background:var(--ink);color:var(--bg);margin-left:6px;vertical-align:1px}
+.detail{position:sticky;top:calc(12px + env(safe-area-inset-top,0px));border:1px solid var(--rule);border-radius:10px;padding:16px;background:var(--panel)}
+.detail h3{margin:0;font-family:"IBM Plex Mono",monospace;font-size:16px;overflow-wrap:anywhere}
+.detail .k{font-size:12.5px;color:var(--quiet);margin:12px 0 2px}
+.detail p{margin:0;font-size:14.5px}
+.detail pre{margin:6px 0 0;font:12.5px/1.5 "IBM Plex Mono",monospace;background:var(--bg);border:1px solid var(--rule);border-radius:6px;padding:10px;overflow-x:auto;white-space:pre}
+.foot{font-size:13px;color:var(--quiet);border-top:1px solid var(--rule);margin-top:28px;padding-top:12px}
+@media(max-width:860px){.map{grid-template-columns:minmax(0,1fr)}.detail{position:static}}
+@media(prefers-reduced-motion:reduce){.node{transition:none}}
+</style>
+
+<div class="band"><div class="wrap">
+<h1>Six files to start, more by trigger</h1>
+<p class="lead">A project scaffolded by <code>/project:new</code> starts with six files people write and three the system keeps. Phases set the focus and the client output; they do not lock files. Colours follow the planning board, and purple files live across every phase.</p>
+<ul class="legend">
+<li><span class="sw" style="background:var(--living)"></span>Living file, every phase</li>
+<li><span class="sw" style="background:var(--file)"></span>File owned by one phase</li>
+<li><span class="sw opt"></span>Optional, added on a trigger</li>
+<li><span class="sw" style="background:var(--panel);border:1.5px dotted var(--quiet)"></span>Generated or kept by the system</li>
+<li><span class="sw" style="background:var(--skill)"></span>Skill</li>
+<li><span class="sw" style="background:var(--session)"></span>Session or meeting</li>
+<li><span class="sw" style="background:var(--input)"></span>Input: recordings, notes</li>
+</ul>
+
+<div class="board-scroll"><div class="board" id="board"></div></div>
+</div></div>
+
+<div class="band" style="padding-top:8px"><div class="wrap">
+<h2>The file map</h2>
+<p class="lead">Pick a phase to see which files it adds or updates. Press <b>+</b> on a file to open its optional sub-files and what triggers each one.</p>
+<div class="filters" id="filters" role="group" aria-label="Highlight files by phase"></div>
+<p class="hint" id="hint"></p>
+<div class="map">
+<div class="groups" id="groups"></div>
+<aside class="detail" id="detail" aria-live="polite"></aside>
+</div>
+<p class="foot">Plan for the <code>project</code> plugin in agent-17. Generic structure only: no client names or content. Owners are roles; a project's own <code>team.md</code> maps roles to people.</p>
+</div></div>
+
+<script>
+{
+const PH=[
+ {id:'context',n:'1 Context',t:'Scaffolding phase. Everyone in one room; the skill drafts from the repo and transcripts, the team corrects and fills gaps.',
+  flow:[['input','Kick-off, recorded and transcribed'],['input','Existing repo, if there is one'],['session','Client kick-off'],['session','Combined team context session: PM, client, designers, developers'],['session','Discovery meetings']],
+  skills:['/project:new','/project:add'],out:'Project brief'},
+ {id:'planning',n:'2 Planning',t:'Tech team, then design and PM.',
+  flow:[['session','Grill: tech team'],['session','Grill: design and PM']],skills:['/project:add','/project:decide'],out:'Plan and timeline'},
+ {id:'design',n:'3 Design',t:'Designers with frontend.',
+  flow:[['session','Grill: designers and frontend'],['input','Design tool: components, variables']],skills:['/project:add','/project:decide'],out:'Design system overview'},
+ {id:'dev',n:'4 Dev',t:'Sits above the team\'s own feature workflow; decisions form the living ADR.',
+  flow:[['session','Grill per epic'],['input','Repository, PRs']],skills:['/project:add','/project:decide','/project:report'],out:'Weekly report, decision log'},
+ {id:'qa',n:'5 QA',t:'QA with developers and designers; agent-17 audits.',
+  flow:[['session','Grill: QA']],skills:['/project:status','audit skills'],out:'QA report from audits'},
+ {id:'release',n:'6 Release',t:'Tech lead and PM.',
+  flow:[['session','Release review']],skills:['/project:report','audit-all'],out:'Release notes, launch audit'}
+];
+// kind: living | core | opt | gen (kept by the system)
+const G=[
+ {n:'Root',p:'repo root',f:[
+  {id:'agents',nm:'AGENTS.md',k:'core',d:'Rules and non-standard practices only, plus one line pointing to the project skills. No overview, no index',o:['tech lead'],add:'context',up:['planning'],dep:[]}]},
+ {n:'Index and state',p:'project/',f:[
+  {id:'index',nm:'INDEX.md',k:'gen',d:'Generated list of every project file, owner, audience and version. Loaded by the skills, not at every session start',o:['generated'],add:'context',up:['planning','design','dev','qa','release'],dep:[]},
+  {id:'state',nm:'memory/state.md',k:'gen',d:'Current phase, position, blockers and open grill questions per role. Lets a grill stop and resume',o:['kept by the skills'],add:'context',up:['planning','design','dev','qa','release'],dep:[]}]},
+ {n:'Foundation',p:'project/foundation/',f:[
+  {id:'product',nm:'product-context.md',k:'core',d:'What the project is and why: business context, client goals, success measures',o:['PM'],add:'context',up:['planning'],dep:[],
+   c:[['glossary.md','The first term two people use differently'],['stakeholders.md','More than a handful of stakeholders'],['kpis.md','Measurable targets agreed; the report reads them']]},
+  {id:'tech',nm:'technical-context.md',k:'living',d:'Constraints, hosting, existing systems, choices and their reasons. Not a restatement of the code',o:['tech lead'],add:'context',up:['planning','dev','qa'],dep:['product','boundaries'],
+   c:[['tech/stack.md (generated)','Generated from the package manifests; never grilled'],['tech/data-model.md','A database or content model'],['tech/security.md','Auth, roles or sensitive data in scope'],['tech/performance.md','A performance budget is named']]}]},
+ {n:'Intent',p:'project/intent/',f:[
+  {id:'experience',nm:'experience.md',k:'living',d:'Goals, principles, audiences, the experience to give',o:['experience lead'],add:'context',up:['planning','design'],dep:['product'],
+   c:[['scenarios.md','Real user questions surface in discovery'],['journeys/<name>.md','A multi-step flow needs its own description'],['audiences.md','More than one audience']]},
+  {id:'boundaries',nm:'boundaries.md',k:'living',d:'Must, must not, compliance, out of scope',o:['PM'],add:'context',up:['planning','qa'],dep:['product'],
+   c:[['compliance.md','GDPR, accessibility law or sector rules named; adds audit-privacy and audit-a11y to the QA cadence']]}]},
+ {n:'Memory',p:'project/memory/',f:[
+  {id:'decisions',nm:'decisions.md',k:'gen',d:'The living ADR: one line per standing or open decision, linking the change record that holds it',o:['everyone adds','kept by the skills'],add:'context',up:['planning','design','dev','qa','release'],dep:[],
+   c:[['changes/<date>-<slug>.md','Every change: what was asked, why, the deltas per file, the decision. The one page people review'],['CHANGELOG.md (generated)','Rollup built from the change records'],['changelog/<file>.md (generated)','Per-file history built from the change records; each file header points here'],['timeline.md','Planning phase; phases, gates and dates'],['reports/<date>-<audience>.md','Each /project:report run (client, pm, tech)']]}]},
+ {n:'Building blocks',p:'project/building-blocks/',f:[
+  {id:'design',nm:'DESIGN.md',k:'living',d:'Direction and tokens in Google DESIGN.md format, under a size budget. Not the whole design system',o:['designer'],add:'context',up:['design','dev','qa'],dep:['experience','boundaries'],
+   c:[['design/motion.md','Transitions, animation, micro-interactions; adds motion: tokens'],['design/scroll.md','Scroll storytelling, staggered reveals; needs motion.md'],['design/themes.md','Dark mode, high contrast, sub-brands; light and dark colour groups, QA per theme'],['design/typography.md','Fluid type, variable fonts, more than 15 levels'],['design/layout.md','Grid, breakpoints, container queries'],['design/iconography.md, imagery.md','Icon set chosen, art direction'],['design/voice.md','Tone of voice outgrows one section'],['design/accessibility.md','A WCAG level or law named; audit-a11y cadence'],['design/data-viz.md','Charts or dashboards in scope'],['tokens/design.tokens.json + theme.css (generated)','W3C DTCG and Tailwind 4 @theme, exported from whichever source the project chose'],['lint rules (generated)','Any rule that can be enforced is a lint rule, not prose']]},
+  {id:'pages',nm:'pages.md',k:'opt',d:'Page templates and what each holds',o:['designer'],add:'design',up:['dev'],dep:['design','experience'],
+   c:[['pages/<template>.md','First page template designed']]},
+  {id:'components',nm:'components.md',k:'gen',d:'Generated index of components from the component folder',o:['generated'],add:'design',up:['dev','qa'],dep:['design'],
+   c:[['components/<name>.md','A component is designed or built: purpose, variants, tokens used, the real component to import, design-tool link'],['components/<name>/<sub>.md','A component has parts with their own rules'],['tech/integrations.md entry','The component calls an external API']]}]},
+ {n:'Tech',p:'project/tech/ (empty until Planning)',f:[
+  {id:'arch',nm:'architecture.md',k:'opt',d:'The overall architecture and the reasons behind it',o:['tech lead'],add:'planning',up:['dev'],dep:['tech']},
+  {id:'guard',nm:'guardrails.md',k:'opt',d:'What is allowed in design and code',o:['tech lead'],add:'planning',up:['design','dev'],dep:['boundaries','design'],
+   c:[['guardrails/code.md','Split at the size budget or when code and design owners differ'],['guardrails/design.md','Same split'],['guardrails/ai.md','Rules for what agents may change alone']]},
+  {id:'pr',nm:'pr-rules.md',k:'opt',d:'PR size, complexity, when a human must review, task or story',o:['tech lead'],add:'planning',up:['dev'],dep:['guard']},
+  {id:'qa',nm:'qa.md',k:'opt',d:'How AI tests, how a human can always test, audit cadence',o:['QA'],add:'qa',up:[],dep:['boundaries','design'],
+   c:[['qa/manual/<case>.md','A case a person must run by hand']]},
+  {id:'integr',nm:'integrations.md',k:'opt',d:'Every external API, CMS, tracker and data source, checked against the hosts the code calls',o:['tech lead'],add:'dev',up:['qa'],dep:['tech'],
+   c:[['solution-health manifest entry','Any external API: hosts, watch pages, safe probe; proposed, a developer approves']]},
+  {id:'env',nm:'environments.md',k:'opt',d:'Environments and URLs',o:['tech lead'],add:'dev',up:['release'],dep:['tech'],
+   c:[['audit targets','A staging or public URL exists: audit-launch, audit-infra, audit-security']]},
+  {id:'release',nm:'release.md',k:'opt',d:'Launch checklist, rollback, owners',o:['tech lead'],add:'release',up:[],dep:['env','qa']}]}
+];
+const ALL=G.flatMap(g=>g.f);
+const byId=Object.fromEntries(ALL.map(f=>[f.id,f]));
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pn=id=>PH.find(p=>p.id===id).n.replace(/^\d /,'');
+// board
+const living=ALL.filter(f=>f.k==='living');
+document.getElementById('board').innerHTML=PH.map(p=>{
+ const adds=ALL.filter(f=>f.add===p.id&&f.k!=='living'&&f.k!=='gen');
+ return `<div class="col${p.id==='context'?' ctx':''}"><div class="ph"><b>${esc(p.n)}</b></div><p class="tag">${esc(p.t)}</p>
+ <div class="flow">${p.flow.map(([k,t],i)=>`<span class="chip ${k}">${esc(t)}</span>${i<p.flow.length-1&&p.id==='context'&&k==='session'?'<span class="arrow">then</span>':''}`).join('')}</div>
+ ${adds.length?`<p class="tag">${p.id==='context'?'Adds the starting set: the purple living files below, plus':'Adds'}</p>${adds.map(f=>`<span class="chip file"><span class="mono">${esc(f.nm)}</span></span>`).join('')}`:''}
+ <p class="tag">Skills</p>${p.skills.map(s=>`<span class="chip skill"><span class="mono">${esc(s)}</span></span>`).join('')}
+ <p class="tag">Client output</p><span class="chip out">${esc(p.out)}</span></div>`}).join('')+
+ `<div class="living-band"><b>Living across all phases</b>${living.map(f=>`<span class="mono">${esc(f.nm)}</span>`).join('')}</div>`;
+// filters
+let phase='all',sel='design';const open=new Set(['design']);
+const F=document.getElementById('filters');
+F.innerHTML=[['all','All files'],...PH.map(p=>[p.id,p.n])].map(([id,n])=>`<button type="button" data-p="${id}" aria-pressed="${id==='all'}">${esc(n)}</button>`).join('');
+F.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;phase=b.dataset.p;F.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));render()});
+const GR=document.getElementById('groups');
+function render(){
+ GR.classList.toggle('dim',phase!=='all');
+ GR.innerHTML=G.map(g=>`<section class="group"><h3>${esc(g.n)}</h3><p class="gp mono">${esc(g.p)}</p>${g.f.map(f=>{
+  const a=f.add===phase,u=f.up.includes(phase),hit=a||u;
+  const kids=f.c&&open.has(f.id)?`<div class="kids">${f.c.map(([n,t])=>`<div class="node ${n.includes('generated')||n.includes('manifest')||n.includes('audit targets')?'gen':'opt'} ${hit?'hit':''}" style="cursor:default"><span class="nm">${esc(n)}</span><span class="trig">${esc(t)}</span></div>`).join('')}</div>`:'';
+  return `<div class="item"><div class="row"><button type="button" class="node ${f.k} ${hit?'hit':''} ${sel===f.id?'sel':''}" data-id="${f.id}"><span class="nm">${esc(f.nm)}${phase!=='all'&&a?'<span class="badge">adds</span>':''}${phase!=='all'&&u&&!a?'<span class="badge">updates</span>':''}</span><span class="ds">${esc(f.d)}</span></button>${f.c?`<button type="button" class="toggle" data-t="${f.id}" aria-expanded="${open.has(f.id)}" aria-label="${open.has(f.id)?'Hide':'Show'} optional files of ${esc(f.nm)}">${open.has(f.id)?'−':'+'}${f.c.length}</button>`:''}</div>${kids}</div>`}).join('')}</section>`).join('');
+ const hits=phase==='all'?null:ALL.filter(f=>f.add===phase||f.up.includes(phase)).length;
+ document.getElementById('hint').textContent=phase==='all'?'Purple files are updated in every phase. Dashed files appear only when something triggers them. Dotted files are generated or kept by the system.':`${pn(phase)} touches ${hits} files. Living files are checked at every phase.`;
+ detail();
+}
+GR.addEventListener('click',e=>{const t=e.target.closest('.toggle');if(t){const id=t.dataset.t;open.has(id)?open.delete(id):open.add(id);sel=id;render();return}const n=e.target.closest('button.node');if(n){sel=n.dataset.id;if(byId[sel].c&&!open.has(sel))open.add(sel);render()}});
+function detail(){
+ const f=byId[sel];const path=(G.find(g=>g.f.includes(f)).p.split(' ')[0]+f.nm).replace('repo root','');
+ const yaml=`---\nname: ${f.nm.replace(/\.md$/,'').toLowerCase()}\ndescription: ${f.d}\nmetadata:\n  type: project\n  version: "1.0.0"\n  status: ${f.k==='opt'?'draft':'active'}\n  audience: ${f.id==='agents'?'agents':f.k==='gen'?'skills':'people-and-agents'}\n  phase: ${f.k==='living'?'all':f.add}\n  owner: ${(f.o[0]||'').replace(/ /g,'-')}\n  depends_on: [${f.dep.map(d=>byId[d].nm.replace(/\.md$/,'').toLowerCase()).join(', ')}]\n  changelog: memory/changelog/${f.nm.replace(/\.md$/,'').toLowerCase()}.md\n---`;
+ document.getElementById('detail').innerHTML=`<h3>${esc(f.nm)}</h3><p style="color:var(--quiet);font-size:13px;margin-top:2px" class="mono">${esc(path)}</p>
+ <p class="k">Holds</p><p>${esc(f.d)}</p>
+ <p class="k">${f.k==='living'?'Living file':'Added in'}</p><p>${f.k==='living'?'Added in Context, updated in '+f.up.map(pn).join(', '):pn(f.add)+(f.k==='opt'?', on a trigger':f.k==='gen'?', kept by the system':' (starting set)')+(f.up.length?'; updated in '+f.up.map(pn).join(', '):'')}</p>
+ ${f.o.length?`<p class="k">Accountable</p><p>${esc(f.o.join(', '))}</p>`:''}
+ ${f.c?`<p class="k">Optional sub-files</p><p>${f.c.length}, listed under the file. Written files are created only after the skill asks; generated ones are built by script.</p>`:''}
+ <p class="k">Header</p><pre>${esc(yaml)}</pre>`;
+}
+render();
+}
+</script>

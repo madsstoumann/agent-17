@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "agent-17",
-  "description": "Mads Stoumann's agent skills for web launches, site safety, structured data, project health and agent memory",
+  "description": "Mads Stoumann's agent skills for web launches, site safety, structured data, project health, agent memory and project setup",
   "owner": {
     "name": "Mads Stoumann",
     "url": "https://github.com/madsstoumann"
@@ -16,6 +16,11 @@
       "name": "memory",
       "source": "./memory",
       "description": "Memory management for a project's AI agents, in memory/: enable-memory-management, snapshot and any memory skill added there later"
+    },
+    {
+      "name": "project",
+      "source": "./project",
+      "description": "A small folder of structured markdown for a project and the skills that keep it true for the whole team, in project/: new (scaffold, interview, fill, resume) and any project skill added there later"
     }
   ],
   "renames": {
