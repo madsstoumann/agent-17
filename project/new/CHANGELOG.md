@@ -10,6 +10,8 @@ Two test runs: a repo that already had its own `AGENTS.md`, `DESIGN.md` and skil
 - `--kind client|product|library`. The kind rewords the questions that assume a client (who pays, the client contact, the client's IT rules, launch dates), so a product or a library is not asked them.
 - A `draft` status for an answer read from the repo or a brief. It is written with its source, is asked first in the next round for a person to confirm, keeps its file a draft, and does not hold up the questions after it.
 - `check.mjs --next --role ROLE`, and per-role lines in `check.mjs --console`.
+- `answer.mjs --role ROLE` moves a question to another role, for a team without the role the question was written for.
+- A decision made during the interview is recorded with `/project:decide` afterwards; the session's own record keeps `decision: none`.
 - Rules for what is not a clean answer: a partial answer, "not decided yet", "ask someone else", "there is none", and one person holding two roles.
 
 ### Changed

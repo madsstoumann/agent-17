@@ -1,7 +1,7 @@
 {
   "name": "project",
   "displayName": "Mads's project setup",
-  "description": "A small folder of structured markdown for a project and the skills that keep it true for PMs, designers, developers and clients: new (scaffold, interview, fill, resume) and any project skill added to project/ later",
+  "description": "A small folder of structured markdown for a project and the skills that keep it true for PMs, designers, developers and clients: new (scaffold, interview, fill, resume), decide (record, supersede, accept a decision) and any project skill added to project/ later",
   "author": {
     "name": "Mads Stoumann",
     "url": "https://github.com/madsstoumann"

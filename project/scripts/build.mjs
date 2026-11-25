@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { setMeta, list, cell } from './lib/md.mjs';
+import { setMeta, list, cell, table } from './lib/md.mjs';
 import { load, bumps, bump, args, LEVELS } from './lib/project.mjs';
 
 const USAGE = 'Usage: build.mjs --root DIR [--check]';
@@ -60,8 +60,12 @@ export function build(root, { check = false } = {}) {
   const standing = decided.filter((c) => c.meta.decision === 'accepted' && !superseded.has(c.key));
   const open = decided.filter((c) => c.meta.decision === 'proposed');
   const past = decided.filter((c) => superseded.has(c.key) || c.meta.decision === 'superseded');
+  // Questions parked in the interview are decisions nobody has taken yet: show them where decisions are read.
+  const st = files.find((f) => f.rel === 'project/memory/state.md');
+  const parked = (st ? table(st.body, 'Questions') : []).filter((q) => q.status === 'parked');
+  const waiting = `## Waiting\n\n${parked.length ? parked.map((q) => `- ${q.question} (${q.role}${q.note ? `; ${q.note}` : ''})`).join('\n') : 'None.'}\n`;
   const sect = (title, rows) => `## ${title}\n\n${rows.length ? [...rows].reverse().map(line).join('\n') : 'None.'}\n`;
-  out.set(path.join(base, 'memory', 'decisions.md'), GENERATED('decisions', 'Standing and open decisions, one line each, with the reasoning in the change record') + '# Decisions\n\n' + [sect('Open', open), sect('Standing', standing), sect('Superseded', past)].join('\n'));
+  out.set(path.join(base, 'memory', 'decisions.md'), GENERATED('decisions', 'Standing, open and waiting decisions, one line each, with the reasoning in the change record') + '# Decisions\n\n' + [sect('Open', open), waiting, sect('Standing', standing), sect('Superseded', past)].join('\n'));
 
   // Index (from the headers as they will be after this build)
   const row = (f) => { const s = state.get(f.key); return `| [${f.rel.replace(/^project\//, '')}](${f.rel.replace(/^project\//, '')}) | ${cell(f.data.description)} | ${f.meta.owner ?? ''} | ${f.meta.audience ?? ''} | ${s.version} | ${f.meta.status ?? ''} | ${list(f.meta.open).length || ''} |`; };
