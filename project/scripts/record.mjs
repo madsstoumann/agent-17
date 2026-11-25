@@ -57,6 +57,7 @@ export function create(root, { slug, title, askedBy, bumps = [], decision = 'non
   if (supersedes.length) text = setMeta(text, 'supersedes', supersedes);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, text);
+  if (status === 'proposed') build(root); // an open decision shows in the decision list at once; an applied record is built once its Deltas are written
   return { name, path: path.relative(root, target).split(path.sep).join('/'), status, decision, supersedes };
 }
 

@@ -239,7 +239,7 @@ test('a decision: proposed, accepted, then replaced by one that supersedes it', 
   const fill = (name) => { const p = path.join(root, 'project/memory/changes', `${name}.md`); fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace('## Deltas\n', '## Deltas\n\n- technical-context: ADDED the choice and its reason\n')); };
   const a = create(root, { slug: 'orders-by-email', title: 'Orders are confirmed by email only', askedBy: 'pm', bumps: ['technical-context:minor'], decision: 'proposed', date: '2026-12-01' });
   assert.equal(a.name, '2026-12-01-orders-by-email');
-  build(root);
+  assert.deepEqual(check(root, { today: '2026-12-01' }).findings, [], 'the decision list is rebuilt when a proposal is recorded');
   assert.match(read(root, 'project/memory/decisions.md').split('## Waiting')[0], /Orders are confirmed by email only/, 'a proposed decision is listed as open');
   assert.equal(header(root, 'project/foundation/technical-context.md').metadata.version, '0.1.0', 'nothing is bumped until it is applied');
   assert.throws(() => set(root, a.name, { decision: 'accepted' }), /applies it/);
