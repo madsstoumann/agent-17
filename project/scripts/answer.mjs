@@ -2,7 +2,7 @@
 /**
  * Records what happened to one interview question, in both places that track it: its row in
  * state.md and the `open` list of the file it belongs to. A file whose last question is answered
- * becomes `status: active`, and the index is rebuilt. The answer's text is written into the file by the skill, before this.
+ * becomes `status: active`, and the index is rebuilt. `--role` moves a question to another role. The answer's text is written into the file by the skill, before this.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,9 +11,9 @@ import { setMeta, list, cell, parseFrontmatter } from './lib/md.mjs';
 import { load, args, ANSWERS as STATUSES } from './lib/project.mjs';
 import { build } from './build.mjs';
 
-const USAGE = 'Usage: answer.mjs --root DIR --id QUESTION --status answered|draft|skipped|parked|open [--note TEXT] [--date YYYY-MM-DD]\n       answer.mjs --root DIR --add ID --file KEY --role ROLE --ask "Question"';
+const USAGE = 'Usage: answer.mjs --root DIR --id QUESTION --status answered|draft|skipped|parked|open [--note TEXT] [--role ROLE] [--date YYYY-MM-DD]\n       answer.mjs --root DIR --add ID --file KEY --role ROLE --ask "Question"';
 
-export function answer(root, { id, status, note = '', date = new Date().toISOString().slice(0, 10) }) {
+export function answer(root, { id, status, note = '', role = '', date = new Date().toISOString().slice(0, 10) }) {
   if (!STATUSES.includes(status)) throw new Error(`--status must be one of ${STATUSES.join(', ')}`);
   const statePath = path.join(root, 'project', 'memory', 'state.md');
   const lines = fs.readFileSync(statePath, 'utf8').split('\n');
@@ -21,6 +21,8 @@ export function answer(root, { id, status, note = '', date = new Date().toISOStr
   if (at < 0) throw new Error(`no question "${id}" in state.md`);
   const cells = lines[at].split(/(?<!\\)\|/).slice(1, -1).map((c) => c.trim());
   const file = cells[1];
+  if (role && !/^[a-z0-9-]+$/.test(role)) throw new Error('--role is one role, as a word (pm, designer, tech-lead)');
+  if (role) cells[2] = role; // the team has no such role, or someone else owns this one
   cells[3] = status;
   if (note) cells[5] = cell(note);
   lines[at] = `| ${cells.join(' | ')} |`;

@@ -102,7 +102,8 @@ What people say that is not a clean answer:
 | "Not decided yet", "not final" | `parked`, with what would settle it and who will know |
 | "Ask someone else" | `skipped`, with the role or the person in the note |
 | "There is none" ("no code yet, so no rules") | That is an answer: write it in one line, record `answered` |
-| A decision with options weighed ("stock comes from the till system, never typed twice") | Write it where the question puts it; it becomes a decision record when `/project:decide` exists. Do not invent one here |
+| A decision with options weighed ("we render on the server, not in the browser, because ...") | Write the choice where the question puts it, and after closing the session record it with `/project:decide`, so it has its own line in the decision list. The session's own record keeps `decision: none` |
+| "We have no such role", or another role owns the question | Move it: `answer.mjs --id <id> --status open --role <role>`. A role the team names itself (`tech-director`) is fine: roles are words |
 
 When the round is empty, run `--next` again for the next one. A question whose role is not in the
 room stays `open`; do not skip it for them. One person can hold several roles: ask them each

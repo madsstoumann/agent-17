@@ -2,7 +2,7 @@
 
 A small set of structured markdown files for a project, and the skills that fill them and keep them true, so PMs, designers, developers, QA and the client work from the same thing. This folder is its own plugin, `project`, beside the audits in [`skills/`](../skills/) and the memory setup in [`memory/`](../memory/).
 
-**First version.** `/project:new` and its scripts are built and tested against an invented project; nothing here has run on a real one yet. The plan for the rest, and the research behind it, is in [docs/](docs/README.md).
+**Early versions.** `/project:new` has been run on an established repo and on a blank one with simulated answers; `/project:decide` is built and tested against an invented project. The plan for the rest, and the research behind it, is in [docs/](docs/README.md).
 
 ## Install
 
@@ -29,8 +29,9 @@ The skills share the scripts in `scripts/`, so install the plugin; copying one s
 | Skill | What it does | How to use it |
 | --- | --- | --- |
 | [new](new/SKILL.md) | Writes the starting set into a project (`AGENTS.md` with rules only, product context, technical context, experience, boundaries, `DESIGN.md`, plus an index, a state file and a decision list the scripts keep), reads what the repo and any briefs or transcripts already say, then interviews each role on what is missing, one question at a time, writing every answer into the file that owns it. Stops after any answer and resumes later. | `/project:new` in the project's repo · `--size small\|medium\|large` · `--kind client\|product\|library` · `--role designer` for one role's questions · `--from kickoff.txt` for a brief or transcript · run it again to continue |
+| [decide](decide/SKILL.md) | Records a decision as one change record: context, the options weighed, the choice, the reason and who made it. Marks the decision it replaces as superseded, updates the project files it changes, closes the interview questions it settles, and can hold a decision open until the person who decides says yes. | `/project:decide "what was decided"` · `--propose` for one still open · `--accept NAME` · `--reject NAME` · `--list` |
 
-Planned, in this order: `add` (a prompt, file or transcript becomes one change record), `decide`, `status`, `report`. See [docs/README.md](docs/README.md#commands).
+Planned, in this order: `add` (a prompt, file or transcript becomes one change record), `status`, `report`. See [docs/README.md](docs/README.md#commands).
 
 ## What a project gets
 
@@ -58,6 +59,7 @@ Zero-dependency Node 18+. Each answers `--help` and prints JSON.
 | `scripts/check.mjs --root DIR [--console] [--today DATE]` | Lints headers, budgets, secrets and generated views; counts open questions per role; exit 1 on an error. Use it in CI |
 | `scripts/check.mjs --root DIR --next` | The questions that can be asked now |
 | `scripts/answer.mjs --root DIR --id Q --status answered\|skipped\|parked\|open [--note T]` | Records a question's outcome; `--add ID --file KEY --role ROLE --ask TEXT` adds one |
+| `scripts/record.mjs --root DIR --slug S --title T --asked-by ROLE [--bumps file:level,...] [--decision D] [--supersedes NAME]` | Creates a change record; `--set NAME --status applied\|rejected [--decision accepted]` moves one along; `--list` |
 | `scripts/build.mjs --root DIR [--check]` | Rebuilds versions, changelogs, decisions and the index |
 
 Tests: `cd project/scripts && node --test test/*.test.mjs`.

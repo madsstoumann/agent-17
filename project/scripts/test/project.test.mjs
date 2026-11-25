@@ -10,6 +10,7 @@ import { scaffold, questionsFor } from '../scaffold.mjs';
 import { build } from '../build.mjs';
 import { check, frontier } from '../check.mjs';
 import { answer, addQuestion } from '../answer.mjs';
+import { create, set, listRecords } from '../record.mjs';
 
 const PLUGIN = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BANK = JSON.parse(fs.readFileSync(path.join(PLUGIN, 'templates/questions.json'), 'utf8')).questions;
@@ -231,6 +232,60 @@ test('a decision that replaces another moves the old one to superseded', () => {
   const d = read(root, 'project/memory/decisions.md');
   assert.ok(section(d, 'Standing').includes('Tuesdays') && !section(d, 'Standing').includes('Fridays'));
   assert.ok(section(d, 'Superseded').includes('Fridays'));
+});
+
+test('a decision: proposed, accepted, then replaced by one that supersedes it', () => {
+  const root = fresh('medium');
+  const fill = (name) => { const p = path.join(root, 'project/memory/changes', `${name}.md`); fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace('## Deltas\n', '## Deltas\n\n- technical-context: ADDED the choice and its reason\n')); };
+  const a = create(root, { slug: 'orders-by-email', title: 'Orders are confirmed by email only', askedBy: 'pm', bumps: ['technical-context:minor'], decision: 'proposed', date: '2026-12-01' });
+  assert.equal(a.name, '2026-12-01-orders-by-email');
+  build(root);
+  assert.match(read(root, 'project/memory/decisions.md').split('## Waiting')[0], /Orders are confirmed by email only/, 'a proposed decision is listed as open');
+  assert.equal(header(root, 'project/foundation/technical-context.md').metadata.version, '0.1.0', 'nothing is bumped until it is applied');
+  assert.throws(() => set(root, a.name, { decision: 'accepted' }), /applies it/);
+  fill(a.name);
+  assert.deepEqual(set(root, a.name, { status: 'applied', decision: 'accepted' }).problems, []);
+  assert.equal(header(root, 'project/foundation/technical-context.md').metadata.version, '0.2.0');
+  assert.match(read(root, 'project/memory/decisions.md').split('## Standing')[1], /Orders are confirmed by email only/);
+
+  const b = create(root, { slug: 'orders-by-text', title: 'Orders are confirmed by text message', askedBy: 'pm', bumps: ['technical-context:major'], decision: 'accepted', status: 'applied', supersedes: [a.name], date: '2026-12-09' });
+  fill(b.name);
+  build(root);
+  const d = read(root, 'project/memory/decisions.md');
+  assert.match(d.split('## Standing')[1].split('## Superseded')[0], /text message/);
+  assert.match(d.split('## Superseded')[1], /email only/);
+  assert.deepEqual(check(root, { today: '2026-12-09' }).findings, []);
+  assert.equal(listRecords(root).length, 2);
+  assert.throws(() => set(root, a.name, { status: 'rejected' }), /stays/, 'an applied record is never withdrawn');
+});
+
+test('record.mjs refuses what a person would get wrong by hand', () => {
+  const root = fresh('small');
+  const ok = { slug: 'x', title: 'A choice', askedBy: 'pm', date: '2026-12-01' };
+  assert.throws(() => create(root, { ...ok, bumps: ['pricing:minor'] }), /not a project file/);
+  assert.throws(() => create(root, { ...ok, bumps: ['design:huge'] }), /level/);
+  assert.throws(() => create(root, { ...ok, slug: 'Not A Slug' }));
+  assert.throws(() => create(root, { ...ok, title: 'A "quoted" title' }));
+  assert.throws(() => create(root, { ...ok, decision: 'accepted' }), /applied/);
+  assert.throws(() => create(root, { ...ok, decision: 'proposed', supersedes: ['2026-01-01-nothing'] }), /no such record/);
+  const plain = create(root, { ...ok, slug: 'wording' });
+  assert.throws(() => create(root, { ...ok, slug: 'wording' }), /exists/);
+  assert.throws(() => create(root, { ...ok, slug: 'y', decision: 'proposed', supersedes: [plain.name] }), /holds no decision/);
+  assert.throws(() => set(root, 'nope', { status: 'applied' }));
+  assert.equal(set(root, plain.name, { status: 'rejected' }).status, 'rejected');
+});
+
+test('parked questions show as waiting decisions; a question can move to another role', () => {
+  const root = fresh('small');
+  answer(root, { id: 'what', status: 'answered' });
+  answer(root, { id: 'hosting', status: 'parked', note: 'after the vendor replies' });
+  assert.match(read(root, 'project/memory/decisions.md').split('## Waiting')[1].split('## Standing')[0], /Where will it run.*after the vendor replies/);
+  answer(root, { id: 'audiences', status: 'open', role: 'designer' });
+  const r = check(root);
+  assert.deepEqual(r.findings, []);
+  assert.ok(r.questions.byRole.designer.open.includes('audiences'));
+  assert.ok(!r.questions.byRole['experience-lead'].open.includes('audiences'));
+  assert.throws(() => answer(root, { id: 'audiences', status: 'open', role: 'Not A Role' }));
 });
 
 test('bad records and bad files are caught', () => {
