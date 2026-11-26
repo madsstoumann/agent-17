@@ -1,10 +1,10 @@
 ---
 name: pr
-description: Writes a pull request description from what the branch actually holds: the project's change records it adds (what was asked, why, what changed, the decision), the project files it edits and the code beside them, checked against the project's pull request rules and boundaries. Flags a project file changed with no record and a change still waiting for a yes. Opens the pull request only when asked. Use when someone asks to write, draft or open a pull request or a PR description, wants a summary of a branch for review, asks what a branch changes in the project files, or wants to know whether a branch is ready for review.
+description: "Writes a pull request description from what the branch actually holds: the project's change records it adds (what was asked, why, what changed, the decision), the project files it edits and the code beside them, checked against the project's pull request rules and boundaries. Flags a project file changed with no record and a change still waiting for a yes. Opens the pull request only when asked. Use when someone asks to write, draft or open a pull request or a PR description, wants a summary of a branch for review, asks what a branch changes in the project files, or wants to know whether a branch is ready for review."
 argument-hint: "[--base BRANCH] [--open] [--root DIR]"
 allowed-tools: Bash(node:*), Bash(git:*), Bash(gh:*), Read, Grep, Glob
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # PR

@@ -21,6 +21,8 @@ test('every project skill: SKILL.md version is the newest CHANGELOG entry, and i
     assert.equal(md.match(/^name:\s*(\S+)/m)?.[1], name, `${name}: SKILL.md name`);
     const want = md.match(/^metadata:\s*\n(?:\s+.*\n)*?\s+version:\s*"([^"]+)"/m)?.[1];
     assert.ok(want, `${name}: SKILL.md has no quoted metadata.version`);
+    const desc = md.match(/^description: (.*)$/m)?.[1] ?? '';
+    assert.ok(/^".*"$/.test(desc) || !/: | #/.test(desc), `${name}: an unquoted description with ": " or " #" in it is not valid YAML; put it in double quotes`);
     const top = fs.readFileSync(path.join(dir, name, 'CHANGELOG.md'), 'utf8').match(/^## \[(\d+\.\d+\.\d+)\]/m)?.[1];
     assert.equal(top, want, `${name}: CHANGELOG says ${top}, SKILL.md says ${want}`);
   }

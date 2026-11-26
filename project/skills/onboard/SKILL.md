@@ -1,10 +1,10 @@
 ---
 name: onboard
-description: Gets a new person into a project from its files: what the project is in a paragraph, what to read and in which order for their role, the rules they must not break, the decisions that explain why things are the way they are, what is open for their role right now, and what to ask whom. Written for one role at a time and short enough to read before a first meeting. Use when someone joins a project, asks "where do I start", "what should I read", "give me the overview", is taking over from a colleague, when a new developer, designer, PM, QA or client contact needs an introduction, or when an agent starts work in a project it has not seen.
+description: "Gets a new person into a project from its files: what the project is in a paragraph, what to read and in which order for their role, the rules they must not break, the decisions that explain why things are the way they are, what is open for their role right now, and what to ask whom. Written for one role at a time and short enough to read before a first meeting. Use when someone joins a project, asks \"where do I start\", \"what should I read\", \"give me the overview\", is taking over from a colleague, when a new developer, designer, PM, QA or client contact needs an introduction, or when an agent starts work in a project it has not seen."
 argument-hint: "[--role ROLE] [--save] [--root DIR]"
 allowed-tools: Bash(node:*), Bash(git:*), Read, Write, Grep, Glob
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # Onboard

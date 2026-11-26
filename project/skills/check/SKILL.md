@@ -1,10 +1,10 @@
 ---
 name: check
-description: Checks that a project's files are in order: every file has its header, an owner and a valid status, versions and changelogs match the change records, nothing is over its size budget, no secret has been pasted in, a review date has not passed, and the generated index and decision list are current. Fixes only what is generated; everything else is reported with the file and what is wrong. Use when someone asks to check, lint or validate the project files, asks "is the project setup okay", wants a check before a commit, a hand-over or a release, sees an error from a project script, or wants the check added to a pipeline.
+description: "Checks that a project's files are in order: every file has its header, an owner and a valid status, versions and changelogs match the change records, nothing is over its size budget, no secret has been pasted in, a review date has not passed, and the generated index and decision list are current. Fixes only what is generated; everything else is reported with the file and what is wrong. Use when someone asks to check, lint or validate the project files, asks \"is the project setup okay\", wants a check before a commit, a hand-over or a release, sees an error from a project script, or wants the check added to a pipeline."
 argument-hint: "[--fix] [--ci] [--root DIR]"
 allowed-tools: Bash(node:*), Bash(git:*), Read, Edit, Grep, Glob
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # Check

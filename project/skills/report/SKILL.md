@@ -1,10 +1,10 @@
 ---
 name: report
-description: Writes a report on a project from its own files and change records, for the client, the PM, the tech team, or several of them at once, over a period or as it stands now. Says what was decided and why, what changed, what is waiting and on whom, and what is needed from the reader, in that reader's language: plain and short for a client, by role and deadline for a PM, by file, drift and follow-up for the tech team. Saves each report in the project so the next one can say what moved since. Use when someone asks for a status report, a weekly or monthly update, a client update, a summary for a steering group, "what happened this week", an outline of the project for a new team member, a hand-over, or wants the same thing on a schedule.
+description: "Writes a report on a project from its own files and change records, for the client, the PM, the tech team, or several of them at once, over a period or as it stands now. Says what was decided and why, what changed, what is waiting and on whom, and what is needed from the reader, in that reader's language: plain and short for a client, by role and deadline for a PM, by file, drift and follow-up for the tech team. Saves each report in the project so the next one can say what moved since. Use when someone asks for a status report, a weekly or monthly update, a client update, a summary for a steering group, \"what happened this week\", an outline of the project for a new team member, a hand-over, or wants the same thing on a schedule."
 argument-hint: "[--for client|pm|tech[,...]] [--since 7d|YYYY-MM-DD] [--until YYYY-MM-DD] [--root DIR]"
 allowed-tools: Bash(node:*), Bash(git:*), Read, Write, Grep, Glob
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # Report

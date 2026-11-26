@@ -1,10 +1,10 @@
 ---
 name: sync
-description: Puts what a project is waiting on into the team's issue tracker and brings the outcome back: open and parked questions, proposed decisions and milestones become tracker items for the role that owns them, and an item closed in the tracker is offered back as an answer to record. Always shows the full list of what it would create or change and waits for a yes before touching the tracker. Untested, because no tracker was connected when it was written, so it has never been run against one. Use when someone asks to sync the project with Jira, Linear, GitHub Issues or another tracker, to create tickets for the open questions, to push the milestones to the board, or asks which open questions already have a ticket.
+description: "Puts what a project is waiting on into the team's issue tracker and brings the outcome back: open and parked questions, proposed decisions and milestones become tracker items for the role that owns them, and an item closed in the tracker is offered back as an answer to record. Always shows the full list of what it would create or change and waits for a yes before touching the tracker. Untested, because no tracker was connected when it was written, so it has never been run against one. Use when someone asks to sync the project with Jira, Linear, GitHub Issues or another tracker, to create tickets for the open questions, to push the milestones to the board, or asks which open questions already have a ticket."
 argument-hint: "[--tracker NAME] [--role ROLE] [--dry-run] [--root DIR]"
 allowed-tools: Bash(node:*), Bash(git:*), Bash(gh:*), Read, Grep, Glob
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # Sync
