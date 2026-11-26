@@ -8,9 +8,9 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { templateKey, groupTemplates, pickSample, siteName, properTitle, pageDate, pageSlug, guessType } from '../lib/templates.mjs';
-import { toMarkdown, questionPairs, visibleDates, dayMonths, leadDate, bylines, markDated, pressDateline, breadcrumbs, organisation, extractPage, pageDigest, ownDate } from '../lib/extract.mjs';
+import { toMarkdown, questionPairs, visibleDates, dayMonths, leadDate, leadDateSource, modifiedDates, bylines, markDated, pressDateline, breadcrumbs, organisation, extractPage, pageDigest, ownDate } from '../lib/extract.mjs';
 import { richIssues } from '../lib/rich.mjs';
-import { verifyDraft, norm, onPage, knownUrl } from '../lib/verify.mjs';
+import { verifyDraft, norm, onPage, knownUrl, dayOnPage } from '../lib/verify.mjs';
 import { parseCsv, readQuestions, renderProposals } from '../lib/proposals.mjs';
 import { extractMeta } from '../lib/html.mjs';
 import { topTypes, draftPage, checkLine, VERSION } from '../plan.mjs';
@@ -854,4 +854,81 @@ test('verifyDraft: a page date read from an unlabelled date line or press dateli
   const labelled = extractPage('<html lang="en"><body><main><h1>Report</h1><p>Published 4 June 2024</p>' + '<p>word word word word word word word word word word word word.</p>'.repeat(6) + '</main></body></html>', 'https://example.com/report');
   assert.equal(labelled.leadDateSource, 'label');
   assert.deepEqual(verifyDraft({ '@type': 'Article', headline: 'Report', datePublished: '2024-06-04' }, labelled), []);
+});
+
+// ---------------------------------------------------------------- regressions (2026-11-26 batch)
+
+test('extractPage: a ">" inside a quoted attribute does not end the tag (Tailwind arbitrary variants)', () => {
+  const html = `<html><body><main>
+    <h1 class="text-[3rem] [&>span]:block">Hvad er tinnitus?</h1>
+    <h2 class="font-bold">Hvad hjælper mod tinnitus?</h2>
+    <div class="o-accordion__content [&>p]:text-inherit"><p>Lydterapi og høreapparater hjælper mange.</p></div>
+    <div class="[[data-step='0']>&]:mr-8 [&>*]:text-inherit m-rich-text"><p>${'Tekst om ører og hørelse. '.repeat(12)}</p></div>
+  </main></body></html>`;
+  const p = extractPage(html, 'https://example.dk/tinnitus');
+  assert.doesNotMatch(p.markdown, /text-inherit|mr-8|\[&|block"/);
+  assert.match(p.markdown, /^# Hvad er tinnitus\?$/m);
+  const q = p.questions.find((x) => /hjælper/.test(x.question));
+  assert.match(q.answer, /^Lydterapi og høreapparater hjælper mange\. Tekst om ører/);
+  assert.doesNotMatch(q.answer, /inherit|\]:|"/);
+  // The shared html.mjs reads the h1 the same way.
+  assert.deepEqual(extractMeta(html, 'https://example.dk/').h1s, ['Hvad er tinnitus?']);
+});
+
+test('visibleDates / leadDate: a day-month-year date written with hyphens ("03-06-2026 • 5 min. læst")', () => {
+  assert.deepEqual(visibleDates('03-06-2026 • 5 min. læst'), ['2026-06-03']);
+  assert.deepEqual(visibleDates('2025-03-11'), ['2025-03-11']);
+  assert.deepEqual(visibleDates('tlf. 12-34-5678, ref 2026-12-03-2025'), ['2026-12-03']);
+  const md = 'Blog\n\n# Pas på din hørelse\n\n03-06-2026 • 5 min. læst\n\nTilbage til bloggen\n\nTekst.';
+  assert.deepEqual(leadDateSource(md, { today: '2026-11-26' }), { date: '2026-06-03', source: 'dateline' });
+});
+
+test('modifiedDates / verifyDraft: a labelled change date backs dateModified wherever it sits, never datePublished', () => {
+  const md = '# Tinnitus\n\nLang tekst om tinnitus.\n\nJane Doe, audiolog\n\nSenest ændret 2025-03-11\n\nVi har opdateret appen den 3. maj 2026.';
+  assert.deepEqual(modifiedDates(md, { today: '2026-11-26' }), ['2025-03-11']);
+  assert.deepEqual(modifiedDates('Last updated: 4 June 2024', { today: '2026-11-26' }), ['2024-06-04']);
+  assert.deepEqual(modifiedDates('Published 4 June 2024', { today: '2026-11-26' }), []);
+  const page = { url: 'https://example.dk/tinnitus', text: 'Tinnitus Senest ændret 2025-03-11', dates: ['2025-03-11'], modifiedDates: ['2025-03-11'], leadDate: null };
+  assert.deepEqual(verifyDraft({ '@type': 'MedicalWebPage', dateModified: '2025-03-11' }, page), []);
+  assert.match(verifyDraft({ '@type': 'MedicalWebPage', datePublished: '2025-03-11' }, page)[0].reason, /no date of its own near the top/);
+  // A page record from extractPage carries them.
+  const html = `<html><body><main><h1>Tinnitus</h1><p>${'Tekst om tinnitus. '.repeat(30)}</p><p class="text-sm">Senest ændret 2025-03-11</p></main></body></html>`;
+  assert.deepEqual(extractPage(html, 'https://example.dk/tinnitus').modifiedDates, ['2025-03-11']);
+});
+
+test('bylines: the Danish label "Bidrag" and a one-word signature after a label', () => {
+  assert.deepEqual(bylines('# Tinnitus\n\nBidrag Example\n\n15-06-2021 • 3 min. læst'), ['Example']);
+  assert.deepEqual(bylines('Bidrag af Jane Doe'), ['Jane Doe']);
+  assert.deepEqual(bylines('Bidragyder: Jane Doe'), ['Jane Doe']);
+  assert.deepEqual(bylines('By Redaktionen'), ['Redaktionen']);
+  // Not a byline: prose, a lowercase word, a label with a sentence after it.
+  assert.deepEqual(bylines('Bidrag til forskning i hørelse'), []);
+  assert.deepEqual(bylines('By clicking you agree'), []);
+  assert.deepEqual(bylines('After Effects'), []);
+  assert.deepEqual(bylines('PARTNERSHIPS'), []);
+  assert.deepEqual(bylines('Partnerships'), []);
+  assert.deepEqual(bylines('By EXAMPLE'), []);
+});
+
+test('verifyDraft: dayOfWeek matches the day named in the page\'s language', () => {
+  const page = { url: 'https://example.dk/klinik', text: 'Åbningstider | mandag | 08.30–14.00 | tirsdag | 08.30–15.00 | onsdag | Lukket | torsdag | 08.30–16.30' };
+  const draft = { '@type': 'MedicalClinic', openingHoursSpecification: ['Monday', 'Tuesday', 'Thursday'].map((d) => ({ '@type': 'OpeningHoursSpecification', dayOfWeek: d, opens: '08:30', closes: '14:00' })) };
+  assert.deepEqual(verifyDraft(draft, page), []);
+  const out = verifyDraft({ '@type': 'MedicalClinic', openingHoursSpecification: { dayOfWeek: 'Friday' } }, page);
+  assert.equal(out[0].reason, 'day not named on the page');
+  for (const [day, text] of [['Monday', 'Montag 9–17'], ['Saturday', 'lördag stängt'], ['Wednesday', 'miércoles'], ['Sunday', 'zondag gesloten'], ['Thursday', 'jeudi']]) assert.equal(dayOnPage(day, norm(text)), true, day);
+  assert.equal(dayOnPage('Mon', 'mandag'), null);
+});
+
+test('extractPage / pageDigest / groupTemplates: JSON-LD that does not parse is reported, not "none"', () => {
+  const html = `<html><head><script type="application/ld+json">{ "@type": "BlogPosting", "headline": "Line
+break" }</script></head><body><main><h1>Blog</h1><p>${'Tekst. '.repeat(50)}</p></main></body></html>`;
+  const p = extractPage(html, 'https://example.dk/blog/a');
+  assert.deepEqual(p.jsonLd, []);
+  assert.equal(p.jsonLdErrors.length, 1);
+  assert.match(pageDigest(p), /Existing JSON-LD: 1 block that does not parse \(JSON parse failed/);
+  const pages = ['a', 'b'].map((x) => ({ url: `https://example.dk/blog/${x}`, status: 200, indexable: true, jsonLd: [{ types: [], error: 'JSON parse failed: Bad control character' }] }));
+  const [g] = groupTemplates(pages);
+  assert.equal(g.unparsed, 2);
+  assert.deepEqual(g.markup, {});
 });

@@ -4,7 +4,7 @@
  * grade itself when we can get it (scrape or paid API), never invented.
  */
 import { result } from '../registry.mjs';
-import { gradeSecurityHeaders, parseCsp, lintCsp, parseSetCookie, lintCookies, infoLeakHeaders, hstsVerdict, corsVerdict, cspLintFix, observatoryFix, crossOriginPolicies, GRADE_NOTE } from '../headers.mjs';
+import { gradeSecurityHeaders, parseCsp, lintCsp, parseSetCookie, lintCookies, infoLeakHeaders, readXfo, xfoRepeatNote, hstsVerdict, corsVerdict, cspLintFix, observatoryFix, crossOriginPolicies, GRADE_NOTE } from '../headers.mjs';
 import { observatoryScan, securityHeadersScrape, securityHeadersApi } from '../services.mjs';
 
 const HEADER_FIX = {
@@ -45,8 +45,15 @@ export default {
         if (v.status !== 'pass') { status = v.status; evidence += ` — ${v.note}`; }
       }
       if (name === 'x-content-type-options' && value && !/nosniff/i.test(value)) { status = 'fail'; evidence = `${value} (must be nosniff)`; }
+      let fix = HEADER_FIX[name];
+      if (name === 'x-frame-options' && value) {
+        // Sent twice (web server and application both add it): say so, and send it once.
+        const x = readXfo(value);
+        const note = xfoRepeatNote(x);
+        if (note) { status = 'warn'; evidence = `${x.value}: ${note}`; fix = `Send X-Frame-Options once (X-Frame-Options: ${x.effective}): remove it from either the web server/CDN or the application.`; }
+      }
       if (name === 'content-security-policy' && !present && h['content-security-policy-report-only']) { status = 'warn'; evidence = 'report-only policy only — nothing is enforced'; }
-      out.push(result(`headers.${ID[name]}`, status, LABEL[name], evidence, { fix: status === 'pass' ? '' : HEADER_FIX[name] }));
+      out.push(result(`headers.${ID[name]}`, status, LABEL[name], evidence, { fix: status === 'pass' ? '' : fix }));
     }
 
     const cspValue = h['content-security-policy'] || h['content-security-policy-report-only'] || '';

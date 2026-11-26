@@ -105,8 +105,20 @@ export function nonProductionSource(source) {
 export function frameAncestors(headers = {}) {
   const csp = headers['content-security-policy'];
   const fa = csp ? cspDirectives(csp)['frame-ancestors'] : null;
-  const xfo = String(headers['x-frame-options'] || '').trim().toUpperCase();
-  const valid = xfo === 'DENY' || xfo === 'SAMEORIGIN';
+  // A header sent twice arrives joined by a comma ("SAMEORIGIN, SAMEORIGIN"). Browsers read the
+  // values as a set (HTML standard): the same value twice is that value, two different ones block
+  // every frame (as DENY). Either way the page is not frameable; the row says the header is repeated.
+  const sent = String(headers['x-frame-options'] || '').trim();
+  const values = sent.split(',').map((v) => v.trim().toUpperCase()).filter(Boolean);
+  const set = [...new Set(values)];
+  const known = set.length > 0 && set.every((v) => v === 'DENY' || v === 'SAMEORIGIN');
+  const xfo = known ? (set.length === 1 ? set[0] : 'DENY') : sent.toUpperCase();
+  const valid = known;
+  const repeat = values.length > 1 && known
+    ? set.length === 1
+      ? ` (the header is sent ${values.length === 2 ? 'twice' : `${values.length} times`}: "${sent}"; browsers read it as ${xfo}, MDN Observatory and some older browsers reject it, so send it once)`
+      : ` (the header is sent more than once with different values: "${sent}"; browsers then refuse every frame, as DENY; send one value)`
+    : '';
   const title = 'Clickjacking (frame-ancestors)';
   // Keep what the site sends; suggest SAMEORIGIN only when it sends nothing browsers honour.
   const keep = valid ? `keep X-Frame-Options: ${xfo} for old browsers` : 'add X-Frame-Options: SAMEORIGIN for old browsers';
@@ -126,9 +138,9 @@ export function frameAncestors(headers = {}) {
         fix: `Drop ${dev.join(', ')} from the live site's frame-ancestors (send ${dev.length > 1 ? 'them' : 'it'} only from the environments that need them, such as the CMS preview); ${keep}.`,
       });
     }
-    return row('headers.frame-ancestors', 'pass', title, `CSP frame-ancestors ${v}${xfo ? ` (X-Frame-Options ${xfo} too)` : ''}`);
+    return row('headers.frame-ancestors', 'pass', title, `CSP frame-ancestors ${v}${xfo ? ` (X-Frame-Options ${xfo} too${repeat ? `; ${repeat.slice(2, -1)}` : ''})` : ''}`);
   }
-  if (valid) return row('headers.frame-ancestors', 'warn', title, `X-Frame-Options ${xfo} only; no CSP frame-ancestors${headers['content-security-policy-report-only'] ? ' (a report-only CSP enforces nothing)' : ''}`, { fix });
+  if (valid) return row('headers.frame-ancestors', 'warn', title, `X-Frame-Options ${xfo} only${repeat}; no CSP frame-ancestors${headers['content-security-policy-report-only'] ? ' (a report-only CSP enforces nothing)' : ''}`, { fix: repeat ? `${fix} Send X-Frame-Options once: it is added in two places (the web server or CDN and the application).` : fix });
   return row('headers.frame-ancestors', 'fail', title, xfo ? `X-Frame-Options ${xfo} is not a value browsers honour, and there is no CSP frame-ancestors` : 'neither CSP frame-ancestors nor X-Frame-Options: any site can frame the page', { fix });
 }
 

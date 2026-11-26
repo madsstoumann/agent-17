@@ -114,7 +114,8 @@ Other shared copies, each checked by a test:
 | `lib/cmp.mjs` | audit-launch, audit-privacy | The consent-tool detector: the vendor host the page loads wins over markup |
 | `lib/rsc.mjs` | audit-privacy, plan-geo | Text from a Next.js page's script payload, the page's own components only |
 | `lib/schema.mjs` | audit-launch, audit-seo, plan-geo | validator.schema.org |
-| `lib/html.mjs`, `lib/render.mjs`, `lib/rich.mjs` | audit-seo, plan-geo | HTML parsing, headless rendering, Google's rich-result rules |
+| `lib/html.mjs` | audit-seo, plan-geo, audit-eco (audit-launch keeps its own version in step) | HTML parsing: tags, attributes, head metadata, links; `quoteSafe()` for regexes that read a tag as `<…>` |
+| `lib/render.mjs`, `lib/rich.mjs` | audit-seo, plan-geo | Headless rendering, Google's rich-result rules |
 | `lib/tasks.mjs` | audit-all, plan-geo | The tasks.json shape audit-fix reads |
 | `lib/diff.mjs` | audit-seo, audit-eco | "Since last run" |
 | `lib/common.mjs` | audit-infra, audit-privacy | The result shape, report folder, Markdown and task candidates |
