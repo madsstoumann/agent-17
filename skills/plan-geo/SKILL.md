@@ -4,7 +4,7 @@ description: Use when someone wants to know what structured data and what conten
 argument-hint: "<audit-seo or audit-all run folder | url> [--pages N] [--queries FILE] [--competitors a.com,b.com] [--repo PATH] [--only markup|content] [--out DIR] [--header NAME:VALUE] [--no-render] [--insecure] [--no-remote | --no-validate] [--samples] [--live] [--from-archive DIR [--allow-live]] [--urls a,b]"
 allowed-tools: Bash(node:*), Read, Write
 metadata:
-  version: "1.7.0"
+  version: "1.8.0"
 ---
 
 # GEO plan
@@ -50,7 +50,11 @@ It writes into the run folder:
 - `inventory.md`: the templates (URL sections) with page counts, a guessed page type, the markup
   such pages usually carry, modules to consider, markup they have now, and the pages read.
 - `pages/<slug>.md`: each page read, as Markdown with its dates, bylines, breadcrumb, logo, social
-  profiles and existing JSON-LD on top. `pages/<slug>.json` holds the same plus the full text the
+  profiles and existing JSON-LD on top. Questions in styled paragraphs (an accordion label or a
+  bold line ending in "?" with an answer under it) are counted apart from question headings and
+  listed as "not a heading": propose rendering them as h2/h3 in the template. When the header
+  logo is an inline `<svg>`, the logo line says so and names the site icon of 112 px or more it
+  fell back to (or that there is none), since JSON-LD `logo` needs an image URL. `pages/<slug>.json` holds the same plus the full text the
   check step compares drafts with. On a Next.js site, text that is only in the page's script
   payload (closed accordions and tabs that mount their content on open) is read too: it is under
   "Only in the Next.js payload" at the end of the page's `.md`, and counts for questions, dates and

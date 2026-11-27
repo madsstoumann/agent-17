@@ -8,9 +8,9 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { templateKey, groupTemplates, pickSample, siteName, properTitle, pageDate, pageSlug, guessType } from '../lib/templates.mjs';
-import { toMarkdown, questionPairs, visibleDates, dayMonths, leadDate, leadDateSource, modifiedDates, bylines, markDated, pressDateline, breadcrumbs, organisation, extractPage, pageDigest, ownDate } from '../lib/extract.mjs';
+import { toMarkdown, questionPairs, visibleDates, dayMonths, leadDate, leadDateSource, modifiedDates, bylines, markDated, pressDateline, breadcrumbs, organisation, extractPage, pageDigest, ownDate, pageUrls } from '../lib/extract.mjs';
 import { richIssues } from '../lib/rich.mjs';
-import { verifyDraft, norm, onPage, knownUrl, dayOnPage } from '../lib/verify.mjs';
+import { verifyDraft, norm, onPage, knownUrl, dayOnPage, daysInRanges, numbersIn, timesIn } from '../lib/verify.mjs';
 import { parseCsv, readQuestions, renderProposals } from '../lib/proposals.mjs';
 import { extractMeta } from '../lib/html.mjs';
 import { topTypes, draftPage, checkLine, VERSION } from '../plan.mjs';
@@ -931,4 +931,75 @@ break" }</script></head><body><main><h1>Blog</h1><p>${'Tekst. '.repeat(50)}</p><
   const [g] = groupTemplates(pages);
   assert.equal(g.unparsed, 2);
   assert.deepEqual(g.markup, {});
+});
+
+// ---------------------------------------------------------------- 1.8.0: separators, URLs, day ranges, styled questions, logo
+
+test('verifyDraft: a price written with thousands separators and ",-" matches the plain number', () => {
+  const page = { url: 'https://www.example.dk/abonnement', text: 'Samlet pris i 24 mdr. 7.120,- · Oprettelse 99,95 kr. · Fra 1 234 kr.', title: '', description: '', urls: [] };
+  const draft = { '@type': 'Offer', price: '7120', priceSpecification: { price: '99.95', minPrice: '1234' } };
+  assert.deepEqual(verifyDraft(draft, page), []);
+  const wrong = verifyDraft({ '@type': 'Offer', price: '7210' }, page);
+  assert.equal(wrong.length, 1);
+  assert.equal(wrong[0].reason, 'text not on the page');
+  const n = numbersIn('7.120,- og 1,234.50 og 1.160 kr.');
+  for (const x of [7120, 1234.5, 1160, 1.16]) assert.ok(n.has(x), String(x));
+});
+
+test('knownUrl and pageUrls: a relative src, srcset candidates, base href and props markup resolve before matching', () => {
+  const html = '<html><head><base href="https://www.example.dk/site/"></head><body><img src="media/logo.png"><img data-src="x.gif" data-srcset="/a/wide.jpg 1440w, /a/narrow.jpg 480w"><picture><source srcset="/b/one.webp 1x, /b/two.webp 2x"></picture><div style="background-image:url(\'/c/bg.jpg\')"></div><script type="text/props">{"html":"<p><img src=\\"/link/abc.aspx\\"></p>"}</script></body></html>';
+  const urls = pageUrls(html, 'https://www.example.dk/abonnement/');
+  for (const u of ['https://www.example.dk/site/media/logo.png', 'https://www.example.dk/a/narrow.jpg', 'https://www.example.dk/b/two.webp', 'https://www.example.dk/c/bg.jpg', 'https://www.example.dk/link/abc.aspx']) assert.ok(urls.includes(u), u);
+  const page = { url: 'https://www.example.dk/abonnement/', urls: ['/media/Billede%20%C3%A6.png', 'img/plan.png'] };
+  assert.ok(knownUrl('https://www.example.dk/media/Billede æ.png', page), 'relative, percent-encoded on the page');
+  assert.ok(knownUrl('https://www.example.dk/abonnement/img/plan.png', page), 'relative to the page path');
+  assert.ok(!knownUrl('https://www.example.dk/media/other.png', page));
+});
+
+test('daysInRanges and verifyDraft: a day inside "Mandag - torsdag" is on the page', () => {
+  assert.deepEqual([...daysInRanges('Mandag - torsdag: kl. 8.00 -16.00 Fredag: kl. 8.00 -15.30')], ['monday', 'tuesday', 'wednesday', 'thursday']);
+  assert.deepEqual([...daysInRanges('Åben mandag til fredag')].length, 5);
+  assert.deepEqual([...daysInRanges('Monday to Friday, Montag bis Mittwoch')].length, 5);
+  assert.deepEqual([...daysInRanges('måndag–onsdag')], ['monday', 'tuesday', 'wednesday']);
+  assert.deepEqual([...daysInRanges('man.–fre. 9-17')].length, 5);
+  assert.deepEqual([...daysInRanges('Mandag og torsdag')], [], 'two named days are not a range');
+  const page = { url: 'https://www.example.dk/kontakt', text: 'Kundeservice Mandag - torsdag: kl. 8.00 -16.00 Fredag: kl. 8.00 -15.30', title: '', description: '', urls: [] };
+  const draft = { '@type': 'Organization', openingHoursSpecification: [{ '@type': 'OpeningHoursSpecification', dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday'], opens: '08:00', closes: '16:00' }] };
+  assert.deepEqual(verifyDraft(draft, page), []);
+  assert.deepEqual([...timesIn('kl. 8.00 -16.00, 08:30, åbent 10-17, 9am')].sort(), ['08:00', '08:30', '09:00', '10:00', '16:00', '17:00']);
+  assert.equal(verifyDraft({ opens: '09:00' }, page)[0]?.reason, 'time not shown on the page');
+  const sat = verifyDraft({ dayOfWeek: 'Saturday' }, page);
+  assert.equal(sat[0]?.reason, 'day not named on the page');
+});
+
+test('questionPairs: a short paragraph ending in "?" with an answer is a question that is not a heading', () => {
+  const md = '# eSIM\n\nHer finder du svar.\n\nHvem kan bestille eSIM?\n\neSIM kan bestilles af alle kunder.\n\nHvad koster det?\n\nDet er gratis.\n\n## Hvilke mobiler kan bruge eSIM?\n\nSe listen.\n\nVil du vide mere? Ring til os.\n\n- Er det sikkert?\n\nSidste spørgsmål uden svar?';
+  const q = questionPairs(md);
+  assert.deepEqual(q.map((x) => [x.question, x.heading]), [['Hvem kan bestille eSIM?', false], ['Hvad koster det?', false], ['Hvilke mobiler kan bruge eSIM?', undefined]]);
+  assert.equal(q[0].answer, 'eSIM kan bestilles af alle kunder.');
+  const html = '<html><body><main><h1>eSIM</h1><p>Her finder du svar på de fleste spørgsmål om eSIM og hvordan du bestiller, aktiverer og flytter det mellem dine enheder hos os.</p><div class="accordion"><button><span>Hvem kan bestille eSIM?</span></button><div><p>Både privat- og erhvervskunder.</p></div><button><span>Hvad koster det?</span></button><div><p>Det er gratis.</p></div></div></main></body></html>';
+  const p = extractPage(html, 'https://www.example.dk/hjaelp/esim');
+  assert.equal(p.questions.length, 2);
+  const digest = pageDigest(p);
+  assert.match(digest, /question headings: 0 · questions in styled paragraphs \(not a heading\): 2/);
+  assert.match(digest, /the template can render these as h2\/h3/);
+});
+
+test('organisation: the header logo is found after a long <head>; an inline svg logo falls back to a big icon', () => {
+  const css = `<style>${'.a{color:red}'.repeat(4000)}</style>`;
+  const img = `<html><head>${css}<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"></head><body><nav><a href="/" class="nav-logo-link"><img class="nav-logo" src="/media/logo.svg" alt="Example"></a></nav><main>Tekst</main></body></html>`;
+  const a = organisation(img, 'https://www.example.dk/', extractMeta(img, 'https://www.example.dk/'));
+  assert.equal(a.logo, 'https://www.example.dk/media/logo.svg');
+  assert.equal(a.logoSource, 'header');
+  const svg = `<html><head>${css}<link rel="icon" href="/favicon.ico"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"></head><body><header><a href="/"><svg viewBox="0 0 10 10"><path d="M0 0"/></svg></a></header><main>Tekst</main></body></html>`;
+  const b = organisation(svg, 'https://www.example.dk/', extractMeta(svg, 'https://www.example.dk/'));
+  assert.equal(b.logo, 'https://www.example.dk/apple-touch-icon.png');
+  assert.equal(b.logoSource, 'icon');
+  assert.equal(b.logoSvg, true);
+  assert.match(pageDigest({ ...extractPage(svg, 'https://www.example.dk/') }), /logo https:\/\/www\.example\.dk\/apple-touch-icon\.png \(a site icon; the header logo is an inline <svg> with no URL\)/);
+  const small = svg.replace('sizes="180x180"', 'sizes="64x64"');
+  const c = organisation(small, 'https://www.example.dk/', extractMeta(small, 'https://www.example.dk/'));
+  assert.equal(c.logo, null, 'an icon under 112 px is not a logo');
+  assert.equal(c.logoSvg, true);
+  assert.match(pageDigest(extractPage(small, 'https://www.example.dk/')), /logo an inline <svg> in the header, with no URL/);
 });

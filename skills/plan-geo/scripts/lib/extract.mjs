@@ -94,17 +94,28 @@ export function outline(markdown) {
   return markdown.split('\n').map((l) => /^(#{1,6}) (.+)$/.exec(l)).filter(Boolean).map((m) => ({ level: m[1].length, text: m[2].trim() }));
 }
 
-/** A heading that asks something ("What is an IBOR?") and the text under it, up to the next heading. */
-export function questionPairs(markdown, { maxWords = 120 } = {}) {
+/**
+ * A heading that asks something ("What is an IBOR?") and the text under it, up to the next heading.
+ * A short paragraph that ends in "?" and is followed by an answer counts too (an accordion label, a
+ * bold paragraph: "Hvem kan bestille eSIM?"), marked `heading: false`, so the plan can propose
+ * making it a real heading. A line inside a list or table, or a question not followed by a sentence
+ * (a row of buttons such as "Ring Find butik"), does not.
+ */
+export function questionPairs(markdown, { maxWords = 120, maxQuestionWords = 20 } = {}) {
   const lines = markdown.split('\n');
   const out = [];
+  const isHeading = (l) => /^#{1,6} /.test(l);
+  const styled = (l) => Boolean(l) && !isHeading(l) && !/^(- |\| |\s)/.test(l) && /\?\s*$/.test(l) && countWords(l) <= maxQuestionWords && countWords(l) >= 2;
   for (let i = 0; i < lines.length; i++) {
     const h = /^#{1,6} (.+\?)\s*$/.exec(lines[i]);
-    if (!h) continue;
+    const asStyled = !h && styled(lines[i]);
+    if (!h && !asStyled) continue;
     const body = [];
-    for (let j = i + 1; j < lines.length && !/^#{1,6} /.test(lines[j]); j++) if (lines[j]) body.push(lines[j]);
+    for (let j = i + 1; j < lines.length && !isHeading(lines[j]) && !(asStyled && styled(lines[j])); j++) if (lines[j]) body.push(lines[j]);
+    // The answer is text, not a row of buttons ("Ring · Find butik") or a rating widget.
+    if (asStyled && (!body.length || countWords(body[0]) < 3 || !(/\p{Ll}[.!]/u.test(body[0]) || countWords(body[0]) >= 8))) continue;
     const answer = body.join(' ').split(/\s+/).slice(0, maxWords).join(' ');
-    out.push({ question: h[1].trim(), answer, words: countWords(body.join(' ')) });
+    out.push({ question: (h ? h[1] : lines[i]).trim(), answer, words: countWords(body.join(' ')), ...(asStyled ? { heading: false } : {}) });
   }
   return out;
 }
@@ -442,16 +453,43 @@ export function breadcrumbs(html, base) {
   return items;
 }
 
-/** Logo, social profiles, phone and email from the whole page (header and footer included). */
+/** The largest icon of at least `min` px (sizes="180x180"), or null. Google wants a logo of 112×112 or more. */
+function bigIcon(icons = [], min = 112) {
+  const px = (i) => Math.min(...String(i.sizes || '').split(/\s+/).map((x) => /^(\d+)x(\d+)$/i.exec(x)).filter(Boolean).map((m) => Math.min(+m[1], +m[2])), Infinity);
+  return icons.map((i) => ({ ...i, px: px(i) })).filter((i) => Number.isFinite(i.px) && i.px >= min && /icon/i.test(i.rel)).sort((a, b) => b.px - a.px)[0] || null;
+}
+
+const LOGO_WORD = /logo/i;
+
+/**
+ * Logo, social profiles, phone and email from the whole page (header and footer included).
+ * The logo is the header's <img> named or classed "logo". When the header shows its logo as an
+ * inline <svg> (no URL of its own), `logoSvg` is true and the logo falls back to a <link rel=icon>
+ * of 112 px or more; `logoSource` says which it is ('header', 'icon', or null when neither).
+ */
 export function organisation(html, base, meta) {
-  const tokens = tokenize(html);
-  // The site's own logo sits in the header (or the first part of the page), not in a client-logo grid.
-  const head = /<header\b[\s\S]*?<\/header\s*>/i.exec(html)?.[0] || String(html).slice(0, Math.max(20000, Math.floor(String(html).length / 5)));
-  const logoTok = tokenize(head).find((t) => t.tag === 'img' && /logo/i.test(`${t.attrs.src || ''} ${t.attrs.alt || ''} ${t.attrs.class || ''} ${t.attrs.id || ''}`) && !/client|customer|partner/i.test(t.attrs.src || ''));
+  const src = String(html || '');
+  const tokens = tokenize(src);
+  // The site's own logo sits in the header (or the first part of the body), not in a client-logo grid.
+  // A head full of inline CSS and scripts is not "the first part of the page": count from <body>.
+  const bodyAt = src.search(/<body\b/i);
+  const body = bodyAt >= 0 ? src.slice(bodyAt) : src;
+  const head = /<header\b[\s\S]*?<\/header\s*>/i.exec(body)?.[0] || body.slice(0, Math.max(20000, Math.floor(body.length / 5)));
+  const headTokens = tokenize(head);
+  const logoTok = headTokens.find((t) => t.tag === 'img' && LOGO_WORD.test(`${t.attrs.src || ''} ${t.attrs['data-src'] || ''} ${t.attrs.alt || ''} ${t.attrs.class || ''} ${t.attrs.id || ''}`) && !/client|customer|partner/i.test(t.attrs.src || ''));
   const social = new Set();
   const phones = new Set();
   const emails = new Set();
-  const logo = logoTok ? resolve(logoTok.attrs.src || logoTok.attrs['data-src'] || '', base) : null;
+  let logo = logoTok ? resolve(logoTok.attrs.src || logoTok.attrs['data-src'] || '', base) : null;
+  let logoSource = logo ? 'header' : null;
+  // An inline <svg> logo: classed or labelled "logo", or the first thing inside the link to the start page.
+  const logoSvg = !logo && (/<svg\b[^>]*(?:class|id|aria-label)\s*=\s*["'][^"']*logo[^"']*["']/i.test(head)
+    || /<svg\b[^>]*>\s*<title>[^<]*logo/i.test(head)
+    || /<a\b[^>]*\bhref\s*=\s*["'](?:\/|\.\/|https?:\/\/[^/"']+\/?)["'][^>]*>\s*(?:<(?:span|div)\b[^>]*>\s*)*<svg\b/i.test(head));
+  if (!logo) {
+    const icon = bigIcon(meta.icons);
+    if (icon) { logo = icon.href; logoSource = 'icon'; }
+  }
   for (const t of tokens) {
     if (t.tag === 'a' && t.attrs.href) {
       const h = t.attrs.href.trim();
@@ -461,17 +499,35 @@ export function organisation(html, base, meta) {
     }
   }
   const icon = (meta.icons || []).find((i) => /apple-touch-icon/.test(i.rel))?.href || (meta.icons || [])[0]?.href || null;
-  return { name: meta.og?.site_name || null, logo, icon, social: [...social].sort(), phones: [...phones], emails: [...emails] };
+  return { name: meta.og?.site_name || null, logo, logoSource, ...(logoSvg ? { logoSvg: true } : {}), icon, social: [...social].sort(), phones: [...phones], emails: [...emails] };
 }
 
-/** Every link and image URL on the page, for checking the URLs a JSON-LD draft uses. */
+/**
+ * Every link and image URL on the page, for checking the URLs a JSON-LD draft uses, resolved
+ * against <base href> (else the page URL): href, src, data-src, every srcset and data-srcset
+ * candidate, poster, CSS url() in a style attribute, og:/twitter: meta values, and src/href values
+ * inside component props (`<script type="text/props">{"html":"<img src=\\"/x.png\\">"}`).
+ */
 export function pageUrls(html, base) {
+  const src = String(html || '');
+  const tokens = tokenize(src);
+  const baseHref = tokens.find((t) => t.tag === 'base' && t.attrs.href)?.attrs.href;
+  const root = (baseHref && resolve(baseHref, base)) || base;
   const out = new Set();
-  for (const t of tokenize(html)) {
-    const v = t.tag === 'a' || t.tag === 'link' ? t.attrs.href : t.tag === 'img' || t.tag === 'source' || t.tag === 'video' ? (t.attrs.src || t.attrs['data-src'] || (t.attrs.srcset || '').split(/[\s,]+/)[0]) : t.tag === 'meta' && /^(og:|twitter:)/i.test(t.attrs.property || t.attrs.name || '') ? t.attrs.content : null;
-    const u = v && resolve(v, base);
-    if (u) out.add(u);
+  const add = (v) => { const u = v && resolve(v, root); if (u) out.add(u); };
+  const candidates = (set) => String(set || '').split(/,\s+(?=\S)/).map((c) => c.trim().split(/\s+/)[0]).filter(Boolean);
+  for (const t of tokens) {
+    const a = t.attrs || {};
+    if (t.tag === 'a' || t.tag === 'link') add(a.href);
+    else if (t.tag === 'meta' && /^(og:|twitter:)/i.test(a.property || a.name || '')) add(a.content);
+    if (['img', 'source', 'video', 'audio', 'picture', 'iframe'].includes(t.tag)) {
+      add(a.src); add(a['data-src']); add(a.poster);
+      for (const c of [...candidates(a.srcset), ...candidates(a['data-srcset'])]) add(c);
+    }
+    if (a.style) for (const m of String(a.style).matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)) add(m[1]);
   }
+  // Markup kept as a string in JSON props: src=\"/link/abc.aspx\".
+  for (const m of src.matchAll(/\b(?:src|href)=\\"([^"\\]+)\\"/g)) if (/^(\/|https?:)/.test(m[1])) add(m[1]);
   return [...out];
 }
 
@@ -587,13 +643,15 @@ export function pageDigest(p, { maxChars = 14000 } = {}) {
   const lines = [`# ${p.title || p.url}`, '', `URL: ${p.url}`];
   if (p.description) lines.push(`Meta description: ${p.description}`);
   if (p.lang) lines.push(`Language: ${p.lang}`);
-  lines.push(`Words in main content: ${p.words} · question headings: ${p.questions.length} · table rows: ${p.tables}${p.hidden ? ` · words only in the Next.js payload: ${p.hidden.words}` : ''}`);
+  const styledQ = p.questions.filter((q) => q.heading === false).length;
+  lines.push(`Words in main content: ${p.words} · question headings: ${p.questions.length - styledQ}${styledQ ? ` · questions in styled paragraphs (not a heading): ${styledQ}` : ''} · table rows: ${p.tables}${p.hidden ? ` · words only in the Next.js payload: ${p.hidden.words}` : ''}`);
+  if (styledQ) lines.push(`Questions that are not headings: ${p.questions.filter((q) => q.heading === false).slice(0, 5).map((q) => `"${q.question}"`).join(', ')}${styledQ > 5 ? ', …' : ''}. Crawlers and AI engines see a paragraph, not a question; the template can render these as h2/h3 (or as <summary> in a <details>).`);
   lines.push(`Page date: ${p.leadDate ? `${p.leadDate} (from ${DATE_SOURCES[p.leadDateSource] || 'the top of the page'}${GUESSED_DATE.has(p.leadDateSource) ? '; the page does not label it, so confirm it before using it as datePublished' : ''})` : 'none stated near the top (unknown)'}${p.publishedMeta ? ` · article:published_time ${p.publishedMeta}${p.dates.includes(p.publishedMeta) ? '' : ' (not shown on the page)'}` : ''}${p.dates.length ? ` · other dates in the text: ${p.dates.filter((d) => d !== p.leadDate).join(', ') || 'none'}` : ''}`);
   if (p.bylines.length) lines.push(`Bylines: ${p.bylines.join(', ')}`);
   if (p.breadcrumbs.length) lines.push(`Breadcrumb: ${p.breadcrumbs.map((b) => b.name).join(' › ')}`);
   const o = p.org;
-  if (o.name || o.logo || o.social.length || o.phones.length || o.emails.length) {
-    lines.push(`Organisation details: ${[o.name && `name ${o.name}`, o.logo && `logo ${o.logo}`, o.social.length && `social ${o.social.join(', ')}`, o.phones.length && `phone ${o.phones.join(', ')}`, o.emails.length && `email ${o.emails.join(', ')}`].filter(Boolean).join(' · ')}`);
+  if (o.name || o.logo || o.logoSvg || o.social.length || o.phones.length || o.emails.length) {
+    lines.push(`Organisation details: ${[o.name && `name ${o.name}`, (o.logo || o.logoSvg) && `logo ${o.logo ? `${o.logo}${o.logoSource === 'icon' ? ` (a ${o.logoSvg ? 'site icon; the header logo is an inline <svg> with no URL' : 'site icon of 112 px or more; no logo image in the header'})` : ''}` : 'an inline <svg> in the header, with no URL (JSON-LD logo needs an image file of 112×112 px or more)'}`, o.social.length && `social ${o.social.join(', ')}`, o.phones.length && `phone ${o.phones.join(', ')}`, o.emails.length && `email ${o.emails.join(', ')}`].filter(Boolean).join(' · ')}`);
   }
   if (p.og?.image) lines.push(`og:image: ${p.og.image}`);
   const broken = (p.jsonLdErrors || []).length;

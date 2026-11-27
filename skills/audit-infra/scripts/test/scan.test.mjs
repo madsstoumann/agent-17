@@ -6,7 +6,7 @@ import { parseDoh, unquoteTxt, apexOf, parseCaa, parseSoa, parseMx, createResolv
 import { spfTree, judgeSpf, dmarc, dkimKeyBits, stsCovers } from '../lib/email.mjs';
 import { sanCovers, caaAllows, daysLeft } from '../lib/tls.mjs';
 import { parseCrtSh, parseRdap, normSerial, crtSh } from '../lib/services.mjs';
-import { detectCdn, domainChecks, emailChecks, tlsChecks } from '../lib/checks.mjs';
+import { detectCdn, domainChecks, emailChecks, tlsChecks, ctChecks, takeoverService, danglingTarget } from '../lib/checks.mjs';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -401,4 +401,71 @@ test('a local resolver that answers addresses only, with DoH unreachable, skips 
   // The same resolver with DoH reachable is trusted.
   const fine = await run({ target: 'https://x.dk/', only: ['domain'], skip: [] }, { resolver: fakeResolver(ZONE), fetch: noFetch });
   assert.ok(fine.results.some((r) => r.id.startsWith('dns.') && r.status !== 'skip'));
+});
+
+test('spfTree: a name included twice is a repeat, not a loop; its lookups count each time (example.dk)', async () => {
+  const r = fakeResolver({
+    'example.dk TXT': ['v=spf1 include:mail.example.net include:spf.example.org -all'],
+    'spf.example.org TXT': ['v=spf1 include:mail.example.net ip4:192.0.2.0/24 ~all'],
+    'mail.example.net TXT': ['v=spf1 include:a.mail.example.net ~all'],
+    'a.mail.example.net TXT': ['v=spf1 ip4:192.0.2.10 ~all'],
+  });
+  const t = await spfTree('example.dk', r);
+  assert.deepEqual(t.problems, []);
+  assert.deepEqual(t.repeats, ['mail.example.net']);
+  assert.equal(t.lookups, 5); // 2 at the top; a.mail.example.net inside mail.example.net, counted again with the second include of it
+  assert.equal(t.includes.length, 3);
+  const j = judgeSpf(t, { hasMx: true });
+  assert.equal(j.status, 'info');
+  assert.match(j.evidence, /mail\.example\.net is included twice/);
+  assert.doesNotMatch(j.evidence, /loop/);
+});
+
+test('spfTree: a repeat that pushes the tree past 10 lookups fails and says which include to drop', async () => {
+  const many = Array.from({ length: 4 }, (_, i) => `include:n${i}.example.net`).join(' ');
+  const zone = { 'example.dk TXT': ['v=spf1 include:big.example.net include:wrap.example.org -all'], 'wrap.example.org TXT': ['v=spf1 include:big.example.net ~all'], 'big.example.net TXT': [`v=spf1 ${many} ~all`] };
+  for (let i = 0; i < 4; i++) zone[`n${i}.example.net TXT`] = ['v=spf1 ip4:192.0.2.1 ~all'];
+  const j = judgeSpf(await spfTree('example.dk', fakeResolver(zone)), { hasMx: true });
+  assert.equal(j.status, 'fail');
+  assert.match(j.fix, /Drop the direct include of big\.example\.net/);
+});
+
+test('spfTree still reports a real include loop', async () => {
+  const t = await spfTree('example.dk', fakeResolver({ 'example.dk TXT': ['v=spf1 include:a.example.net -all'], 'a.example.net TXT': ['v=spf1 include:b.example.net ~all'], 'b.example.net TXT': ['v=spf1 include:a.example.net ~all'] }));
+  assert.equal(t.problems.length, 1);
+  assert.match(t.problems[0], /include loop at a\.example\.net/);
+  assert.equal(judgeSpf(t, { hasMx: true }).status, 'warn');
+});
+
+test('takeoverService reads the claimable-service list as data', () => {
+  assert.equal(takeoverService('app-1.azurewebsites.net.').status, 'vulnerable');
+  assert.equal(takeoverService('bucket.s3-website-eu-west-1.amazonaws.com').service, 'AWS S3');
+  assert.equal(takeoverService('user.github.io').status, 'edge');
+  assert.equal(takeoverService('example.zendesk.com'), null); // listed as not vulnerable
+  assert.equal(takeoverService('notazurewebsites.net'), null);
+});
+
+test('danglingTarget tells a free domain from a missing name in a registered zone', async () => {
+  const r = fakeResolver({ 'example.net NS': ['ns1.example.net.'] });
+  assert.deepEqual(await danglingTarget(r, 'gone.cdn.example.net.'), { registrable: 'example.net', registered: true, service: null });
+  assert.equal((await danglingTarget(r, 'x.example-free.org')).registered, false);
+  assert.equal((await danglingTarget(fakeResolver({ 'example.net NS': 'SERVFAIL' }), 'a.example.net')).registered, null);
+});
+
+test('ct.dangling: a missing name inside a registered zone warns; a free domain or claimable service fails', async () => {
+  const crt = (names) => async (url) => ({ ok: true, status: 200, json: async () => [{ name_value: names.join('\n'), issuer_name: 'C=US, O=Example CA, CN=R1', not_after: '2099-01-01T00:00:00', serial_number: '01' }] });
+  const base = { 'example.dk A': ['192.0.2.1'], 'example.net NS': ['ns1.example.net.'], 'azurewebsites.net NS': ['ns1.example.'] };
+  const ctx = (zone, names) => ({ resolver: fakeResolver({ ...base, ...zone }), apex: 'example.dk', host: 'example.dk', fetch: crt(names), now: new Date('2026-11-27'), maxSubdomains: 20, connect: async () => { throw new Error('no network'); }, shared: {} });
+  const registered = (await ctChecks(ctx({ 'fpc.example.dk CNAME': ['tenant.cookies.example.net.'] }, ['fpc.example.dk']))).find((x) => x.id === 'ct.dangling');
+  assert.equal(registered.status, 'warn');
+  assert.equal(registered.blocker, false);
+  assert.match(registered.evidence, /example\.net is registered; the name is missing inside it/);
+  assert.doesNotMatch(registered.fix, /anyone can/);
+  const free = (await ctChecks(ctx({ 'old.example.dk CNAME': ['site.example-free.org.'] }, ['old.example.dk']))).find((x) => x.id === 'ct.dangling');
+  assert.equal(free.status, 'fail');
+  assert.equal(free.blocker, true);
+  assert.match(free.evidence, /example-free\.org is not registered/);
+  const azure = (await ctChecks(ctx({ 'app.example.dk CNAME': ['gone-app.azurewebsites.net.'] }, ['app.example.dk']))).find((x) => x.id === 'ct.dangling');
+  assert.equal(azure.status, 'fail');
+  assert.match(azure.evidence, /Microsoft Azure, listed as claimable/);
 });

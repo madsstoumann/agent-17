@@ -366,11 +366,22 @@ export function schemaChecks(input, { html = htmlPages(input.pages || []), idx =
   out.push(broken.length
     ? result('seo.jsonld-parse', 'fail', 'JSON-LD that does not parse', `${plural(broken.length, 'page')} with a JSON-LD block that is not valid JSON`, { fix: 'Search engines ignore a block that does not parse. Usually an unescaped quote or a trailing comma from a template; build it with JSON.stringify.', urls: broken.map((p) => ({ url: p.url, note: p.jsonLd.find((j) => j.error).error })) })
     : result('seo.jsonld-parse', 'pass', 'JSON-LD that does not parse', `${html.filter((p) => p.jsonLd?.length).length} pages carry JSON-LD, all of it parses`));
-  const none = idx.filter((p) => !p.jsonLd?.length);
+  // Blocks that parse but spell @context/@type as Context/Type: valid JSON, no structured data.
+  const bareOnly = (p) => p.jsonLd?.length && p.jsonLd.every((j) => j.bare || j.error) && p.jsonLd.some((j) => j.bare);
+  const bare = html.filter((p) => p.jsonLd?.some((j) => j.bare));
+  if (bare.length) {
+    const typesOf = (p) => [...new Set(p.jsonLd.flatMap((j) => j.bare || []))];
+    const keys = [...new Set(bare.flatMap(typesOf))].slice(0, 5);
+    out.push(result('seo.jsonld-bare', 'fail', 'JSON-LD with no @context/@type', `${plural(bare.length, 'page')} with a JSON-LD block whose keys look like Context/Type instead of @context/@type, so search and AI engines read nothing from it${keys.length ? ` (meant as ${keys.join(', ')})` : ''}`, { fix: 'Keep the @ in the keys: @context, @type (and @id, @graph). The usual cause is a server model serialised with PascalCase property names; give the serialiser explicit "@context"/"@type" names (for example [JsonPropertyName("@type")] in .NET) or build the block from a dictionary.', urls: bare.map((p) => ({ url: p.url, note: typesOf(p).length ? `bare ${typesOf(p).join(', ')}` : 'bare Context/Type keys' })) }));
+  }
+  const none = idx.filter((p) => !p.jsonLd?.length || bareOnly(p));
   const typeCount = new Map();
   for (const p of html) for (const t of new Set((p.jsonLd || []).flatMap((j) => j.types))) typeCount.set(t, (typeCount.get(t) || 0) + 1);
   const typeList = [...typeCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([t, n]) => `${t} ×${n}`).join(', ');
-  out.push(result('seo.jsonld-coverage', none.length === idx.length && idx.length ? 'warn' : 'info', 'Structured data coverage', none.length === idx.length ? `no JSON-LD on any indexable page${input.render?.ran ? ', also after rendering in Chrome' : ''}` : `${idx.length - none.length} of ${idx.length} indexable pages carry JSON-LD: ${typeList}`, { fix: none.length ? 'At least Organization (or LocalBusiness) and WebSite on the start page, BreadcrumbList on inner pages, and Article, Product, Event or FAQPage where the content is one.' : '', urls: none.length === idx.length ? [] : none.map((p) => ({ url: p.url, note: 'no JSON-LD' })) }));
+  const bareNote = (p) => (bareOnly(p) ? 'JSON-LD without @context/@type only' : 'no JSON-LD');
+  const nothing = none.length === idx.length;
+  const bareIdx = none.filter(bareOnly).length;
+  out.push(result('seo.jsonld-coverage', nothing && idx.length ? 'warn' : 'info', 'Structured data coverage', nothing ? `no usable JSON-LD on any indexable page${bareIdx ? ` (${bareIdx} carry only blocks without @context/@type)` : ''}${input.render?.ran ? ', also after rendering in Chrome' : ''}` : `${idx.length - none.length} of ${idx.length} indexable pages carry JSON-LD: ${typeList}${bareIdx ? `; ${plural(bareIdx, 'more page')} only without @context/@type` : ''}`, { fix: none.length ? 'At least Organization (or LocalBusiness) and WebSite on the start page, BreadcrumbList on inner pages, and Article, Product, Event or FAQPage where the content is one.' : '', urls: nothing && !bareIdx ? [] : none.map((p) => ({ url: p.url, note: bareNote(p) })) }));
 
   const r = input.render;
   if (r?.ran) {
