@@ -38,6 +38,89 @@ export function dayOnPage(value, haystack) {
   if (!names) return null;
   return names.split(' ').some((n) => new RegExp(`(?<![\\p{L}])${n}(?![\\p{L}])`, 'u').test(haystack));
 }
+// Short day names, read only as the ends of a range ("man.–fre.", "Mon-Fri", "Mo–Fr").
+const DAY_SHORT = {
+  monday: 'mon man mån mo', tuesday: 'tue tues tir tis di', wednesday: 'wed ons mi', thursday: 'thu thur thurs tor to do',
+  friday: 'fri fre fr', saturday: 'sat lør lör lau sa', sunday: 'sun søn sön so',
+};
+const WEEK = Object.keys(DAY_NAMES);
+
+/**
+ * The days a page covers with a range ("Mandag - torsdag: kl. 8.00-16.00", "mandag til fredag",
+ * "Monday to Friday", "Montag bis Freitag", "måndag–fredag", "Mon–Fri"), as English day keys.
+ * Read from the raw text: norm() turns the dash into a space.
+ */
+export function daysInRanges(text) {
+  const out = new Set();
+  const t = String(text || '').toLowerCase().normalize('NFKC').replace(/[‐-―]/g, '-');
+  const long = new Map(WEEK.flatMap((d) => DAY_NAMES[d].split(' ').map((n) => [n, d])));
+  const short = new Map(WEEK.flatMap((d) => DAY_SHORT[d].split(' ').map((n) => [n, d])));
+  const alt = (m) => [...m.keys()].sort((a, b) => b.length - a.length).join('|');
+  const ranges = [
+    new RegExp(`(?<![\\p{L}])(${alt(long)})\\s*(?:-|\\s(?:til|to|through|thru|bis|till|tot|t\\.o\\.m\\.|tom)\\s)\\s*(${alt(long)})(?![\\p{L}])`, 'gu'),
+    new RegExp(`(?<![\\p{L}])(${alt(short)})\\.?\\s*-\\s*(${alt(short)})\\.?(?![\\p{L}])`, 'gu'),
+  ];
+  for (const [i, re] of ranges.entries()) {
+    const map = i ? short : long;
+    for (const m of t.matchAll(re)) {
+      const a = WEEK.indexOf(map.get(m[1]));
+      const b = WEEK.indexOf(map.get(m[2]));
+      if (a < 0 || b < 0 || a === b) continue;
+      for (let k = a; ; k = (k + 1) % 7) { out.add(WEEK[k]); if (k === b) break; }
+    }
+  }
+  return out;
+}
+
+/**
+ * Every number the text shows, as plain numbers: "7.120,-" and "7 120 kr." are 7120, "1,234.50"
+ * is 1234.5, "99,95" is 99.95. A group of three digits after one separator ("1.160") is read both
+ * ways (1160 and 1.16): the page's language decides, and either reading is on the page.
+ */
+export function numbersIn(text) {
+  const out = new Set();
+  const t = String(text || '').normalize('NFKC');
+  for (const m of t.matchAll(/(?<![\d.,])\d{1,3}(?:([.,\u0020\u00a0\u202f'’])\d{3})(?:\1\d{3})*(?:[.,]\d+)?(?![\d])|(?<![\d.,])\d+(?:[.,]\d+)?(?![\d])/g)) {
+    const raw = m[0];
+    const sep = m[1];
+    if (sep) {
+      const [whole, dec] = raw.split(new RegExp(`[${sep === '.' ? ',' : sep === ',' ? '.' : '.,'}](?=\\d+$)`));
+      const n = Number(`${whole.split(sep).join('')}${dec !== undefined && whole !== raw ? `.${dec}` : ''}`);
+      if (Number.isFinite(n)) out.add(n);
+      if (/^\d{1,3}[.,]\d{3}$/.test(raw)) out.add(Number(raw.replace(',', '.')));
+    } else {
+      out.add(Number(raw.replace(',', '.')));
+    }
+  }
+  out.delete(NaN);
+  return out;
+}
+
+/**
+ * Every clock time the text shows, as "HH:MM": "kl. 8.00 -16.00", "08:00", "kl. 8", "10-17",
+ * "9am", "5 pm". An opens/closes of "08:00" is on a page that says "kl. 8.00".
+ */
+export function timesIn(text) {
+  const out = new Set();
+  const t = String(text || '').normalize('NFKC').replace(/[‐-―]/g, '-');
+  const add = (h, m = 0) => { if (h >= 0 && h <= 24 && m >= 0 && m < 60) out.add(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`); };
+  for (const x of t.matchAll(/(?<![\d.:])(\d{1,2})[.:](\d{2})(?![\d])/g)) add(+x[1], +x[2]);
+  for (const x of t.matchAll(/\bkl\.?\s*(\d{1,2})(?![\d.:])/gi)) add(+x[1]);
+  for (const x of t.matchAll(/(?<![\d.:,/-])(\d{1,2})\s*-\s*(\d{1,2})(?![\d.:/-]|,\d)/g)) if (+x[1] < +x[2]) { add(+x[1]); add(+x[2]); }
+  for (const x of t.matchAll(/(?<![\d.:])(\d{1,2})(?:[.:](\d{2}))?\s*([ap])\.?m\.?(?![\p{L}])/giu)) {
+    const h = +x[1] % 12 + (x[3].toLowerCase() === 'p' ? 12 : 0);
+    add(h, +(x[2] || 0));
+  }
+  return out;
+}
+
+/** A draft value that is only a number ("7120", "7120.00", "99,95"): the number, else null. */
+function draftNumber(value) {
+  const v = String(value).trim();
+  if (!/^-?\d+(?:[.,]\d+)?$/.test(v)) return null;
+  return Number(v.replace(',', '.'));
+}
+
 const DATE_KEYS = /^(datePublished|dateModified|dateCreated|uploadDate|startDate|endDate|validFrom|validThrough|datePosted|foundingDate|birthDate|expires)$/;
 
 /** Lowercase, accents kept, quotes and dashes unified, punctuation to spaces, whitespace collapsed. */
@@ -68,18 +151,24 @@ export function onPage(value, haystack) {
   return runs.filter((r) => haystack.includes(r)).length / runs.length >= 0.8;
 }
 
-const stripSlash = (u) => String(u).replace(/[?#].*$/, '').replace(/\/$/, '').toLowerCase();
+const decode = (u) => { try { return decodeURI(u); } catch { return u; } };
+const stripSlash = (u) => decode(String(u).replace(/[?#].*$/, '').replace(/\/$/, '')).toLowerCase();
 
-/** True when a URL is the page, its site root, or a link, image or meta URL the page carries. */
+/**
+ * True when a URL is the page, its site root, or a link, image or meta URL the page carries.
+ * The page's URLs are resolved against the page first, so a relative one ("/media/logo.png",
+ * "media/logo.png") matches the draft's absolute URL; percent-encoding is compared decoded.
+ */
 export function knownUrl(value, page) {
   let u;
   try { u = new URL(value); } catch { return false; }
   const want = stripSlash(u.toString());
   const origin = new URL(page.url).origin.toLowerCase();
-  if (want === stripSlash(page.url) || want === origin || (page.canonical && want === stripSlash(page.canonical))) return true;
-  if ((page.urls || []).some((x) => stripSlash(x) === want)) return true;
+  if (want === stripSlash(page.url) || want === stripSlash(origin) || (page.canonical && want === stripSlash(page.canonical))) return true;
+  const urls = (page.urls || []).map((x) => { try { return new URL(x, page.url).toString(); } catch { return x; } });
+  if (urls.some((x) => stripSlash(x) === want)) return true;
   // A path on the same site counts when the page links to it (with or without a locale prefix or case change).
-  if (u.origin.toLowerCase() === origin) return (page.urls || []).some((x) => stripSlash(x).endsWith(stripSlash(u.pathname)));
+  if (u.origin.toLowerCase() === origin) return urls.some((x) => stripSlash(x).endsWith(stripSlash(u.pathname)));
   return false;
 }
 
@@ -102,7 +191,11 @@ function* leaves(value, pathParts = [], key = '') {
  * and month, with or without the year; datePublished and dateModified need the full date.
  */
 export function verifyDraft(data, page) {
-  const haystack = norm([page.text, page.title, page.description, ...Object.values(page.og || {}), ...(page.breadcrumbs || []).map((b) => b.name), ...(page.org?.phones || []), ...(page.org?.emails || [])].join(' \n '));
+  const pageText = [page.text, page.title, page.description, ...Object.values(page.og || {}), ...(page.breadcrumbs || []).map((b) => b.name), ...(page.org?.phones || []), ...(page.org?.emails || [])].join(' \n ');
+  const haystack = norm(pageText);
+  let ranged = null;
+  let numbers = null;
+  let times = null;
   const dates = new Set(page.dates || []);
   // Day and month shown without a year ("torsdag den 5. november kl. 17-22"): an event's date.
   const dayMonths = new Set(page.dayMonths || []);
@@ -132,12 +225,23 @@ export function verifyDraft(data, page) {
       else if (PAGE_DATE_KEYS.test(key) && !year && GUESSED_DATE.has(page.leadDateSource)) out.push({ path: p, value, reason: `the page does not label this date (${page.leadDateSource === 'press' ? 'a press release dateline' : 'a date line next to the h1'}); confirm it before using it as ${key}` });
       continue;
     }
+    if ((key === 'opens' || key === 'closes') && /^\d{1,2}:\d{2}(?::\d{2})?$/.test(value)) {
+      times ??= timesIn(pageText);
+      const [h, m] = value.split(':').map(Number);
+      if (!times.has(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)) out.push({ path: p, value, reason: 'time not shown on the page' });
+      continue;
+    }
     if (key === 'dayOfWeek' && dayOnPage(value, haystack) !== null) {
-      if (!dayOnPage(value, haystack)) out.push({ path: p, value, reason: 'day not named on the page' });
+      // A day inside a range the page shows ("Mandag - torsdag") is on the page without being named.
+      ranged ??= daysInRanges(pageText);
+      if (!dayOnPage(value, haystack) && !ranged.has(String(value).replace(/^https?:\/\/schema\.org\//i, '').toLowerCase())) out.push({ path: p, value, reason: 'day not named on the page' });
       continue;
     }
     if (/^#|^_:/.test(value)) continue;
     if (words(value).length <= 1 && value.length <= 3) continue;
+    // A number the page writes with thousands separators or a ",-" ("7.120,-" for a draft's "7120").
+    const num = draftNumber(value);
+    if (num !== null && !onPage(value, haystack)) { numbers ??= numbersIn(pageText); if (numbers.has(num)) continue; }
     if (!onPage(value, haystack)) out.push({ path: p, value: value.length > 90 ? `${value.slice(0, 87)}…` : value, reason: 'text not on the page' });
   }
   return out;

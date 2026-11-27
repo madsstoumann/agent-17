@@ -5,14 +5,17 @@ const SPF_RE = /^v=spf1(\s|$)/i;
 const LOOKUP = /^[-~?+]?(include:|a(?=$|[:/])|mx(?=$|[:/])|ptr(?=$|:)|exists:)/i;
 
 /**
- * spfTree(domain, resolver) -> { record, records, terminal, lookups, voids, includes: [{ domain, record, error, macro? }], macros: [], problems: [] }
+ * spfTree(domain, resolver) -> { record, records, terminal, lookups, voids, includes: [{ domain, record, error, macro? }], macros: [], repeats: [], problems: [] }
+ * A name included twice in different branches (`repeats`) is not a loop: receivers evaluate it
+ * again and its lookups count again, so it is walked again; only a name that includes one of its
+ * own ancestors is a loop.
  * Include/redirect targets with macros (%{i}, %{d}, …) count as a lookup but are not followed:
  * receivers expand them per message, so there is no record to read ahead of time.
  * Counts DNS-querying terms across the whole include/redirect tree, the way receivers do
  * (RFC 7208 §4.6.4: more than 10 is a permerror; more than 2 void lookups too).
  */
 export async function spfTree(domain, resolver, { maxDepth = 10 } = {}) {
-  const out = { domain, record: null, records: [], terminal: null, lookups: 0, voids: 0, includes: [], macros: [], problems: [] };
+  const out = { domain, record: null, records: [], terminal: null, lookups: 0, voids: 0, includes: [], macros: [], repeats: [], problems: [] };
   const top = await txtSpf(domain, resolver);
   out.records = top.records;
   if (top.error) { out.problems.push(top.error); return out; }
@@ -20,7 +23,8 @@ export async function spfTree(domain, resolver, { maxDepth = 10 } = {}) {
   if (top.records.length > 1) { out.problems.push(`${top.records.length} SPF records on ${domain}; receivers treat several as a permanent error`); return out; }
   out.record = top.records[0];
   const seen = new Set([domain]);
-  async function walk(record, depth, isTop) {
+  const cache = new Map();
+  async function walk(record, depth, isTop, path = new Set([domain]), inRepeat = false) {
     for (const term of record.split(/\s+/).slice(1)) {
       const all = /^([-~?+]?)all$/i.exec(term);
       if (all) { if (isTop) out.terminal = `${all[1] || '+'}all`; continue; }
@@ -33,17 +37,21 @@ export async function spfTree(domain, resolver, { maxDepth = 10 } = {}) {
       // A macro target (RFC 7208 §7, e.g. Proofpoint's include:%{ir}.%{v}.%{d}.spf.has.pphosted.com)
       // is built per message from the sender's IP and domain; it has no fixed record to look up.
       if (/%\{/.test(target)) { out.macros.push(target); out.includes.push({ domain: target, record: null, macro: true, error: null }); continue; }
-      if (seen.has(target) || depth >= maxDepth) { if (seen.has(target)) out.problems.push(`include loop at ${target}`); continue; }
+      if (path.has(target)) { out.problems.push(`include loop at ${target}: it includes itself through ${[...path].join(' → ')}`); continue; }
+      if (depth >= maxDepth) continue;
+      const again = seen.has(target);
+      if (again && !inRepeat && !out.repeats.includes(target)) out.repeats.push(target);
       seen.add(target);
-      const sub = await txtSpf(target, resolver);
+      if (!cache.has(target)) cache.set(target, await txtSpf(target, resolver));
+      const sub = cache.get(target);
       const rec = sub.records[0] || null;
-      out.includes.push({ domain: target, record: rec, error: sub.error || (sub.records.length ? null : 'no SPF record') });
-      if (!rec) { out.voids++; out.problems.push(`${include ? 'include' : 'redirect'}:${target} has no SPF record (a permanent error for receivers)`); continue; }
+      if (!again) out.includes.push({ domain: target, record: rec, error: sub.error || (sub.records.length ? null : 'no SPF record') });
+      if (!rec) { out.voids++; if (!again) out.problems.push(`${include ? 'include' : 'redirect'}:${target} has no SPF record (a permanent error for receivers)`); continue; }
       if (redirect && isTop && !out.terminal) {
         const t = /(?:^|\s)([-~?+]?)all(?:\s|$)/i.exec(rec);
         if (t) out.terminal = `${t[1] || '+'}all (via redirect)`;
       }
-      await walk(rec, depth + 1, false);
+      await walk(rec, depth + 1, false, new Set([...path, target]), inRepeat || again);
     }
   }
   await walk(out.record, 0, true);
@@ -68,6 +76,8 @@ export function judgeSpf(t, { hasMx }) {
   if (!t.record) return { status: 'fail', evidence: t.problems.join('; '), fix: 'Keep exactly one v=spf1 TXT record.' };
   const notes = [`${t.terminal || 'no all'}`, `${t.lookups} DNS lookup${t.lookups === 1 ? '' : 's'} across ${t.includes.length} include${t.includes.length === 1 ? '' : 's'}`];
   const macros = t.macros || [];
+  const repeats = t.repeats || [];
+  if (repeats.length) notes.push(`${repeats.join(', ')} ${repeats.length === 1 ? 'is' : 'are'} included twice (directly and through another include, or through two includes); receivers count ${repeats.length === 1 ? 'its' : 'their'} lookups each time`);
   if (macros.length) notes.push(`${macros.length} macro include${macros.length === 1 ? '' : 's'} expanded per message by receivers, not followed here (${macros.join(', ')})`);
   const fixes = [];
   let status = 'pass';
@@ -77,6 +87,10 @@ export function judgeSpf(t, { hasMx }) {
   if (!t.terminal) { status = status === 'fail' ? status : 'warn'; fixes.push('End the record with -all or ~all'); }
   else if (/^\+all|^\?all/.test(t.terminal)) { status = 'fail'; fixes.push(`Replace ${t.terminal}: it lets any server send as the domain`); }
   if (t.problems.length && status === 'pass') status = 'warn';
+  if (repeats.length) {
+    if (t.lookups > 10) fixes.push(`Drop the direct include of ${repeats.join(', ')}: it is already reached through another include and its lookups count twice`);
+    else if (status === 'pass') { status = 'info'; fixes.push(`Optional: drop the second include of ${repeats.join(', ')}; it is harmless while the tree stays within 10 lookups`); }
+  }
   return { status, evidence: `\`${t.record}\` (${notes.join(', ')})${t.problems.length ? `; ${t.problems.join('; ')}` : ''}`, fix: fixes.join('; ') };
 }
 

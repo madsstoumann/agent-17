@@ -407,7 +407,7 @@ export const GEO_RELATED = new Set([
   'seo.start', 'seo.robots-txt', 'seo.noindex', 'seo.thin', 'seo.h1', 'seo.lang', 'seo.title-duplicate',
   'seo.sitemap', 'seo.sitemap-noindex', 'seo.sitemap-blocked',
   'seo.canonical-host', 'seo.canonical-target',
-  'seo.jsonld-parse', 'seo.jsonld-coverage', 'seo.jsonld-client-side', 'seo.schema-validator', 'seo.rich-required',
+  'seo.jsonld-parse', 'seo.jsonld-bare', 'seo.jsonld-coverage', 'seo.jsonld-client-side', 'seo.schema-validator', 'seo.rich-required',
   'seo.js-signals',
 ]);
 export const isGeoRow = (r) => r.area === 'geo' || GEO_RELATED.has(r.id);

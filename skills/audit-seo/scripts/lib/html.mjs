@@ -165,6 +165,31 @@ function collectTypes(node, out) {
   for (const [k, v] of Object.entries(node)) if (k !== '@type' && v && typeof v === 'object') collectTypes(v, out);
 }
 
+/**
+ * A parsed block with no `@context` and no `@type` anywhere, whose keys are `Context`/`Type` (or
+ * `context`/`type`) instead: a serialiser dropped the `@` (a .NET or Java model with PascalCase
+ * properties is the usual cause). JSON-LD processors read none of it. Returns the bare type
+ * values (`['Product', 'Offer']`), or null when the block is ordinary JSON-LD or not JSON-LD-like.
+ */
+export function bareJsonLd(data) {
+  let at = false;
+  let bare = false;
+  const types = [];
+  (function walk(node) {
+    if (Array.isArray(node)) { for (const n of node) walk(n); return; }
+    if (!node || typeof node !== 'object') return;
+    for (const [k, v] of Object.entries(node)) {
+      if (k === '@context' || k === '@type' || k === '@graph' || k === '@id') at = true;
+      else if (/^(context|type)$/i.test(k) && typeof v === 'string') {
+        if (/^context$/i.test(k) && /schema\.org/i.test(v)) bare = true;
+        if (/^type$/i.test(k) && /^[A-Z][A-Za-z]+$/.test(v)) { bare = true; if (!types.includes(v)) types.push(v); }
+      }
+      if (v && typeof v === 'object') walk(v);
+    }
+  })(data);
+  return !at && bare ? types : null;
+}
+
 // ---------------------------------------------------------------- extractors
 
 /**
@@ -173,6 +198,8 @@ function collectTypes(node, out) {
  * values are null, [] or {}; a present but empty content is ''. The title is the head's:
  * a `<title>` after `<body>` or inside an `<svg>` never counts.
  * `jsonLd[].types` is every `@type` found anywhere in the block (`@graph`, arrays and nested objects), unique.
+ * `jsonLd[].bare` is set (the bare type values) when the block spells its keys Context/Type without
+ * the `@`, so it parses but carries no structured data (see bareJsonLd).
  * `robots` and `googlebot` join every such meta tag's content with ", " (search engines combine
  * them, the most restrictive rule winning). `title`, `description` and `canonical` are the first
  * value; `titles`, `descriptions` and `canonicals` list every distinct one, so a page that states
@@ -188,7 +215,7 @@ function collectTypes(node, out) {
  *   og: Record<string, string>, twitter: Record<string, string>,
  *   icons: Array<{ rel: string, href: string, sizes: string|null, type: string|null }>,
  *   manifest: string|null,
- *   jsonLd: Array<{ types: string[], raw: string, data: unknown, error: string|null }>
+ *   jsonLd: Array<{ types: string[], raw: string, data: unknown, error: string|null, bare?: string[] }>
  * }}
  */
 export function extractMeta(html, baseUrl) {
@@ -253,6 +280,7 @@ export function extractMeta(html, baseUrl) {
         const raw = t.content.trim();
         const block = { types: [], raw, data: null, error: null };
         try { block.data = JSON.parse(raw); collectTypes(block.data, block.types); } catch (e) { block.error = `JSON parse failed: ${e.message}`; }
+        if (!block.error && !block.types.length) { const bare = bareJsonLd(block.data); if (bare) block.bare = bare; }
         meta.jsonLd.push(block);
         break;
       }
