@@ -1,10 +1,10 @@
 ---
 name: grill
-description: Questions one project file, a plan or a proposal until its gaps show: what it assumes without saying, where it contradicts another file or a standing decision, what it leaves undefined, and what would have to be true for it to work. Asks one question at a time, in rounds, never asks what the files already answer, and writes each answer where it belongs. Use when someone says "grill me", "poke holes in this", "what am I missing", "challenge this plan", wants a file, a brief, a scope or an architecture stress-tested before it is agreed, or wants to be interviewed about one subject in depth after the project is set up.
+description: "Questions one project file, a plan or a proposal until its gaps show: what it assumes without saying, where it contradicts another file or a standing decision, what it leaves undefined, and what would have to be true for it to work. Asks one question at a time, in rounds, never asks what the files already answer, and writes each answer where it belongs. Use when someone says \"grill me\", \"poke holes in this\", \"what am I missing\", \"challenge this plan\", wants a file, a brief, a scope or an architecture stress-tested before it is agreed, or wants to be interviewed about one subject in depth after the project is set up."
 argument-hint: "[file or subject] [--role ROLE] [--rounds N] [--root DIR]"
 allowed-tools: Bash(node:*), Bash(git:*), Read, Write, Edit, Grep, Glob
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # Grill

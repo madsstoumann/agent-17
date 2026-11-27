@@ -1,10 +1,10 @@
 ---
 name: phase
-description: Moves a project from one phase to the next (context, planning, design, dev, qa, release) and says what the move means: what is still open from the phase being left, which files the new phase usually calls for, and which roles are up next. The team decides when to move; the skill shows what they are leaving unfinished and records the move. Use when someone says the project is moving to planning, design, development, QA or release, "we are done with discovery", "design is signed off", "we start building", "we are going live", or asks what phase the project is in and what it takes to leave it.
+description: "Moves a project from one phase to the next (context, planning, design, dev, qa, release) and says what the move means: what is still open from the phase being left, which files the new phase usually calls for, and which roles are up next. The team decides when to move; the skill shows what they are leaving unfinished and records the move. Use when someone says the project is moving to planning, design, development, QA or release, \"we are done with discovery\", \"design is signed off\", \"we start building\", \"we are going live\", or asks what phase the project is in and what it takes to leave it."
 argument-hint: "[context|planning|design|dev|qa|release] [--root DIR]"
 allowed-tools: Bash(node:*), Bash(git:*), Read, Grep, Glob
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # Phase

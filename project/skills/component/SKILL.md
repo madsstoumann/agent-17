@@ -1,10 +1,10 @@
 ---
 name: component
-description: Writes the guidance file for one interface component (a button, a card, a navigation, a form field) in the project's design files: what it is for, its variants and states, which design tokens it uses, how it behaves, its accessibility requirements and what not to do with it. Takes the component from a design tool when one is connected, or from a screenshot, the existing code or a description. Untested, because no design tool was available when it was written, so that path has never been run. Use when someone asks to document or specify a component, hands over a component from a design file, says "add the button to the design system", "write the spec for the card", or wants the code and the design of a component compared.
+description: "Writes the guidance file for one interface component (a button, a card, a navigation, a form field) in the project's design files: what it is for, its variants and states, which design tokens it uses, how it behaves, its accessibility requirements and what not to do with it. Takes the component from a design tool when one is connected, or from a screenshot, the existing code or a description. Untested, because no design tool was available when it was written, so that path has never been run. Use when someone asks to document or specify a component, hands over a component from a design file, says \"add the button to the design system\", \"write the spec for the card\", or wants the code and the design of a component compared."
 argument-hint: "<name> [--from FILE|URL] [--root DIR]"
 allowed-tools: Bash(node:*), Bash(git:*), Read, Write, Edit, Grep, Glob
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # Component
