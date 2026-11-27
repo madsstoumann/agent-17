@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  decodeEntities, stripTags, parseAttrs, tokenize, extractMeta, extractLinks, extractAssets, findMixedContent, extractHosts,
+  decodeEntities, stripTags, quoteSafe, parseAttrs, tokenize, extractMeta, extractLinks, extractAssets, findMixedContent, extractHosts,
 } from '../lib/html.mjs';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/html/${name}`, import.meta.url), 'utf8');
@@ -244,4 +244,14 @@ test('extractHosts finds hostnames in URLs and CSP tokens, ignoring keywords, sc
   ]);
   assert.deepEqual(extractHosts([]), []);
   assert.deepEqual(extractHosts(['sha256-AbC', 'nonce-x', "'self'", 'https:', 'unsafe-eval']), []);
+});
+
+test('stripTags / quoteSafe: a ">" inside a quoted attribute value does not end the tag', () => {
+  const html = '<div class="[&>p]:text-inherit m-rich-text"><p data-x=\'a<b\'>Svar her</p></div><img alt=it\'s src=x.png><!-- c > d -->';
+  assert.equal(stripTags(html), 'Svar her');
+  const safe = quoteSafe(html.replace(/<!--.*-->/, ''));
+  assert.match(safe, /class="\[&&gt;p\]:text-inherit m-rich-text"/);
+  assert.equal(safe.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(), 'Svar her');
+  assert.equal(tokenize(safe)[0].attrs.class, '[&>p]:text-inherit m-rich-text');
+  assert.equal(quoteSafe('<p class="a">x</p>'), '<p class="a">x</p>');
 });

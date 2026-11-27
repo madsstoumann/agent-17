@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-infra` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.7.0] - 2026-11-27
+
+### Changed
+- `email.spf`: a name included twice (directly and through another include) is a repeat, not an "include loop": the row says "<name> is included twice", is info while the tree stays within 10 lookups, and its lookups now count each time, as receivers count them. Past 10 the fix names the include to drop. Only a name that includes one of its own ancestors is still a loop.
+- `ct.dangling` says, per name, whether the target's registrable domain is registered (NS lookup). It fails (and blocks) only when that domain is free to register or the target is on a service listed as claimable at can-i-take-over-xyz; a name missing inside a registered zone, or on a service listed as an edge case, is a warning. The claimable services are data (`lib/takeover.json`), no longer a list in the code; services listed there as not vulnerable (Zendesk, WP Engine, Fly.io, Firebase, Unbounce) were dropped. Nothing is ever registered or claimed.
+
 ## [2.6.0] - 2026-11-10
 
 ### Changed

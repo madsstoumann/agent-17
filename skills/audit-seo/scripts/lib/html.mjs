@@ -43,7 +43,28 @@ export function decodeEntities(s) {
  * @returns {string}
  */
 export function stripTags(html) {
-  return decodeEntities(String(html ?? '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+  return decodeEntities(String(html ?? '').replace(ANY_TAG, ' ')).replace(/\s+/g, ' ').trim();
+}
+
+// A tag whose quoted attribute values may hold `>` or `<` (Tailwind's class="[&>p]:mt-0",
+// a data-json attribute): a quote counts only right after `=`, so a stray apostrophe in an
+// unquoted value falls back to the plain `<…>` form. Comments and doctypes are tags too.
+const ANY_TAG = /<!--[\s\S]*?-->|<\/?[a-zA-Z][^\s/>"'=]*(?:\s*=\s*(?:"[^"]*"|'[^']*')|[^"'>])*>|<[^>]*>/g;
+const START_TAG = /<([a-zA-Z][^\s/>"'=]*)((?:\s*=\s*(?:"[^"]*"|'[^']*')|[^"'>])*)>/g;
+
+/**
+ * The HTML with every `<` and `>` inside a quoted attribute value written as `&lt;` and `&gt;`,
+ * so regexes that read a tag as `<[^>]*>` end it where the browser does. Attribute values read
+ * through parseAttrs() decode back to what the page wrote. Text and comments are left as they are.
+ * @param {string} html
+ * @returns {string}
+ */
+export function quoteSafe(html) {
+  const src = String(html ?? '');
+  if (!/=\s*(?:"[^"]*[<>]|'[^']*[<>])/.test(src)) return src;
+  return src.replace(START_TAG, (m, tag, attrs) => (/[<>]/.test(attrs)
+    ? `<${tag}${attrs.replace(/(=\s*)("[^"]*"|'[^']*')/g, (_, eq, q) => eq + q.replace(/</g, '&lt;').replace(/>/g, '&gt;'))}>`
+    : m));
 }
 
 // ---------------------------------------------------------------- attributes and tokens
@@ -144,6 +165,31 @@ function collectTypes(node, out) {
   for (const [k, v] of Object.entries(node)) if (k !== '@type' && v && typeof v === 'object') collectTypes(v, out);
 }
 
+/**
+ * A parsed block with no `@context` and no `@type` anywhere, whose keys are `Context`/`Type` (or
+ * `context`/`type`) instead: a serialiser dropped the `@` (a .NET or Java model with PascalCase
+ * properties is the usual cause). JSON-LD processors read none of it. Returns the bare type
+ * values (`['Product', 'Offer']`), or null when the block is ordinary JSON-LD or not JSON-LD-like.
+ */
+export function bareJsonLd(data) {
+  let at = false;
+  let bare = false;
+  const types = [];
+  (function walk(node) {
+    if (Array.isArray(node)) { for (const n of node) walk(n); return; }
+    if (!node || typeof node !== 'object') return;
+    for (const [k, v] of Object.entries(node)) {
+      if (k === '@context' || k === '@type' || k === '@graph' || k === '@id') at = true;
+      else if (/^(context|type)$/i.test(k) && typeof v === 'string') {
+        if (/^context$/i.test(k) && /schema\.org/i.test(v)) bare = true;
+        if (/^type$/i.test(k) && /^[A-Z][A-Za-z]+$/.test(v)) { bare = true; if (!types.includes(v)) types.push(v); }
+      }
+      if (v && typeof v === 'object') walk(v);
+    }
+  })(data);
+  return !at && bare ? types : null;
+}
+
 // ---------------------------------------------------------------- extractors
 
 /**
@@ -152,6 +198,8 @@ function collectTypes(node, out) {
  * values are null, [] or {}; a present but empty content is ''. The title is the head's:
  * a `<title>` after `<body>` or inside an `<svg>` never counts.
  * `jsonLd[].types` is every `@type` found anywhere in the block (`@graph`, arrays and nested objects), unique.
+ * `jsonLd[].bare` is set (the bare type values) when the block spells its keys Context/Type without
+ * the `@`, so it parses but carries no structured data (see bareJsonLd).
  * `robots` and `googlebot` join every such meta tag's content with ", " (search engines combine
  * them, the most restrictive rule winning). `title`, `description` and `canonical` are the first
  * value; `titles`, `descriptions` and `canonicals` list every distinct one, so a page that states
@@ -167,7 +215,7 @@ function collectTypes(node, out) {
  *   og: Record<string, string>, twitter: Record<string, string>,
  *   icons: Array<{ rel: string, href: string, sizes: string|null, type: string|null }>,
  *   manifest: string|null,
- *   jsonLd: Array<{ types: string[], raw: string, data: unknown, error: string|null }>
+ *   jsonLd: Array<{ types: string[], raw: string, data: unknown, error: string|null, bare?: string[] }>
  * }}
  */
 export function extractMeta(html, baseUrl) {
@@ -232,6 +280,7 @@ export function extractMeta(html, baseUrl) {
         const raw = t.content.trim();
         const block = { types: [], raw, data: null, error: null };
         try { block.data = JSON.parse(raw); collectTypes(block.data, block.types); } catch (e) { block.error = `JSON parse failed: ${e.message}`; }
+        if (!block.error && !block.types.length) { const bare = bareJsonLd(block.data); if (bare) block.bare = bare; }
         meta.jsonLd.push(block);
         break;
       }
@@ -258,7 +307,7 @@ export function nosnippetText(html) {
   for (const t of tokenize(src)) {
     if (t.index < skipUntil || !Object.hasOwn(t.attrs, 'data-nosnippet') || VOID.has(t.tag)) continue;
     const from = t.index + t.raw.length;
-    const re = new RegExp(`<(/?)${t.tag}(?=[\\s>/])[^>]*>`, 'ig');
+    const re = new RegExp(`<(/?)${t.tag}(?=[\\s>/])(?:\\s*=\\s*(?:"[^"]*"|'[^']*')|[^"'>])*>`, 'ig');
     re.lastIndex = from;
     let depth = 1; let end = src.length; let m;
     while ((m = re.exec(src))) {

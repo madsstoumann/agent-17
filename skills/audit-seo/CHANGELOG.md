@@ -2,6 +2,16 @@
 
 All notable changes to the `audit-seo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.9.0] - 2026-11-27
+
+### Added
+- `seo.jsonld-bare` (fail): pages whose JSON-LD parses but spells its keys `Context`/`Type` instead of `@context`/`@type` (a server model serialised with PascalCase names), so search and AI engines read nothing from it. Lists the pages and the types the block meant. It counts in GEO readiness, and `seo.jsonld-coverage` no longer counts a page that carries only such blocks ("JSON-LD without @context/@type only"). `lib/html.mjs` (identical in audit-eco and plan-geo) marks such blocks with `bare` and exports `bareJsonLd()`.
+
+## [2.8.1] - 2026-11-26
+
+### Fixed
+- A `>` inside a quoted attribute (Tailwind arbitrary variants such as `class="[&>p]:mt-0"`) no longer ends the tag: h1 text, headings and question headings, page text and word counts, `data-nosnippet` text and the GEO text count no longer pick up attribute text. `lib/html.mjs` (identical in audit-eco and plan-geo) gains `quoteSafe()`.
+
 ## [2.8.0] - 2026-11-13
 
 ### Added

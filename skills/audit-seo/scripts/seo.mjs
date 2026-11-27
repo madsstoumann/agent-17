@@ -338,7 +338,7 @@ async function renderPass(urls, pages, { opts, siteHosts, log, served = null }) 
       const before = page?.jsonLd?.length || 0;
       const added = Math.max(0, blocks.length - before);
       if (added && page) {
-        page.jsonLd = blocks.map((j) => ({ types: j.types, error: j.error }));
+        page.jsonLd = blocks.map((j) => ({ types: j.types, error: j.error, ...(j.bare ? { bare: j.bare } : {}) }));
         Object.assign(page, richOf(blocks));
         page.jsonLdClientSide = added;
         html.set(url, r.html);
@@ -368,7 +368,7 @@ async function schemaOnly(opts, http, siteHosts, log, archive = null) {
     isPrivate = archive ? true : isPrivateHost(u.hostname) || await resolvedPrivately(u.hostname);
   }
   const meta = extractMeta(body, url);
-  const page = { url, status: 200, title: meta.title ?? '', noindex: false, canonical: null, jsonLd: meta.jsonLd.map((j) => ({ types: j.types, error: j.error })), ...richOf(meta.jsonLd) };
+  const page = { url, status: 200, title: meta.title ?? '', noindex: false, canonical: null, jsonLd: meta.jsonLd.map((j) => ({ types: j.types, error: j.error, ...(j.bare ? { bare: j.bare } : {}) })), ...richOf(meta.jsonLd) };
   const pages = [page];
   const renderInfo = archive ? { summary: { ran: false, error: 'skipped: archive mode', pages: [] }, html: new Map() }
     : await renderPass(opts.renderPages ? [url] : [], pages, { opts, siteHosts, log });

@@ -144,7 +144,7 @@ export function pageRecord(url, res, html) {
     hreflang: meta.hreflang,
     og: meta.og,
     twitter: meta.twitter,
-    jsonLd: meta.jsonLd.map((j) => ({ types: j.types, error: j.error })),
+    jsonLd: meta.jsonLd.map((j) => ({ types: j.types, error: j.error, ...(j.bare ? { bare: j.bare } : {}) })),
     ...richOf(meta.jsonLd),
     words: wordCount(html),
     sig: pageSignals(html, meta.jsonLd),

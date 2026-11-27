@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   parseCsp, lintCsp, gradeSecurityHeaders, GRADE_TABLE, GRADE_NOTE,
   parseSetCookie, lintCookies, infoLeakHeaders, parseCacheControl, lintAssetCaching,
-  parseHsts, hstsVerdict, corsVerdict, crossOriginPolicies, cspLintFix, observatoryFix,
+  parseHsts, hstsVerdict, corsVerdict, crossOriginPolicies, cspLintFix, observatoryFix, readXfo, xfoRepeatNote,
 } from '../lib/headers.mjs';
 
 const fixture = (p) => readFileSync(new URL(`./fixtures/${p}`, import.meta.url), 'utf8');
@@ -421,4 +421,23 @@ test('observatoryFix: the CSP recommendation does not ask to remove unsafe-inlin
   assert.match(only, /does not restrict scripts/);
   assert.match(only, /X-Frame-Options/);
   assert.match(observatoryFix(failed, "script-src 'self' 'unsafe-inline'"), /Remove 'unsafe-inline'/, 'a real unsafe-inline keeps the advice');
+});
+
+test('infoLeakHeaders: x-page-speed and x-mod-pagespeed carry the PageSpeed version', () => {
+  assert.deepEqual(infoLeakHeaders({ 'x-page-speed': '1.13.35.2-0' }).map((l) => l.header), ['x-page-speed']);
+  assert.deepEqual(infoLeakHeaders({ 'x-mod-pagespeed': '1.13.35.2-0' }).map((l) => l.header), ['x-mod-pagespeed']);
+});
+
+test('readXfo: a header sent twice is read as a set, and the note says plainly that it is sent twice', () => {
+  const twice = readXfo('SAMEORIGIN, SAMEORIGIN');
+  assert.equal(twice.effective, 'SAMEORIGIN');
+  assert.equal(twice.repeated, true);
+  assert.match(xfoRepeatNote(twice), /^the header is sent twice \(SAMEORIGIN, SAMEORIGIN\); browsers read it as SAMEORIGIN/);
+  const mixed = readXfo('DENY, SAMEORIGIN');
+  assert.equal(mixed.effective, 'DENY');
+  assert.equal(mixed.conflicting, true);
+  assert.match(xfoRepeatNote(mixed), /different values/);
+  assert.equal(xfoRepeatNote(readXfo('DENY')), '');
+  assert.equal(readXfo('ALLOW-FROM https://example.org').effective, null);
+  assert.equal(readXfo('').effective, null);
 });

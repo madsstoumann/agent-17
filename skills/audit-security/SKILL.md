@@ -4,7 +4,7 @@ description: "Use when someone wants a security review, code security audit, vul
 argument-hint: "[path | url] [--only deps,secrets,xss,injection,request,crypto,config,ci] [--history [N]] [--offline] [--no-tests] [--out DIR] [--baseline FILE | --no-baseline] [--visibility public|private|internal] [--url URL] [--header NAME:VALUE] [--insecure] [--deep] [--level error|warn|error,warn|all] [--console]"
 allowed-tools: Bash(node:*), Bash(git log:*), Bash(git show:*), Bash(gh repo view:*), Read, Grep, Glob, WebFetch
 metadata:
-  version: "2.6.1"
+  version: "2.6.2"
 ---
 
 # Security audit

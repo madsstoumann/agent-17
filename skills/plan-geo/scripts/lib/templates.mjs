@@ -65,7 +65,7 @@ const jsonLdTypes = (p) => [...new Set((p.jsonLd || []).flatMap((j) => j.types |
 const pathOf = (u) => { try { return new URL(u).pathname; } catch { return u; } };
 
 /**
- * groupTemplates(pages) -> [{ key, slug, type, types, modules, pages: n, urls: [...], markup: {type: n},
+ * groupTemplates(pages) -> [{ key, slug, type, types, modules, pages: n, urls: [...], markup: {type: n}, unparsed: n,
  *   questionPages: n, articleLike: n, words: median }], biggest first, home first.
  * Duplicate URLs that differ only in case are counted once.
  */
@@ -95,6 +95,8 @@ export function groupTemplates(pages) {
       pages: ps.length,
       urls: ps.map((p) => p.url),
       markup,
+      // Pages whose JSON-LD has a block that does not parse: markup is there, but unusable.
+      unparsed: ps.filter((p) => (p.jsonLd || []).some((j) => j.error)).length,
       questionPages: ps.filter((p) => (p.sig?.questionHeadings || 0) > 0).length,
       articleLike: ps.filter((p) => p.sig?.articleLike || p.sig?.visibleDate).length,
       words: words[Math.floor(words.length / 2)] || 0,

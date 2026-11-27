@@ -41,7 +41,28 @@ export function decodeEntities(s) {
  * @returns {string}
  */
 export function stripTags(html) {
-  return decodeEntities(String(html ?? '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+  return decodeEntities(String(html ?? '').replace(ANY_TAG, ' ')).replace(/\s+/g, ' ').trim();
+}
+
+// A tag whose quoted attribute values may hold `>` or `<` (Tailwind's class="[&>p]:mt-0",
+// a data-json attribute): a quote counts only right after `=`, so a stray apostrophe in an
+// unquoted value falls back to the plain `<…>` form. Comments and doctypes are tags too.
+const ANY_TAG = /<!--[\s\S]*?-->|<\/?[a-zA-Z][^\s/>"'=]*(?:\s*=\s*(?:"[^"]*"|'[^']*')|[^"'>])*>|<[^>]*>/g;
+const START_TAG = /<([a-zA-Z][^\s/>"'=]*)((?:\s*=\s*(?:"[^"]*"|'[^']*')|[^"'>])*)>/g;
+
+/**
+ * The HTML with every `<` and `>` inside a quoted attribute value written as `&lt;` and `&gt;`,
+ * so regexes that read a tag as `<[^>]*>` end it where the browser does. Attribute values read
+ * through parseAttrs() decode back to what the page wrote. Text and comments are left as they are.
+ * @param {string} html
+ * @returns {string}
+ */
+export function quoteSafe(html) {
+  const src = String(html ?? '');
+  if (!/=\s*(?:"[^"]*[<>]|'[^']*[<>])/.test(src)) return src;
+  return src.replace(START_TAG, (m, tag, attrs) => (/[<>]/.test(attrs)
+    ? `<${tag}${attrs.replace(/(=\s*)("[^"]*"|'[^']*')/g, (_, eq, q) => eq + q.replace(/</g, '&lt;').replace(/>/g, '&gt;'))}>`
+    : m));
 }
 
 // ---------------------------------------------------------------- attributes and tokens

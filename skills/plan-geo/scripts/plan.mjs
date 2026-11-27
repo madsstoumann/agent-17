@@ -35,7 +35,7 @@ import { writeFixPlan, validateTasks } from './lib/tasks.mjs';
 import { mergeGraph, sampleHtml, injectLive, samplesReadme } from './lib/samples.mjs';
 import { openArchive, archiveHttp, hasMask, stripMasks, countMasks } from './lib/archive.mjs';
 
-export const VERSION = '1.6.2';
+export const VERSION = '1.8.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const log = (...a) => process.stderr.write(`${a.join(' ')}\n`);
@@ -335,7 +335,7 @@ async function extract(opts) {
     if (res.finalUrl) readKeys.set(sameKey(res.finalUrl), s.url);
     writeJson(path.join(pagesDir, `${slug}.json`), { ...rec, template: s.template, why: s.why, how });
     fs.writeFileSync(path.join(pagesDir, `${slug}.md`), pageDigest(rec));
-    read.push({ url: s.url, slug, template: s.template, why: s.why, how, words: rec.words, questions: rec.questions.length, tables: rec.tables, dates: rec.dates.length, jsonLd: [...typesIn(rec.jsonLd)] });
+    read.push({ url: s.url, slug, template: s.template, why: s.why, how, words: rec.words, questions: rec.questions.length, tables: rec.tables, dates: rec.dates.length, jsonLd: [...typesIn(rec.jsonLd)], jsonLdErrors: rec.jsonLdErrors.length });
     log(`read ${s.url} (${rec.words} words, ${how})`);
   }
   if (browser) await browser.close();
@@ -392,11 +392,13 @@ function inventoryMarkdown(inv) {
   out.push('## Templates', '', 'Guessed type and usual markup are a starting point; correct them after reading the pages.', '');
   out.push('| Template | Pages | Guessed type | Usual markup | Modules to consider | Markup now | Question pages | Dated pages | Median words | Example |', '| --- | ---: | --- | --- | --- | --- | ---: | ---: | ---: | --- |');
   for (const t of inv.templates) {
-    const now = Object.entries(t.markup).map(([k, n]) => `${k} ${n}`).join(', ') || 'none';
+    const found = Object.entries(t.markup).map(([k, n]) => `${k} ${n}`).join(', ');
+    const broken = t.unparsed ? `${t.unparsed} page${t.unparsed === 1 ? '' : 's'} with a block that does not parse` : '';
+    const now = [found, broken].filter(Boolean).join('; ') || 'none';
     out.push(`| ${t.key} | ${t.pages} | ${t.type} | ${t.types.join(', ')} | ${t.modules.join(', ') || ''} | ${now} | ${t.questionPages} | ${t.articleLike} | ${t.words} | ${t.example ? `pages/${t.example}.md` : ''} |`);
   }
   out.push('', '## Pages read', '', '| Page | Template | Why | Read as | Words | Questions | Table rows | Dates | JSON-LD |', '| --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |');
-  for (const s of inv.sample) out.push(`| [${new URL(s.url).pathname}](pages/${s.slug}.md) | ${s.template} | ${s.why} | ${s.how} | ${s.words} | ${s.questions} | ${s.tables} | ${s.dates} | ${s.jsonLd.join(', ') || 'none'} |`);
+  for (const s of inv.sample) out.push(`| [${new URL(s.url).pathname}](pages/${s.slug}.md) | ${s.template} | ${s.why} | ${s.how} | ${s.words} | ${s.questions} | ${s.tables} | ${s.dates} | ${[s.jsonLd.join(', '), s.jsonLdErrors ? `${s.jsonLdErrors} block${s.jsonLdErrors === 1 ? ' that does' : 's that do'} not parse` : ''].filter(Boolean).join('; ') || 'none'} |`);
   out.push('');
   return out.join('\n');
 }

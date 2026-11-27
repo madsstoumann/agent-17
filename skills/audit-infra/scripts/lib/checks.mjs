@@ -1,5 +1,6 @@
 // The five check groups. Each takes the run context and returns result rows; scan.mjs runs
 // them, turns a crash into one skip row, and writes the report.
+import { readFileSync } from 'node:fs';
 import { result, pLimit, settle } from './common.mjs';
 import { parseMx, parseCaa, parseSoa, undot, apexOf } from './dns.mjs';
 import { handshake, sanCovers, daysLeft, caaAllows, PUBLIC_ROOTS, UNTRUSTED_ROOT } from './tls.mjs';
@@ -352,7 +353,31 @@ export async function edgeChecks(ctx) {
 // ------------------------------------------------------------------ Certificate Transparency
 
 /** Services whose names can be claimed by anyone once the resource is deleted (can-i-take-over-xyz). */
-export const TAKEOVER_SUFFIXES = ['azurewebsites.net', 'cloudapp.net', 'cloudapp.azure.com', 'trafficmanager.net', 'blob.core.windows.net', 'azureedge.net', 'azurestaticapps.net', 's3.amazonaws.com', 's3-website', 'elasticbeanstalk.com', 'herokuapp.com', 'herokudns.com', 'github.io', 'netlify.app', 'netlify.com', 'vercel.app', 'pantheonsite.io', 'surge.sh', 'bitbucket.io', 'ghost.io', 'myshopify.com', 'zendesk.com', 'wpengine.com', 'fly.dev', 'readme.io', 'helpscoutdocs.com', 'webflow.io', 'unbouncepages.com', 'firebaseapp.com', 'web.app'];
+// Which CNAME targets are on services where a deleted name can be claimed again: data, not code
+// (lib/takeover.json, from the public can-i-take-over-xyz list). Read only; nothing is ever registered.
+export const TAKEOVER = JSON.parse(readFileSync(new URL('takeover.json', import.meta.url), 'utf8'));
+
+/** takeoverService('x.azurewebsites.net') -> { service, status: 'vulnerable'|'edge' } | null */
+export function takeoverService(target) {
+  const t = undot(String(target || '')).toLowerCase();
+  for (const s of TAKEOVER.services) {
+    if (s.suffixes.some((x) => t === x || t.endsWith(`.${x}`)) || (s.patterns || []).some((p) => new RegExp(p).test(t))) return { service: s.service, status: s.status };
+  }
+  return null;
+}
+
+/**
+ * danglingTarget(resolver, target) -> { registrable, registered: true|false|null, service }
+ * Is the target's registrable domain (Public Suffix List) still registered? NS answers = yes,
+ * NXDOMAIN = free to register, anything else = unknown. A name missing inside a live zone can only
+ * be recreated by that zone's owner, unless the zone belongs to a service that hands names out.
+ */
+export async function danglingTarget(r, target) {
+  const registrable = apexOf(undot(target));
+  const ns = await r.query(registrable, 'NS');
+  const registered = ns.ok ? (ns.nxdomain ? false : ns.answers.some((x) => x.type === 'NS') ? true : null) : null;
+  return { registrable, registered, service: takeoverService(target) };
+}
 
 export async function ctChecks(ctx) {
   const { resolver: r, apex } = ctx;
@@ -403,9 +428,19 @@ export async function ctChecks(ctx) {
   })));
 
   const dangling = rows.filter((x) => x.dangling);
-  const risky = dangling.filter((x) => TAKEOVER_SUFFIXES.some((s) => x.alias.includes(s)));
+  for (const x of dangling) x.target = await danglingTarget(r, x.alias);
+  const free = dangling.filter((x) => x.target.registered === false);
+  const claimable = dangling.filter((x) => x.target.registered !== false && x.target.service?.status === 'vulnerable');
+  const why = ({ target: t }) => t.registered === false ? `${t.registrable} is not registered: anyone can register it`
+    : t.service?.status === 'vulnerable' ? `${t.service.service}, listed as claimable at can-i-take-over-xyz`
+    : t.service?.status === 'edge' ? `${t.service.service}, claimable only in some setups (edge case at can-i-take-over-xyz)`
+    : t.registered ? `${t.registrable} is registered; the name is missing inside it, so only that zone's owner can recreate it`
+    : `could not tell whether ${t.registrable} is registered`;
+  const fix = free.length || claimable.length
+    ? 'Delete these CNAMEs (or recreate the targets). Where the target domain is free or the service hands out names, anyone can claim the target and serve pages, cookies and phishing on your domain.'
+    : 'Delete these CNAMEs or recreate the targets. They point at names that no longer exist; nobody but the target zone\'s owner can claim them today, but they break if the name comes back under someone else\'s control.';
   out.push(dangling.length
-    ? result('ct.dangling', 'fail', 'Dangling CNAMEs', dangling.map((x) => `${x.name} → ${x.alias}${TAKEOVER_SUFFIXES.some((s) => x.alias.includes(s)) ? ' (claimable service)' : ''}`).join('; '), { fix: 'Delete these CNAMEs (or recreate the targets). On a claimable service anyone can register the target and serve pages, cookies and phishing on your domain.', blocker: risky.length > 0 })
+    ? result('ct.dangling', free.length || claimable.length ? 'fail' : 'warn', 'Dangling CNAMEs', dangling.map((x) => `${x.name} → ${x.alias} (${why(x)})`).join('; '), { fix, blocker: free.length + claimable.length > 0, data: { targets: dangling.map((x) => ({ name: x.name, alias: x.alias, ...x.target })) } })
     : result('ct.dangling', 'pass', 'Dangling CNAMEs', `none among ${plural(rows.length, 'name')} checked`));
 
   const live = rows.filter((x) => x.https);

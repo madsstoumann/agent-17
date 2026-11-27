@@ -2,6 +2,30 @@
 
 All notable changes to the `plan-geo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [1.8.0] - 2026-11-27
+
+### Added
+- A short paragraph that ends in "?" and is followed by a sentence (an accordion label, a bold paragraph) counts as a question, marked `heading: false`. The page's `.md` lists them as "questions in styled paragraphs (not a heading)" apart from the question headings, so the plan can propose rendering them as headings.
+- `org.logoSource` (`header` or `icon`) and `org.logoSvg`: when the header logo is an inline `<svg>` with no URL, the logo falls back to a `<link rel=icon>` or apple-touch-icon of 112 px or more, and the page's `.md` says which it is.
+
+### Fixed
+- The header logo is looked for from `<body>` on: a page whose `<head>` holds a lot of inline CSS and script had its logo `<img>` past the part of the page that was searched, so `org.logo` was null.
+- `check` matches a number the page writes with thousands separators or a ",-" ("7.120,-", "7 120 kr.", "1,234.50") with the draft's plain number ("7120").
+- `check` reads a day range ("Mandag - torsdag", "mandag til fredag", "Monday to Friday", "Montag bis Freitag", "måndag–onsdag", "man.–fre.") as every day in it, so a dayOfWeek of Tuesday is on such a page; `opens`/`closes` are matched with the times the page shows ("kl. 8.00", "10-17", "9am") instead of as text.
+- `check` resolves the page's URLs against the page (and `<base href>`) before matching and compares them percent-decoded; the page's URLs now include every srcset and data-srcset candidate, `poster`, CSS `url()` in a style attribute and `src`/`href` in markup kept inside component props.
+- `lib/html.mjs` kept identical to audit-seo's (JSON-LD with `Context`/`Type` keys is marked).
+
+## [1.7.0] - 2026-11-26
+
+### Fixed
+- A `>` inside a quoted attribute (Tailwind arbitrary variants such as `class="[&>p]:mt-0"`) no longer ends the tag: the extract escapes it first (`quoteSafe()` in `lib/html.mjs`), so attribute text no longer leaks into headings, FAQ answers and the page text.
+- Page dates written day-month-year with hyphens ("03-06-2026") are read, like "03.06.2026" and "03/06/2026".
+- `check` accepts a `dateModified` that the page labels as its last change anywhere in the main content ("Senest ændret 2025-03-11", "Last updated: 4 June 2024"); page records carry these as `modifiedDates`. A datePublished still needs the page's own date near the title. "senest"/"sist" are read before a date label.
+- `check` reads `dayOfWeek` in the page's language: "Monday" is on a page that says "mandag", "måndag", "Montag", "maandag", "lundi" or "lunes" (English, Danish, Norwegian, Swedish, German, Dutch, French, Spanish).
+- Bylines: the Danish labels "Bidrag", "Bidrag af" and "Bidragyder:" are read, and a label followed by a single capitalised word and nothing else ("By Redaktionen") is a byline.
+- JSON-LD that does not parse is reported instead of "none": "Existing JSON-LD: 1 block that does not parse (…)" in the page digest, and the inventory's "Markup now" and "JSON-LD" columns count the pages and blocks that do not parse (templates carry `unparsed`).
+- `lib/html.mjs` (identical in audit-seo, audit-eco and plan-geo): `stripTags()` and `nosnippetText()` end a tag where the browser does when an attribute value holds `>`; new `quoteSafe()`.
+
 ## [1.6.2] - 2026-11-13
 
 ### Fixed

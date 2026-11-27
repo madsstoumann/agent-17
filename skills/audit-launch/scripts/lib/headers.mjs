@@ -35,7 +35,7 @@ const BYPASS_HOSTS = ['ajax.googleapis.com', 'www.google.com', 'cdnjs.cloudflare
 const REFERRER_POLICIES = new Set(['no-referrer', 'no-referrer-when-downgrade', 'origin', 'origin-when-cross-origin', 'same-origin', 'strict-origin', 'strict-origin-when-cross-origin', 'unsafe-url']);
 const SENSITIVE_COOKIE = /sess|auth|token|csrf|xsrf|login|\.aspnetcore\.|umb_|jwt/i;
 const CDN_COOKIE = /^(__cf_bm|__cfduid)$|^(AWSALB|ARRAffinity|incap_ses|visid_incap)/i;
-const LEAK_HEADERS = ['x-powered-by', 'x-aspnet-version', 'x-aspnetmvc-version', 'x-generator', 'x-umbraco-version'];
+const LEAK_HEADERS = ['x-powered-by', 'x-aspnet-version', 'x-aspnetmvc-version', 'x-generator', 'x-umbraco-version', 'x-page-speed', 'x-mod-pagespeed'];
 const HASHED_PATH = /[.\-_][a-f0-9]{8,}\.(m?js|css|woff2?|png|jpe?g|webp|avif|svg)(\?|$)/i;
 const TEXT_TYPE = /^text\/|javascript|ecmascript|json|xml|svg/;
 
@@ -314,7 +314,7 @@ export function lintCookies(cookies, { https = true, host = '' } = {}) {
 /**
  * infoLeakHeaders(headers) -> [{ header, value, text }]: a server header carrying a version
  * number, and x-powered-by, x-aspnet-version, x-aspnetmvc-version, x-generator,
- * x-umbraco-version when non-empty. A bare product name (server: cloudflare) is not a leak.
+ * x-umbraco-version, x-page-speed and x-mod-pagespeed (PageSpeed's version) when non-empty. A bare product name (server: cloudflare) is not a leak.
  */
 export function infoLeakHeaders(headers) {
   const out = [];
@@ -327,6 +327,31 @@ export function infoLeakHeaders(headers) {
     if (v) out.push({ header: name, value: v, text: `${name} reveals the stack ("${v}"); remove the header, nothing on the site needs it.` });
   }
   return out;
+}
+
+// ---------------------------------------------------------------- framing
+
+/**
+ * readXfo(value) -> { value, values, effective, repeated, conflicting }: X-Frame-Options as a
+ * browser reads it. A header sent twice arrives joined by a comma ("SAMEORIGIN, SAMEORIGIN"); the
+ * HTML standard reads the values as a set, so the same value twice is that value (`repeated`),
+ * while two different ones ("DENY, SAMEORIGIN", `conflicting`) block every frame, as DENY.
+ * `effective` is DENY, SAMEORIGIN or null (absent, or a value browsers ignore such as ALLOW-FROM).
+ */
+export function readXfo(value) {
+  const raw = String(value ?? '').trim();
+  const values = raw.split(',').map((v) => v.trim().toUpperCase()).filter(Boolean);
+  const set = [...new Set(values)];
+  const known = set.every((v) => v === 'DENY' || v === 'SAMEORIGIN');
+  const effective = !set.length || !known ? null : set.length === 1 ? set[0] : 'DENY';
+  return { value: raw, values, effective, repeated: values.length > 1 && set.length === 1 && known, conflicting: set.length > 1 && known };
+}
+
+/** The plain words for an X-Frame-Options sent more than once, or '' when it is sent once. */
+export function xfoRepeatNote(x) {
+  if (x.repeated) return `the header is sent ${x.values.length === 2 ? 'twice' : `${x.values.length} times`} (${x.value}); browsers read it as ${x.effective}, but MDN Observatory and some older browsers reject it`;
+  if (x.conflicting) return `the header is sent more than once with different values (${x.value}); browsers then refuse every frame, as DENY`;
+  return '';
 }
 
 // ---------------------------------------------------------------- caching
