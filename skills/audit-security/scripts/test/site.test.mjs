@@ -226,3 +226,19 @@ test('diffRows: a row folded into another by the skill is "merged", not "fixed"'
   assert.match(md, /- Merged: \*\*X-Frame-Options\*\* \(was fail\) is now counted under \*\*Clickjacking \(frame-ancestors\)\*\*/);
   assert.doesNotMatch(md, /Fixed: ✅ \*\*X-Frame-Options/);
 });
+
+test('frameAncestors: an X-Frame-Options sent twice protects the page and the row says it is sent twice', () => {
+  const twice = frameAncestors({ 'x-frame-options': 'SAMEORIGIN, SAMEORIGIN' });
+  assert.equal(twice.status, 'warn');
+  assert.match(twice.evidence, /^X-Frame-Options SAMEORIGIN only \(the header is sent twice: "SAMEORIGIN, SAMEORIGIN"/);
+  assert.doesNotMatch(twice.evidence, /not a value browsers honour/);
+  assert.match(twice.fix, /keep X-Frame-Options: SAMEORIGIN/);
+  assert.match(twice.fix, /Send X-Frame-Options once/);
+  const mixed = frameAncestors({ 'x-frame-options': 'DENY, SAMEORIGIN' });
+  assert.equal(mixed.status, 'warn');
+  assert.match(mixed.evidence, /different values.*as DENY/);
+  const withCsp = frameAncestors({ 'x-frame-options': 'DENY, DENY', 'content-security-policy': "frame-ancestors 'none'" });
+  assert.equal(withCsp.status, 'pass');
+  assert.match(withCsp.evidence, /X-Frame-Options DENY too; the header is sent twice/);
+  assert.doesNotMatch(frameAncestors({ 'x-frame-options': 'DENY' }).evidence, /sent/);
+});

@@ -2,6 +2,13 @@
 
 All notable changes to the `audit-launch` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.6.1] - 2026-11-26
+
+### Fixed
+- Version disclosure: `x-page-speed` and `x-mod-pagespeed` (they carry the PageSpeed module's version) are flagged like `x-powered-by`.
+- X-Frame-Options sent twice ("SAMEORIGIN, SAMEORIGIN") is a warning that says plainly the header is sent twice, how browsers read it, and to send it once; it passed before, while MDN Observatory fails it. Different values ("DENY, SAMEORIGIN") say that browsers then refuse every frame. New `readXfo()` and `xfoRepeatNote()` in `lib/headers.mjs`.
+- `lib/html.mjs`: `stripTags()` ends a tag where the browser does when a quoted attribute value holds `>`; new `quoteSafe()` (kept in step with audit-seo's copy).
+
 ## [2.6.0] - 2026-11-10
 
 ### Changed

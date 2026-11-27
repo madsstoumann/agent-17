@@ -8,7 +8,7 @@
  *
  * Zero dependencies. Node >= 22. Pure.
  */
-import { stripTags, tokenize } from './html.mjs';
+import { quoteSafe, stripTags, tokenize } from './html.mjs';
 
 const ARTICLE_TYPES = /^(Article|NewsArticle|BlogPosting|TechArticle|ScholarlyArticle|Report|LiveBlogPosting|AnalysisNewsArticle|OpinionNewsArticle|ReviewNewsArticle)$/;
 const LONG_PARAGRAPH = 120;
@@ -51,7 +51,7 @@ export function visibleDate(html) {
 
 /** The body without scripts, styles, templates, SVG and the page chrome (nav, header, footer, aside). */
 function contentHtml(html) {
-  const body = String(html || '').replace(/^[\s\S]*?<body[^>]*>/i, '');
+  const body = quoteSafe(String(html || '')).replace(/^[\s\S]*?<body[^>]*>/i, '');
   return body
     .replace(/<(script|style|svg|noscript|template)\b[\s\S]*?<\/\1\s*>/gi, ' ')
     .replace(/<(nav|header|footer|aside)\b[\s\S]*?<\/\1\s*>/gi, ' ');

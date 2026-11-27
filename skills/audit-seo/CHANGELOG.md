@@ -2,6 +2,11 @@
 
 All notable changes to the `audit-seo` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.8.1] - 2026-11-26
+
+### Fixed
+- A `>` inside a quoted attribute (Tailwind arbitrary variants such as `class="[&>p]:mt-0"`) no longer ends the tag: h1 text, headings and question headings, page text and word counts, `data-nosnippet` text and the GEO text count no longer pick up attribute text. `lib/html.mjs` (identical in audit-eco and plan-geo) gains `quoteSafe()`.
+
 ## [2.8.0] - 2026-11-13
 
 ### Added

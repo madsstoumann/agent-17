@@ -24,7 +24,7 @@ import { SITE_GROUPS, siteUrl, runSite, renderSiteMarkdown, diffRows, consoleIte
 import { createInventory, seedLedger, inventoryLines } from './lib/deep.mjs';
 import { runTools } from './lib/tools.mjs';
 
-export const VERSION = '2.6.0';
+export const VERSION = '2.6.1';
 const GROUPS = ['deps', 'secrets', 'xss', 'injection', 'request', 'crypto', 'config', 'ci'];
 const SEV = { high: 3, medium: 2, low: 1 };
 

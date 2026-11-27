@@ -4,7 +4,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
-import { extractMeta, nosnippetText } from '../lib/html.mjs';
+import { extractMeta, nosnippetText, stripTags } from '../lib/html.mjs';
+import { pageSignals } from '../lib/content.mjs';
 import { pageRecord, xRobotsDirectives, snippetControl, headerCanonicals, internalLinks } from '../lib/crawl.mjs';
 import { runChecks, jsDrift, jsSignalsRow, HTML_LIMIT } from '../lib/checks.mjs';
 import { parseSitemap, parseSitemapBody, loadSitemaps, SITEMAP_MAX_BYTES } from '../lib/robots.mjs';
@@ -278,4 +279,12 @@ test('archive mode skips the render comparison and the sitemap limits without a 
   assert.equal(st('seo.sitemap-limits').status, 'skip');
   assert.equal(st('seo.snippet-controls').archive, 'degraded');
   assert.equal(st('seo.head-conflicts').archive, 'degraded');
+});
+
+test('a ">" inside a quoted attribute (Tailwind arbitrary variants) leaks into no heading or text', () => {
+  const html = '<html><body><main><h1 class="text-[3rem] [&>span]:block">Guide</h1><h2 class="[&>*]:text-inherit">Hvad er det?</h2><div class="[&>p]:mt-0" data-nosnippet><p>Svar</p></div></main></body></html>';
+  assert.deepEqual(extractMeta(html, 'https://example.dk/').h1s, ['Guide']);
+  assert.equal(nosnippetText(html), 'Svar');
+  assert.equal(stripTags(html), 'Guide Hvad er det? Svar');
+  assert.equal(pageSignals(html).questionHeadings, 1);
 });

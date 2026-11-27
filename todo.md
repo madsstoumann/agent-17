@@ -32,3 +32,8 @@ Open points from the comparison with an outside SEO plugin (2026-11-13, PR addin
 - [ ] **audit-seo: Google-Extended wording.** `seo.ai-crawlers` calls Google-Extended a training crawler whose block "costs no visibility". Google-Extended also controls grounding in Gemini apps (Search, AI Overviews and AI Mode are unaffected). Decide whether the fix text should say so.
 - [ ] **audit-seo: agent-discovery info rows.** Markdown versions of pages (`Accept: text/markdown` with `Vary: Accept`, `<link rel="alternate" type="text/markdown">`), `/.well-known/ai-catalog.json`, other `.well-known` agent documents and WebMCP are drafts or proposals. At most info rows in the GEO area; decide whether they are worth a request each.
 - [ ] **plan-geo: answer-first briefs.** Content briefs could ask for the direct answer in the first 40 to 60 words under a question heading, a "X is …" definition per term and a table for any comparison, and for `sameAs` only to profiles the site itself links to.
+
+Open points from the 2026-11-26 batch (PR fixing tag parsing, hyphenated dates, change dates, day names, bylines, unparsed JSON-LD and X-Frame-Options sent twice).
+
+- [ ] **plan-geo check: day ranges in opening hours.** `dayOfWeek` now matches a day named in the page's language, but a range ("mandag–fredag 9–17", "Mon–Fri") does not back the days inside it, so Tuesday to Thursday read "day not named on the page". Decide whether a range of two day names should count for the days between.
+- [ ] **audit-infra: crt.sh answers HTTP 502 now and then.** The Cert Spotter fallback covers it and the row says which source answered; nothing to change unless the fallback starts failing too.

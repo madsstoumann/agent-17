@@ -9,7 +9,7 @@
  *
  * Zero dependencies. Node >= 22. Pure.
  */
-import { decodeEntities, extractMeta, tokenize } from './html.mjs';
+import { decodeEntities, extractMeta, quoteSafe, tokenize } from './html.mjs';
 import { hiddenBlocks, blocksMarkdown, blockWords } from './rsc.mjs';
 import { dropConsentHtml } from './consent.mjs';
 
@@ -39,9 +39,12 @@ const clean = (s) => decodeEntities(String(s || '').replace(/<[^>]*>/g, ' ')).re
 const resolve = (href, base) => { try { const u = new URL(String(href).trim(), base); return /^https?:$/.test(u.protocol) ? (u.hash = '', u.toString()) : null; } catch { return null; } };
 const countWords = (s) => (s ? s.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length : 0);
 
-/** The body without scripts, styles, SVG, templates and comments. */
+/**
+ * The body without scripts, styles, SVG, templates and comments. A `>` inside a quoted attribute
+ * (class="[&>p]:mt-0") is escaped first (quoteSafe), so no attribute text leaks into the content.
+ */
 function bodyHtml(html) {
-  const src = String(html || '');
+  const src = quoteSafe(String(html || ''));
   const body = /<body[^>]*>/i.test(src) ? src.replace(/^[\s\S]*?<body[^>]*>/i, '') : src;
   return body
     .replace(/<!--[\s\S]*?-->/g, ' ')
@@ -114,7 +117,7 @@ const WEEKDAYS = new Set('monday tuesday wednesday thursday friday saturday sund
 
 /**
  * Dates written on the page, as YYYY-MM-DD: "12 March 2025", "March 12, 2025", "2025-03-12",
- * "12.03.2025", "12/03/2025" (day first), and day-month-year in the languages MONTH_NAMES covers:
+ * "12.03.2025", "12/03/2025", "12-03-2025" (day first), and day-month-year in the languages MONTH_NAMES covers:
  * "1. oktober 2026", "d. 9. november 2026", "1er octobre 2026", "1 de octubre de 2026". In a range
  * ("1. oktober – 29. marts 2027", "3.–5. juni 2026") the first date takes the year from the second;
  * in a list ("5., 12. og 19. december 2026", "5, 12 and 19 December 2026") every day counts.
@@ -146,7 +149,7 @@ export function visibleDates(text) {
     for (const d of m[1].match(/\d{1,2}/g)) out.add(iso(y, mo, +d));
   }
   for (const m of t.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) out.add(iso(+m[1], +m[2], +m[3]));
-  for (const m of t.matchAll(/\b(\d{1,2})[./](\d{1,2})[./](\d{4})\b/g)) out.add(iso(+m[3], +m[2], +m[1]));
+  for (const m of t.matchAll(/(?<!\d|\d[./-])(\d{1,2})([./-])(\d{1,2})\2(\d{4})(?!\d|[./-]\d)/g)) out.add(iso(+m[4], +m[3], +m[1]));
   out.delete(null);
   return [...out].sort();
 }
@@ -177,7 +180,7 @@ export function dayMonths(text) {
 }
 
 // Labels that put a page's own date next to it: "Opdateret 9. november 2026", "Published: 4 June 2024".
-const DATE_LABEL = /(?:^|[\s(|·•,–—-])(?:sidst\s+|last\s+|zuletzt\s+|senast\s+)?(?:opdateret|publiceret|udgivet|offentliggjort|redigeret|revideret|ændret|updated|published|posted|revised|edited|oppdatert|publisert|uppdaterad|publicerad|aktualisiert|veröffentlicht|bijgewerkt|gepubliceerd|mis\s+à\s+jour|publié|actualizado|publicado)(?:\s+(?:d\.|den|on|le|am|op|el|the))?\s*:?\s*/giu;
+const DATE_LABEL = /(?:^|[\s(|·•,–—-])(?:sidst\s+|senest\s+|sist\s+|last\s+|zuletzt\s+|senast\s+)?(?:opdateret|publiceret|udgivet|offentliggjort|redigeret|revideret|ændret|updated|published|posted|revised|edited|oppdatert|publisert|uppdaterad|publicerad|aktualisiert|veröffentlicht|bijgewerkt|gepubliceerd|mis\s+à\s+jour|publié|actualizado|publicado)(?:\s+(?:d\.|den|on|le|am|op|el|the))?\s*:?\s*/giu;
 // Marks the start of a <time> element or an element classed as a date or byline (see markDated()).
 const DATE_MARK = '⁣';
 const DATE_CLASS = /^(?:[\w-]*[-_])?(?:date|dateline|byline|by-line|author|authors|writer|published|pubdate|posted|timestamp|datetime|meta-?date|post-?meta|article-?meta)(?:[-_][\w-]*)?$/i;
@@ -217,7 +220,7 @@ const NOT_PAGE_DATE_WORD = /^(?:fra|from|til|to|until|indtil|siden|since|ab|bis|
 function dateline(line) {
   const t = String(line || '').replace(new RegExp(DATE_MARK, 'g'), '').trim();
   if (visibleDates(t).length !== 1) return false;
-  const rest = t.replace(/\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g, ' ').toLowerCase().split(/[\s,.]+/).filter(Boolean);
+  const rest = t.replace(/\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}([./-])\d{1,2}\1\d{4}\b/g, ' ').toLowerCase().split(/[\s,.]+/).filter(Boolean);
   const label = rest.filter((w) => !(/^\d{1,4}(?:st|nd|rd|th|er|e)?$/.test(w) || MONTH.has(w) || WEEKDAYS.has(w) || /^(den|d|de|the|of|le|am|el)$/.test(w)));
   return label.length <= 3 && label.every((w) => /^[\p{L}&|·•:-]+$/u.test(w) && !NOT_PAGE_DATE_WORD.test(w.replace(/:$/, '')));
 }
@@ -319,6 +322,30 @@ export function leadDateSource(markdown, { today = new Date().toISOString().slic
   return null;
 }
 
+// Label words that make a date the page's last change rather than its publication.
+const MODIFIED_LABEL = /opdateret|redigeret|revideret|ændret|updated|revised|edited|oppdatert|uppdaterad|aktualisiert|bijgewerkt|mis\s+à\s+jour|actualizado/i;
+
+/**
+ * Dates the main content labels as the page's last change, wherever they sit ("Senest ændret
+ * 2025-03-11" under an article, "Last updated: 4 June 2024" in its footer), as YYYY-MM-DD, never
+ * after `today`. The date must follow the label directly: "we updated the app on 3 May 2026" in
+ * the prose is not one. A labelled change date backs a dateModified; it says nothing of datePublished.
+ */
+export function modifiedDates(markdown, { today = new Date().toISOString().slice(0, 10) } = {}) {
+  const out = new Set();
+  for (const l of String(markdown || '').replace(new RegExp(DATE_MARK, 'g'), '').split('\n')) {
+    if (/^#/.test(l)) continue;
+    for (const m of l.matchAll(DATE_LABEL)) {
+      if (!MODIFIED_LABEL.test(m[0])) continue;
+      const after = l.slice(m.index + m[0].length, m.index + m[0].length + 40);
+      if (!/^(?:\p{L}+\.?,?\s+)?\d/u.test(after)) continue;
+      const d = visibleDates(after)[0];
+      if (d && d <= today) out.add(d);
+    }
+  }
+  return [...out].sort();
+}
+
 /** article:published_time (or og:published_time) from the head, as YYYY-MM-DD, or null. */
 export function publishedMeta(html) {
   const m = /<meta\b[^>]*(?:property|name)\s*=\s*["'](?:article|og):published_time["'][^>]*>/i.exec(String(html || ''));
@@ -329,7 +356,7 @@ export function publishedMeta(html) {
 // Job-title words that end a name in a byline ("Jane Doe Head of Data", "Ole Hansen, Senior Partner").
 const ROLE_WORD = /^(?:head|chief|senior|junior|director|global|principal|manager|partner|ceo|cto|cfo|coo|cmo|vp|svp|evp|vice|president|lead|leder|direktør|chef|professor|lektor|specialist|analyst|editor|redaktør|journalist|founder|co-founder|medstifter|stifter|consultant|konsulent|associate|fellow|researcher|forsker|economist|økonom|strategist|engineer|officer|advisor|rådgiver|team|research|product|marketing|sales|executive|managing|general|group|portfolio|investment|business|head-of)$/i;
 const NAME_WORD = /^(?:\p{Lu}[\p{L}'’.-]*|van|von|de|der|den|la|le|du|da|af)$/u;
-const BYLINE_LABEL = /^(?:(?:intro|text|tekst|words|interview|article|artikel|essay|blog|post|story|historie|foto|photo|photos|video|illustration|indlæg|report|rapport)\s+(?:by|af)|by|af|skrevet af|written by|authors?:?|forfattere?:?|tekst(?: og foto)?:|text:|von|door|par|por|av|autor(?:en)?:?|auteur:?)\s*/i;
+const BYLINE_LABEL = /^(?:(?:intro|text|tekst|words|interview|article|artikel|essay|blog|post|story|historie|foto|photo|photos|video|illustration|indlæg|report|rapport)\s+(?:by|af)|by|af|bidragydere?:?|bidrag(?:\s+af|\s+fra)?:?|skrevet af|written by|authors?:?|forfattere?:?|tekst(?: og foto)?:|text:|von|door|par|por|av|autor(?:en)?:?|auteur:?)\s*/i;
 const AND = /^(?:og|and|und|en|et|y|och|&)$/i;
 
 /** The name a line opens with: two to four capitalised words, ended by a role word, a comma or the line. */
@@ -387,7 +414,11 @@ export function bylines(markdown) {
       continue;
     }
     if (label && /^[A-ZÆØÅÄÖÜÉ]/.test(text.slice(label[0].length))) {
-      take(text.slice(label[0].length));
+      const rest = text.slice(label[0].length).trim();
+      // A label and one capitalised word, and nothing else, is a byline too ("By Reuters",
+      // "Af Redaktionen"): an organisation or a desk signs the page.
+      // The label is a word of its own ("Partnerships" is no "Par" label) and the name is not in capitals.
+      if (!take(rest) && /[\s:]$/.test(label[0]) && /^\p{Lu}\p{Ll}[\p{L}'’.&-]*$/u.test(rest) && !ROLE_WORD.test(rest)) out.add(rest);
       continue;
     }
     DATE_LABEL.lastIndex = 0;
@@ -496,6 +527,8 @@ export function extractPage(html, url) {
     leadDate: own?.date || null,
     leadDateSource: own?.source || null,
     publishedMeta: published,
+    // Dates the page labels as its last change, anywhere in the main content: see modifiedDates().
+    modifiedDates: modifiedDates(mainMd),
     dayMonths: days,
     bylines: bylines(markedMd),
     breadcrumbs: breadcrumbs(body, url),
@@ -503,6 +536,8 @@ export function extractPage(html, url) {
     og: meta.og,
     urls: pageUrls(html, url),
     jsonLd: meta.jsonLd.filter((j) => !j.error).map((j) => j.data),
+    // JSON-LD blocks on the page that do not parse: markup is there, but no reader can use it.
+    jsonLdErrors: meta.jsonLd.filter((j) => j.error).map((j) => j.error),
     hidden: hiddenText ? { source: 'Next.js payload', words: blockWords(hidden), markdown: hiddenMd } : null,
     text: fullText,
   };
@@ -561,7 +596,9 @@ export function pageDigest(p, { maxChars = 14000 } = {}) {
     lines.push(`Organisation details: ${[o.name && `name ${o.name}`, o.logo && `logo ${o.logo}`, o.social.length && `social ${o.social.join(', ')}`, o.phones.length && `phone ${o.phones.join(', ')}`, o.emails.length && `email ${o.emails.join(', ')}`].filter(Boolean).join(' · ')}`);
   }
   if (p.og?.image) lines.push(`og:image: ${p.og.image}`);
-  lines.push(`Existing JSON-LD: ${p.jsonLd.length ? JSON.stringify(p.jsonLd).slice(0, 1500) : 'none'}`, '', '## Content', '');
+  const broken = (p.jsonLdErrors || []).length;
+  const brokenNote = broken ? `${broken} block${broken === 1 ? ' that does' : 's that do'} not parse (${p.jsonLdErrors[0]})` : '';
+  lines.push(`Existing JSON-LD: ${p.jsonLd.length ? `${JSON.stringify(p.jsonLd).slice(0, 1500)}${broken ? `; also ${brokenNote}` : ''}` : brokenNote || 'none'}`, '', '## Content', '');
   const md = p.markdown.length > maxChars ? `${p.markdown.slice(0, maxChars)}\n\n[… cut at ${maxChars} characters; the full text is in the .json file]` : p.markdown;
   lines.push(md, '');
   if (p.hidden) {

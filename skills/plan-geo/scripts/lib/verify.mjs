@@ -18,6 +18,26 @@ const SCHEMA_ENUM = /^https?:\/\/schema\.org\/[A-Z][A-Za-z0-9]*$/;
 // Keys whose values are vocabulary, identifiers or settings rather than claims about the page.
 const SKIP_KEYS = new Set(['@context', '@type', '@id', '@language', 'inLanguage', 'encodingFormat', 'availability', 'itemCondition', 'eventStatus', 'eventAttendanceMode', 'employmentType', 'priceCurrency', 'applicationCategory', 'operatingSystem', 'contactType', 'areaServed', 'addressCountry', 'position', 'width', 'height', 'ratingValue', 'bestRating', 'worstRating']);
 const PAGE_DATE_KEYS = /^(datePublished|dateModified)$/;
+
+// Day names in the languages extract.mjs reads dates in (English, Danish, Norwegian, Swedish,
+// German, Dutch, French, Spanish): a dayOfWeek "Monday" is on a page that says "mandag".
+const DAY_NAMES = {
+  monday: 'monday mandag måndag montag maandag lundi lunes',
+  tuesday: 'tuesday tirsdag tisdag dienstag dinsdag mardi martes',
+  wednesday: 'wednesday onsdag mittwoch woensdag mercredi miércoles miercoles',
+  thursday: 'thursday torsdag donnerstag donderdag jeudi jueves',
+  friday: 'friday fredag freitag vrijdag vendredi viernes',
+  saturday: 'saturday lørdag lördag laurdag samstag sonnabend zaterdag samedi sábado sabado',
+  sunday: 'sunday søndag söndag sonntag zondag dimanche domingo',
+};
+
+/** True when the page names the day `value` ("Monday", "schema.org/Monday") in one of DAY_NAMES' languages. */
+export function dayOnPage(value, haystack) {
+  const day = String(value).replace(/^https?:\/\/schema\.org\//i, '').toLowerCase();
+  const names = DAY_NAMES[day];
+  if (!names) return null;
+  return names.split(' ').some((n) => new RegExp(`(?<![\\p{L}])${n}(?![\\p{L}])`, 'u').test(haystack));
+}
 const DATE_KEYS = /^(datePublished|dateModified|dateCreated|uploadDate|startDate|endDate|validFrom|validThrough|datePosted|foundingDate|birthDate|expires)$/;
 
 /** Lowercase, accents kept, quotes and dashes unified, punctuation to spaces, whitespace collapsed. */
@@ -76,7 +96,9 @@ function* leaves(value, pathParts = [], key = '') {
 /**
  * verifyDraft(data, page) -> [{ path, value, reason }]: values the page does not back up.
  * `page` is an extract record (pages/<slug>.json): text, title, description, og, urls, dates,
- * dayMonths, url. An event date (startDate, endDate…) is on the page when the page shows that day
+ * dayMonths, modifiedDates, url. A dayOfWeek is on the page when the page names that day in a
+ * language it may be written in. A dateModified the page labels as its last change ("Last updated
+ * 4 June 2024") may sit anywhere on it. An event date (startDate, endDate…) is on the page when the page shows that day
  * and month, with or without the year; datePublished and dateModified need the full date.
  */
 export function verifyDraft(data, page) {
@@ -101,11 +123,17 @@ export function verifyDraft(data, page) {
       const year = /^\d{4}$/.test(value);
       const shown = year ? haystack.includes(value) : dates.has(d) || (!PAGE_DATE_KEYS.test(key) && /^\d{4}-\d{2}-\d{2}$/.test(d) && dayMonths.has(d.slice(5)));
       if (!shown) out.push({ path: p, value, reason: year ? 'year not on the page' : 'date not shown on the page' });
+      // A change date the page labels as one ("Senest ændret 2025-03-11", "Last updated …"), wherever it sits.
+      else if (key === 'dateModified' && !year && (page.modifiedDates || []).includes(d)) continue;
       // A publication date must be the date the page shows as its own, not a deadline in the text.
       else if (PAGE_DATE_KEYS.test(key) && !year && d !== page.leadDate) out.push({ path: p, value, reason: !page.leadDate ? 'the page states no date of its own near the top; this date is from the text' : ['dateline', 'press'].includes(page.leadDateSource) ? `the page does not label its own date; the date line by the title reads ${page.leadDate}` : `the page's own date is ${page.leadDate}` });
       // The page's own date read from an unlabelled line (a date line by the h1, a press dateline):
       // it may be the page date, but nothing on the page says so; a person confirms it first.
       else if (PAGE_DATE_KEYS.test(key) && !year && GUESSED_DATE.has(page.leadDateSource)) out.push({ path: p, value, reason: `the page does not label this date (${page.leadDateSource === 'press' ? 'a press release dateline' : 'a date line next to the h1'}); confirm it before using it as ${key}` });
+      continue;
+    }
+    if (key === 'dayOfWeek' && dayOnPage(value, haystack) !== null) {
+      if (!dayOnPage(value, haystack)) out.push({ path: p, value, reason: 'day not named on the page' });
       continue;
     }
     if (/^#|^_:/.test(value)) continue;

@@ -9,6 +9,7 @@ import { result } from './checks.mjs';
 import { isAllowed } from './robotsmatch.mjs';
 import { isoDate } from './content.mjs';
 import { headThenGet } from './crawl.mjs';
+import { stripTags } from './html.mjs';
 
 /**
  * AI crawlers by what blocking them costs. `answer` bots fetch pages to cite them in AI search
@@ -170,7 +171,7 @@ export const BOT_UAS = [
 
 const textWords = (html) => {
   const body = String(html || '').replace(/^[\s\S]*?<body[^>]*>/i, '').replace(/<(script|style|svg|noscript|template)\b[\s\S]*?<\/\1\s*>/gi, ' ');
-  const t = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const t = stripTags(body);
   return t ? t.split(' ').filter((w) => /[\p{L}\p{N}]/u.test(w)).length : 0;
 };
 

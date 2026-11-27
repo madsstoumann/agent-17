@@ -2,6 +2,12 @@
 
 All notable changes to the `audit-security` skill. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [Semantic Versioning](https://semver.org/). See [../README.md](../README.md) for the versioning convention.
 
+## [2.6.1] - 2026-11-26
+
+### Fixed
+- Clickjacking (site mode): an X-Frame-Options sent twice with the same value ("SAMEORIGIN, SAMEORIGIN") is read as that value, as browsers do, so the row is the X-Frame-Options-only warning, not a fail that called it "not a value browsers honour". The evidence says the header is sent twice and the fix adds "send X-Frame-Options once". Two different values read as DENY, as browsers do.
+- Version disclosure: `x-page-speed` and `x-mod-pagespeed` are flagged (from audit-launch 2.6.1's header checks).
+
 ## [2.6.0] - 2026-11-13
 
 ### Added
